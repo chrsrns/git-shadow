@@ -23,7 +23,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature config completion" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature merge config completion" -- "$cur"))
     return
   fi
 
@@ -31,6 +31,16 @@ _git_shadow() {
     feature)
       if [[ $pos -eq 1 ]]; then
         COMPREPLY=($(compgen -W "start publish finish sync" -- "$cur"))
+      else
+        case "$subcmd" in
+          publish) COMPREPLY=($(compgen -W "--commit -m" -- "$cur")) ;;
+          finish)  COMPREPLY=($(compgen -W "--keep-branches --no-pull --force" -- "$cur")) ;;
+        esac
+      fi
+      ;;
+    merge)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "publish sync finish" -- "$cur"))
       else
         case "$subcmd" in
           publish) COMPREPLY=($(compgen -W "--commit -m" -- "$cur")) ;;

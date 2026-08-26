@@ -294,6 +294,8 @@ git shadow feature sync --continue
 git shadow feature sync --abort
 ```
 
+> ⚠️ **Use `git shadow feature sync` only on feature shadow branches (`feature/x@local`).** Do not run it on `main@local` or your configured local base branch — it will rebase and rewrite the base history. Update `main@local` with `git checkout main@local && git merge main`, or let `git shadow merge finish` handle it.
+
 ---
 
 # Finish a feature

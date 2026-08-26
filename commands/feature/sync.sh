@@ -104,6 +104,16 @@ else
   PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
 fi
 
+# Guard: do not rebase the local base branch. The base branch should be updated
+# with git merge (or git shadow merge finish), not with feature sync.
+local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+if [[ "$CONTINUE" -eq 0 && "$ABORT" -eq 0 && "$CURRENT_BRANCH" == "$local_base" ]]; then
+  ui_error "'git shadow feature sync' is for feature shadow branches, not the local base branch '$local_base'."
+  ui_step "To update '$local_base', run: git checkout '$local_base' && git merge '$PUBLIC_BASE_BRANCH'"
+  ui_step "Or use 'git shadow merge finish' when finalizing a feature."
+  exit 1
+fi
+
 # At this point PUBLIC_BRANCH is set (either from continue state or fresh start)
 : "${PUBLIC_BRANCH:?}"
 

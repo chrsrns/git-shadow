@@ -231,3 +231,17 @@ teardown() {
   [[ "$output" == *"aborted"* ]]
   [ ! -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]
 }
+
+# ---------------------------------------------------------------------------
+# Base branch guard
+# ---------------------------------------------------------------------------
+
+@test "feature sync exits with warning when run on the local base branch" {
+  git shadow config set PUBLIC_BASE_BRANCH=develop --project-config
+  git checkout -q develop
+  git checkout -q -b "develop@local"
+
+  run git shadow feature sync
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"base"* ]]
+}

@@ -106,3 +106,5 @@ git shadow merge finish --force           # delete branches even if not fully me
 - `merge publish` is currently a wrapper around `feature publish` because the cherry-pick logic is identical.
 - `merge finish` requires that the public branch has already been merged into `main`. It does not merge `feature/x` into `main` for you.
 - If the shadow branch has not been synced with `merge sync` before `merge finish`, the final merge may produce `CONFLICT (add/add)` on new files.
+
+> ⚠️ **Do not use `git shadow feature sync` on `main@local` or any local base branch.** The `feature sync` command is designed for `feature/x@local` branches and will rebase/rewrite history. `git shadow merge finish` handles the `main → main@local` sync for you; for a manual base sync use `git checkout main@local && git merge main`.

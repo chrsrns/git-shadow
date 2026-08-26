@@ -37,8 +37,17 @@ resolve_merge_conflicts() {
   while IFS= read -r file; do
     ours_has=0
     theirs_has=0
-    merge_side_has_local_comments ":2:" "$file" && ours_has=1
-    merge_side_has_local_comments ":3:" "$file" && theirs_has=1
+    ours_exists=0
+    theirs_exists=0
+
+    if git show ":2:$file" >/dev/null 2>&1; then
+      ours_exists=1
+      merge_side_has_local_comments ":2:" "$file" && ours_has=1
+    fi
+    if git show ":3:$file" >/dev/null 2>&1; then
+      theirs_exists=1
+      merge_side_has_local_comments ":3:" "$file" && theirs_has=1
+    fi
 
     if [[ "$ours_has" -eq 1 && "$theirs_has" -eq 0 ]]; then
       side="ours"
@@ -48,9 +57,17 @@ resolve_merge_conflicts() {
       side="$both_prefer"
     fi
 
-    ui_shadow "Auto-resolved ($side): $file"
-    git checkout --"$side" -- "$file"
-    git add -- "$file"
+    if [[ "$side" == "ours" && "$ours_exists" -eq 0 ]]; then
+      ui_shadow "Auto-resolved (delete): $file"
+      git rm -q -- "$file"
+    elif [[ "$side" == "theirs" && "$theirs_exists" -eq 0 ]]; then
+      ui_shadow "Auto-resolved (delete): $file"
+      git rm -q -- "$file"
+    else
+      ui_shadow "Auto-resolved ($side): $file"
+      git checkout --"$side" -- "$file"
+      git add -- "$file"
+    fi
   done <<< "$conflicts"
 
   if [[ "$skip_continue" -eq 0 ]]; then

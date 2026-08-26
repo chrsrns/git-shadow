@@ -20,6 +20,8 @@ _git_shadow() {
     args)
       case $line[1] in
         feature)    _git_shadow_feature ;;
+        merge)      _git_shadow_merge ;;
+        check)      _git_shadow_check ;;
         config)     _git_shadow_config ;;
         status)     _arguments '--json[output as JSON]' ;;
         commit)     _arguments '-m[commit message]:message:' ;;
@@ -40,6 +42,8 @@ _git_shadow_commands() {
     'promote:promote a local @local commit to the public branch'
     'check-local-comments:check staged files for local comment markers'
     'feature:manage the feature branch lifecycle (start / publish / finish)'
+    'merge:manage the merge-only workflow (publish / sync / finish)'
+    'check:audit a public branch for local-only contamination'
     'config:manage git-shadow configuration'
     'completion:manage shell completion'
   )
@@ -132,6 +136,54 @@ _git_shadow_config_subcommands() {
     'get:get a single configuration value'
     'set:set a configuration value'
     'unset:remove a configuration value'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_merge() {
+  local context state line
+
+  _arguments -C \
+    '1: :_git_shadow_merge_subcommands' \
+    '*:: :->args'
+
+  case $state in
+    args)
+      case $line[1] in
+        publish)
+          _arguments \
+            '--commit[commit staged changes before publishing]' \
+            '-m[commit message]:message:'
+          ;;
+        finish)
+          _arguments \
+            '--keep-branches[do not delete branches after finishing]' \
+            '--no-pull[skip pulling base branches]' \
+            '--force[force delete branches even if not fully merged]'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_git_shadow_merge_subcommands() {
+  local subcommands
+  subcommands=(
+    'publish:cherry-pick clean commits to the public branch'
+    'sync:merge the public branch into the shadow branch'
+    'finish:merge the feature into the local base branch'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_check() {
+  _arguments '1: :_git_shadow_check_subcommands'
+}
+
+_git_shadow_check_subcommands() {
+  local subcommands
+  subcommands=(
+    'public:audit a public branch for local-only contamination'
   )
   _describe 'subcommand' subcommands
 }

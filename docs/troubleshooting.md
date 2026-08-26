@@ -235,6 +235,8 @@ After this, `git shadow status` should report `up to date` or `ready to publish`
 
 > ⚠️ **Do not run `git shadow feature sync` on `main@local`.** `feature sync` is for feature shadow branches (`feature/x@local`) and will rebase/rewrite the history of `main@local`. Use `git merge main` instead, or `git shadow merge finish` if you are finalizing a feature.
 
+You can verify `main` is clean with `git shadow check public main`. It reports `[MEMORY]` commits, local comment markers, and unpromoted files.
+
 ```bash
 # Update the public base
 git checkout main

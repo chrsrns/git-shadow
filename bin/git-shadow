@@ -63,6 +63,7 @@ Commands:
   merge publish [--commit] [-m MESSAGE] [--push]
   merge sync
   merge finish [--keep-branches] [--no-pull] [--force]
+  check public [<branch>]
   commit [-m "message"]
   promote <file>
   check-local-comments

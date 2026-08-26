@@ -14,7 +14,7 @@ complete -c git-shadow -f
 # Top-level commands
 # ---------------------------------------------------------------------------
 
-set -l top_cmds version install-hooks doctor status commit promote check-local-comments feature config completion
+set -l top_cmds version install-hooks doctor status commit promote check-local-comments feature merge check config completion
 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a version              -d "show the current version"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a install-hooks        -d "install pre-commit and pre-push git hooks"
@@ -24,6 +24,8 @@ complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a commit 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a promote              -d "promote a local @local commit to the public branch"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a check-local-comments -d "check staged files for local comment markers"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a feature              -d "manage feature branch lifecycle"
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a merge                -d "manage merge workflow"
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a check                -d "audit a public branch"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a config               -d "manage git-shadow configuration"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a completion           -d "manage shell completion"
 
@@ -46,6 +48,28 @@ complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish"  -l keep-branches -d "do not delete branches after finishing"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish"  -l no-pull       -d "skip pulling base branches"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish"  -l force         -d "force delete branches even if not fully merged"
+
+# ---------------------------------------------------------------------------
+# merge subcommands and flags
+# ---------------------------------------------------------------------------
+
+set -l merge_subcmds publish sync finish
+
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and not __fish_seen_subcommand_from $merge_subcmds" -a publish -d "cherry-pick clean commits to the public branch"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and not __fish_seen_subcommand_from $merge_subcmds" -a sync    -d "merge the public branch into the shadow branch"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and not __fish_seen_subcommand_from $merge_subcmds" -a finish  -d "merge the feature into the local base branch"
+
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_subcommand_from publish" -l commit       -d "commit staged changes before publishing"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_subcommand_from publish" -s m -r         -d "commit message"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_subcommand_from finish"  -l keep-branches -d "do not delete branches after finishing"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_subcommand_from finish"  -l no-pull       -d "skip pulling base branches"
+complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_subcommand_from finish"  -l force         -d "force delete branches even if not fully merged"
+
+# ---------------------------------------------------------------------------
+# check subcommands and flags
+# ---------------------------------------------------------------------------
+
+complete -c git-shadow -n "__fish_seen_subcommand_from check; and not __fish_seen_subcommand_from public" -a public -d "audit a public branch for local-only contamination"
 
 # ---------------------------------------------------------------------------
 # config subcommands and flags

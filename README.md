@@ -317,6 +317,27 @@ This command:
 
 ---
 
+# Check a public branch
+
+Before pushing `main` or a feature public branch to the remote, you can audit it for local-only leakage:
+
+```bash
+git shadow check public main
+
+# or for a feature branch
+git shadow check public feature/login
+```
+
+This checks for:
+
+- `[MEMORY]` commits in the branch history
+- files still containing local comment markers (`///`, `##`, `<!---`, `%%`)
+- files that originated in a `[MEMORY]` commit on the local counterpart branch but were not promoted
+
+It exits with a non-zero status when it finds anything that should have stayed in the `@local` layer.
+
+---
+
 # Workflow overview
 
 ```

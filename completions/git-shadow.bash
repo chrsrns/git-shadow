@@ -23,7 +23,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature merge config completion" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature merge check config completion" -- "$cur"))
     return
   fi
 
@@ -78,6 +78,11 @@ _git_shadow() {
       local tracked_files
       tracked_files="$(git ls-files 2>/dev/null)"
       COMPREPLY=($(compgen -W "$tracked_files" -- "$cur"))
+      ;;
+    check)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "public" -- "$cur"))
+      fi
       ;;
     completion)
       if [[ $pos -eq 1 ]]; then

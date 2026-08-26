@@ -23,7 +23,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature merge check config completion" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature merge check local config completion" -- "$cur"))
     return
   fi
 
@@ -82,6 +82,11 @@ _git_shadow() {
     check)
       if [[ $pos -eq 1 ]]; then
         COMPREPLY=($(compgen -W "public" -- "$cur"))
+      fi
+      ;;
+    local)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "rebuild" -- "$cur"))
       fi
       ;;
     completion)

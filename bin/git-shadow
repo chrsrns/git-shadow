@@ -64,6 +64,7 @@ Commands:
   merge sync
   merge finish [--keep-branches] [--no-pull] [--force]
   check public [<branch>]
+  local rebuild [<branch>] [--force]
   commit [-m "message"]
   promote <file>
   check-local-comments

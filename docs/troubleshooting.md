@@ -261,7 +261,32 @@ git checkout feature/login@local
 
 ---
 
-## 7. Public branch was accidentally deleted
+## 7. main@local has duplicate [MEMORY] commits
+
+**Symptom:** `git log --oneline main@local` shows the same `[MEMORY]` subject multiple times, or `git shadow feature sync` on a feature branch tries to replay many old `[MEMORY]` commits.
+
+**What happened:** Each finished feature merged its local `[MEMORY]` history into `main@local`. Re-running a rebase-based `feature sync` on feature branches replays those inherited `[MEMORY]` commits, creating more copies.
+
+**Recovery:** Rebuild `main@local` from `main` and de-duplicate the `[MEMORY]` commits.
+
+```bash
+# Inspect the rebuild first
+git shadow local rebuild
+
+# If the new main@local-rebuild branch looks correct, replace the old one
+git branch -D main@local
+git branch -m main@local-rebuild main@local
+```
+
+Or run with `--force` to replace the branch and keep a backup:
+
+```bash
+git shadow local rebuild --force
+```
+
+---
+
+## 8. Public branch was accidentally deleted
 
 **Symptom:** The public feature branch (e.g. `feature/login`) was deleted — either locally with `git branch -D` or remotely.
 

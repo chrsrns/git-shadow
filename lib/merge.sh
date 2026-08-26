@@ -14,15 +14,21 @@ merge_side_has_local_comments() {
 
 # Resolve an in-progress merge by choosing the side that carries local comments.
 # If both or neither side has local comments, use the supplied preference.
+# If $2 is "skip-continue", do not call "git merge --continue" afterwards
+# (used when the resolver is invoked from a squash replay).
 resolve_merge_conflicts() {
   local both_prefer="$1"
+  local skip_continue=0
+  if [[ "${2:-}" == "skip-continue" ]]; then
+    skip_continue=1
+  fi
   local file side
   local ours_has=0 theirs_has=0
   local conflicts
 
   conflicts="$(git diff --name-only --diff-filter=U)"
   if [[ -z "$conflicts" ]]; then
-    if [[ -f "$(git rev-parse --git-path MERGE_HEAD)" ]]; then
+    if [[ "$skip_continue" -eq 0 && -f "$(git rev-parse --git-path MERGE_HEAD)" ]]; then
       GIT_EDITOR=true git merge --continue
     fi
     return 0
@@ -47,5 +53,7 @@ resolve_merge_conflicts() {
     git add -- "$file"
   done <<< "$conflicts"
 
-  GIT_EDITOR=true git merge --continue
+  if [[ "$skip_continue" -eq 0 ]]; then
+    GIT_EDITOR=true git merge --continue
+  fi
 }

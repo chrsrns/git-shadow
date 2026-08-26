@@ -14,7 +14,7 @@ complete -c git-shadow -f
 # Top-level commands
 # ---------------------------------------------------------------------------
 
-set -l top_cmds version install-hooks doctor status commit promote check-local-comments feature merge check config completion
+set -l top_cmds version install-hooks doctor status commit promote check-local-comments feature merge check local config completion
 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a version              -d "show the current version"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a install-hooks        -d "install pre-commit and pre-push git hooks"
@@ -26,6 +26,7 @@ complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a check-l
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a feature              -d "manage feature branch lifecycle"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a merge                -d "manage merge workflow"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a check                -d "audit a public branch"
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a local                -d "rebuild a shadow branch"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a config               -d "manage git-shadow configuration"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a completion           -d "manage shell completion"
 
@@ -70,6 +71,13 @@ complete -c git-shadow -n "__fish_seen_subcommand_from merge; and __fish_seen_su
 # ---------------------------------------------------------------------------
 
 complete -c git-shadow -n "__fish_seen_subcommand_from check; and not __fish_seen_subcommand_from public" -a public -d "audit a public branch for local-only contamination"
+
+# ---------------------------------------------------------------------------
+# local subcommands and flags
+# ---------------------------------------------------------------------------
+
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from rebuild" -a rebuild -d "rebuild a shadow branch from its public counterpart"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from rebuild" -l force -d "replace the original branch and keep a backup"
 
 # ---------------------------------------------------------------------------
 # config subcommands and flags

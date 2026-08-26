@@ -338,6 +338,25 @@ It exits with a non-zero status when it finds anything that should have stayed i
 
 ---
 
+# Rebuild a local shadow branch
+
+If your local shadow branch (`main@local`, `develop@local`, or `feature/x@local`) has accumulated duplicate `[MEMORY]` commits or merge history you no longer want, you can rebuild it from its public counterpart:
+
+```bash
+# Create a new branch main@local-rebuild and replay unique [MEMORY] commits
+git shadow local rebuild
+
+# Replace main@local and keep the old one as main@local-old
+git shadow local rebuild --force
+
+# Rebuild a specific branch
+git shadow local rebuild feature/x@local
+```
+
+This creates a linear `main → [MEMORY] → [MEMORY] …` branch, drops duplicate `[MEMORY]` commits by patch-id, and applies the remaining ones with the original author and date. Without `--force`, the original branch is left untouched and a parallel `*-rebuild` branch is created for you to inspect.
+
+---
+
 # Workflow overview
 
 ```

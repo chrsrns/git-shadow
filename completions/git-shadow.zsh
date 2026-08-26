@@ -22,6 +22,7 @@ _git_shadow() {
         feature)    _git_shadow_feature ;;
         merge)      _git_shadow_merge ;;
         check)      _git_shadow_check ;;
+        local)      _git_shadow_local ;;
         config)     _git_shadow_config ;;
         status)     _arguments '--json[output as JSON]' ;;
         commit)     _arguments '-m[commit message]:message:' ;;
@@ -44,6 +45,7 @@ _git_shadow_commands() {
     'feature:manage the feature branch lifecycle (start / publish / finish)'
     'merge:manage the merge-only workflow (publish / sync / finish)'
     'check:audit a public branch for local-only contamination'
+    'local:rebuild a shadow branch from its public counterpart'
     'config:manage git-shadow configuration'
     'completion:manage shell completion'
   )
@@ -184,6 +186,34 @@ _git_shadow_check_subcommands() {
   local subcommands
   subcommands=(
     'public:audit a public branch for local-only contamination'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_local() {
+  local context state line
+
+  _arguments -C \
+    '1: :_git_shadow_local_subcommands' \
+    '*:: :->args'
+
+  case $state in
+    args)
+      case $line[1] in
+        rebuild)
+          _arguments \
+            '--force[replace the original branch and keep a backup]' \
+            '*:branch:__git_refs2'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_git_shadow_local_subcommands() {
+  local subcommands
+  subcommands=(
+    'rebuild:rebuild a shadow branch from its public counterpart'
   )
   _describe 'subcommand' subcommands
 }

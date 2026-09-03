@@ -119,7 +119,7 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
 
   git add -A
   if sync_tree_changed; then
-    git commit -q -m "sync $PUBLIC_BASE"
+    sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH"
   fi
 fi
 

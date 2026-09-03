@@ -38,7 +38,7 @@ if [[ -z "$UPSTREAM" ]]; then
   exit 1
 fi
 
-REMOTE="${UPSTREAM%/*}"
+REMOTE="${UPSTREAM%%/*}"
 ui_git "Pushing '$BRANCH' to $REMOTE"
 GIT_SHADOW=1 git push "$REMOTE" "$BRANCH"
 ui_ok "Pushed '$BRANCH' to $REMOTE."

@@ -296,10 +296,7 @@ git shadow check public main
 git shadow check public feature/login
 ```
 
-This checks for:
-
-- `[MEMORY]` or `[CHECKPOINT]` commits in the public branch history
-- files that originated in a `[MEMORY]` commit on the local counterpart branch but were not promoted
+This audits the public branch for **unpromoted files** — files that appear on the public branch but were created or last modified by a `[MEMORY]` commit on the local counterpart branch. Public branches should never contain local-only content.
 
 The `feature publish` check pass already verifies the public diff matches the filtered local diff, so `check public` is a secondary audit.
 

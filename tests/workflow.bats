@@ -54,10 +54,10 @@ teardown() {
   run git branch --list "workflow-feature@local"
   [ -z "$output" ]
 
-  # 8. main@local contains the feature commit
+  # 8. main@local contains the feature work
   git checkout -q "main@local"
-  result="$(git log --oneline)"
-  [[ "$result" == *"feat: public code"* ]]
+  result="$(cat feature.txt)"
+  [ "$result" = "public code" ]
 }
 
 @test "MEMORY commits are not published to public branch" {

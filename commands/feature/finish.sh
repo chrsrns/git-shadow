@@ -125,16 +125,19 @@ fi
 
 # ---------------------------------------------------------------------------
 # Cherry-pick [MEMORY] commits from the feature's @local branch.
+# Use the merge-base with the local base so we do not re-apply base [MEMORY]
+# commits that are already on main@local.
 # ---------------------------------------------------------------------------
 ui_shadow "Cherry-picking [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
 MEMORY_SHAS=()
+MERGE_BASE="$(git merge-base "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE")"
 while IFS= read -r sha; do
   [[ -z "$sha" ]] && continue
   subject="$(git log -1 --format='%s' "$sha")"
   if [[ "$subject" == "[MEMORY]"* ]]; then
     MEMORY_SHAS+=("$sha")
   fi
-done < <(git rev-list --reverse "$FEATURE_LOCAL_BRANCH")
+done < <(git rev-list --reverse "${MERGE_BASE}..$FEATURE_LOCAL_BRANCH")
 
 if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
   LOCAL_BASE_HEAD_AFTER_SYNC="$(git rev-parse "$LOCAL_BASE")"

@@ -137,17 +137,12 @@ A conflict can happen in the base net diff or in any of the `[MEMORY]` cherry-pi
 git status
 
 # 2. Resolve each conflicting file
-# 3. Stage the resolved files
+# 3. Stage and commit the resolved files
 git add notes/feature-x.md
+git commit -m "[MEMORY] resolved finish conflict"
 
-# 4. Re-run finish — it resumes from the resolved state
+# 4. Re-run finish — it skips already-applied base net diff and [MEMORY] commits
 git shadow feature finish
-```
-
-If you already pulled the public base and want to avoid re-pulling while you retry:
-
-```bash
-git shadow feature finish --no-pull
 ```
 
 If the conflict is in a `[MEMORY]` file that accidentally touched a public-tracked file, move the local-only content to a new file and re-run.

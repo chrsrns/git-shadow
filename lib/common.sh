@@ -15,6 +15,10 @@ load_env
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ui.sh"
 
+# Load checkpoint parser / storage helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checkpoint.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"

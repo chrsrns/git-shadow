@@ -19,6 +19,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ui.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checkpoint.sh"
 
+# Load diff-sync sync helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"

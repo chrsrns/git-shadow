@@ -36,7 +36,7 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-@test "feature publish cherry-picks the code commit to the public branch" {
+@test "feature publish replays the code commit to the public branch" {
   git shadow feature publish
   git checkout -q test-feature
   result="$(git log --oneline)"
@@ -53,7 +53,7 @@ teardown() {
 @test "feature publish outputs a completion message" {
   run git shadow feature publish
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Publish completed"* ]]
+  [[ "$output" == *"Published to"* ]]
 }
 
 @test "feature publish exits 0 with no publishable commits (already up to date)" {
@@ -63,4 +63,8 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
-
+@test "feature publish creates a checkpoint on the local branch" {
+  git shadow feature publish
+  subject="$(git log -1 --format='%s' test-feature@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}

@@ -44,8 +44,9 @@ teardown() {
 
   run check_pass "main" "main@local" "$cp_public" "$cp_local"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"public change"* ]]
-  [[ "$output" == *"add extra file"* ]]
+  # Output is the ordered public commit SHAs.
+  line_count="$(printf '%s\n' "$output" | grep -c '^[0-9a-f]\{40\}$')"
+  [ "$line_count" -eq 2 ]
 }
 
 @test "check pass fails when [MEMORY] modifies a public-tracked file" {

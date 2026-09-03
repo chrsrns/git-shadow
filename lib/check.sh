@@ -32,13 +32,13 @@ check_replay_public() {
   local tmp_branch="$2"
   shift 2
 
-  git checkout -q -b "$tmp_branch" "$checkpoint_public"
+  git checkout -q -b "$tmp_branch" "$checkpoint_public" >/dev/null 2>&1
 
   for sha in "$@"; do
-    if ! git cherry-pick --quiet "$sha" 2>/dev/null; then
-      git cherry-pick --abort 2>/dev/null || true
-      git checkout -q "-"
-      git branch -D "$tmp_branch" 2>/dev/null || true
+    if ! git cherry-pick --quiet "$sha" >/dev/null 2>&1; then
+      git cherry-pick --abort >/dev/null 2>&1 || true
+      git checkout -q "-" >/dev/null 2>&1 || true
+      git branch -D "$tmp_branch" >/dev/null 2>&1 || true
       return 1
     fi
   done
@@ -92,13 +92,14 @@ check_pass() {
   tmp_branch="__shadow_check_tmp__"
 
   # Remove any leftover temp branch from an aborted previous run.
-  git show-ref --verify --quiet "refs/heads/$tmp_branch" && git branch -D "$tmp_branch" 2>/dev/null || true
+  git show-ref --verify --quiet "refs/heads/$tmp_branch" && git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 
   local original_branch
   original_branch="$(git branch --show-current)"
 
-  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits; then
-    git checkout -q "${original_branch}" 2>/dev/null || true
+  local replayed_branch
+  if ! replayed_branch="$(check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits)"; then
+    git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     return 1
   fi
 
@@ -112,8 +113,8 @@ check_pass() {
   fi
 
   # Cleanup temp branch.
-  git checkout -q "${original_branch}" 2>/dev/null || true
-  git branch -D "$tmp_branch" 2>/dev/null || true
+  git checkout -q "${original_branch}" >/dev/null 2>&1 || true
+  git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 
   if [[ $result -eq 0 ]]; then
     printf '%s\n' $public_commits | tr ' ' '\n' | grep -v '^$'

@@ -59,9 +59,9 @@ teardown() {
   [[ "$output" == *"already installed"* ]]
 }
 
-@test "install-hooks pre-push hook contains shadow push check" {
+@test "install-hooks pre-push hook contains public branch guard" {
   git shadow install-hooks
-  grep -q "check-shadow-push" ".git/hooks/pre-push"
+  grep -q "public branch" ".git/hooks/pre-push"
 }
 
 @test "install-hooks pre-commit hook is syntactically valid sh" {
@@ -79,4 +79,55 @@ teardown() {
   chmod +x ".git/hooks/pre-commit"
   git shadow install-hooks
   sh -n ".git/hooks/pre-commit"
+}
+
+@test "pre-commit rejects a commit on a public branch without GIT_SHADOW" {
+  git commit --allow-empty -q -m "initial"
+  git shadow install-hooks
+  echo "change" > file.txt
+  git add file.txt
+  run git commit -q -m "public commit"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Refusing to commit"* ]]
+}
+
+@test "pre-commit allows a commit on a public branch with GIT_SHADOW=1" {
+  git commit --allow-empty -q -m "initial"
+  git shadow install-hooks
+  echo "change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 run git commit -q -m "public commit"
+  [ "$status" -eq 0 ]
+}
+
+@test "pre-commit allows a commit on a @local branch" {
+  git commit --allow-empty -q -m "initial"
+  git shadow install-hooks
+  git checkout -q -b "test@local"
+  echo "change" > file.txt
+  git add file.txt
+  run git commit -q -m "local commit"
+  [ "$status" -eq 0 ]
+}
+
+@test "pre-push rejects a public branch push without GIT_SHADOW" {
+  initial_sha="$(git commit --allow-empty -q -m "initial" && git rev-parse HEAD)"
+  git shadow install-hooks
+  run bash -c "printf 'refs/heads/main %s refs/heads/main %s\n' \"$initial_sha\" \"$initial_sha\" | .git/hooks/pre-push origin url"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Refusing to push"* ]]
+}
+
+@test "pre-push allows a public branch push with GIT_SHADOW=1" {
+  initial_sha="$(git commit --allow-empty -q -m "initial" && git rev-parse HEAD)"
+  git shadow install-hooks
+  GIT_SHADOW=1 run bash -c "printf 'refs/heads/main %s refs/heads/main %s\n' \"$initial_sha\" \"$initial_sha\" | .git/hooks/pre-push origin url"
+  [ "$status" -eq 0 ]
+}
+
+@test "pre-push allows a @local branch push" {
+  initial_sha="$(git commit --allow-empty -q -m "initial" && git rev-parse HEAD)"
+  git shadow install-hooks
+  run bash -c "printf 'refs/heads/test@local %s refs/heads/test@local %s\n' \"$initial_sha\" \"$initial_sha\" | .git/hooks/pre-push origin url"
+  [ "$status" -eq 0 ]
 }

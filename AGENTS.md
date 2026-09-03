@@ -39,18 +39,8 @@ In the shadow branch, you are encouraged to write and preserve:
 - local-only TODO notes
 - hypotheses and exploration artifacts
 
-Examples:
-```ts
-/// plan:
-/// 1. validate token
-/// 2. retry on 429
-/// 3. persist refreshed token
-
-/// @local debug
-console.log('SSO profile', profile)
-```
-
 These artifacts are useful in @local and should not be removed prematurely.
+Put them into separate `[MEMORY] <subject>` commits so they are filtered from the public branch.
 
 3. Do not prematurely optimize for cleanliness in @local
 
@@ -65,15 +55,14 @@ In @local, clarity of thought is more important than polish.
 4. Publish only clean code
 
 Before publishing to the public branch, choose what to keep as local-only artifacts such as:
-- /// comments
-- // @local comments
+- reasoning notes
 - debug logs
 - temporary probes
 - unfinished pseudo-code
 - local-only planning notes
+- architecture and design markdowns
 
-What will be usefull to keep for later usage as a memory ? 
-These things must be commited inside a separate commits prefixed by "[MEMORY] " in order to allow git shadow to filter them during the publish process.
+Anything that helps later reasoning but is not ready to share must be committed in a separate `[MEMORY] <subject>` commit. `[MEMORY]` commits must not modify files already tracked by the public branch. Put reasoning in separate local-only files (e.g., `notes/`, `memory/`, `.ai/`). `git shadow` filters `[MEMORY]` commits during `feature publish`; public commits must not depend on them.
 
 Published code must be:
 - readable
@@ -86,10 +75,10 @@ Published code must be:
 ```bash
 git shadow feature start <branch-name>
 # THEN WORK
-# Clean code as explain in "4. Publish only clean code"
-git shadow commit
+# Use `git commit` for public content
+# Use `git commit -m "[MEMORY] ..."` for local-only reasoning
 git shadow feature publish
-git push origin <branch-name>
+git shadow push <branch-name>
 ```
 
 If you are asked to finalize work, prefer publication through git shadow rather than manually copying noisy changes to the public branch.

@@ -69,15 +69,16 @@ feature/x@local
 feature/x@local
 ```
 
-3. Keep development scaffolding locally (for example structured comments).
+3. Keep development scaffolding locally in `[MEMORY]` commits.
 
 Example:
 
-```js
-/// Get user from database
-/// Verify credentials
-/// Build user session
+```bash
+git add -f notes/feature-x-plan.md
+git commit -m "[MEMORY] design plan for feature/x"
 ```
+
+`[MEMORY]` commits are kept only on the shadow branch and are filtered out when publishing to the public branch.
 
 4. Publish clean commits to the public branch.
 
@@ -87,13 +88,13 @@ feature/x
 
 5. Push the public branch to the shared repository and follow the normal team workflow (pull request, merge request, etc.).
 
-6. Merge the shadow feature branch back into the shadow base branch.
+6. Finish the feature with `git shadow feature finish`.
 
 ```
 main@local
 ```
 
-This preserves the local reasoning structures for future work.
+This applies the base net diff and cherry-picks each `[MEMORY]` commit from the feature's shadow branch onto the shadow base branch, then creates a final `[CHECKPOINT]`. This preserves the local reasoning structures for future work.
 
 ---
 
@@ -142,7 +143,7 @@ Automation tools can simplify the workflow and reduce errors.
 
 The Shadow Branch Pattern works well when:
 
-* developers rely heavily on comments or pseudo-code to structure reasoning
+* developers keep reasoning notes, design docs, or pseudo-code in separate local files
 * teams prefer a clean shared repository history
 * development scaffolding is useful locally but undesirable in shared code
 * the team is comfortable with slightly more advanced Git workflows
@@ -180,18 +181,23 @@ The CLI tool **git shadow** implements this workflow and automates the operation
 
 Example usage:
 
-```
+```bash
 git shadow feature start feature/login
-git shadow feature publish --commit -m "feat(login): add login flow"
+# work on feature/login@local; use `git commit` for public work,
+# `git commit -m "[MEMORY] ..."` for local-only notes
+git shadow feature publish
+git shadow push feature/login
+# after PR merge
 git shadow feature finish
+git shadow push main
 ```
 
 The tool handles:
 
 * shadow branch creation
-* comment filtering
+* `[MEMORY]` commit filtering
 * commit publication
-* branch synchronization
+* checkpoint-based net-diff synchronization
 
 ---
 

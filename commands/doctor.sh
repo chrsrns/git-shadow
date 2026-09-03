@@ -6,19 +6,45 @@ set -euo pipefail
 # Purpose: run a suite of Git-shadow self-checks for the environment and repo.
 # -------------------------------------------------------------------
 
+# Environment setup
+TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
+source "$TOOLKIT_ROOT/lib/common.sh"
 
 ui_info "git-shadow doctor check"
 
 # 1) toolkit core sanity
-TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [[ ! -d "$TOOLKIT_ROOT" ]]; then
   ui_error "TOOLKIT_ROOT not found: $TOOLKIT_ROOT"
   exit 1
 fi
 
-needed=("commands/feature/start.sh" "commands/feature/publish.sh" "commands/feature/finish.sh" "commands/commit.sh" "commands/install-hooks.sh" "commands/check-shadow-push.sh" "scripts/check-local-comments.sh" "scripts/strip-local-comments.sh")
+needed=(
+  "bin/git-shadow"
+  "lib/common.sh"
+  "lib/check.sh"
+  "lib/checkpoint.sh"
+  "lib/config-utils.sh"
+  "lib/env.sh"
+  "lib/sync.sh"
+  "lib/ui.sh"
+  "config/defaults.env"
+  "commands/version.sh"
+  "commands/doctor.sh"
+  "commands/install-hooks.sh"
+  "commands/base/sync.sh"
+  "commands/completion/install.sh"
+  "commands/config/get.sh"
+  "commands/config/list.sh"
+  "commands/config/set.sh"
+  "commands/config/show.sh"
+  "commands/config/unset.sh"
+  "commands/feature/finish.sh"
+  "commands/feature/publish.sh"
+  "commands/feature/start.sh"
+  "commands/feature/sync.sh"
+)
+
 for path in "${needed[@]}"; do
   if [[ ! -f "$TOOLKIT_ROOT/$path" ]]; then
     ui_error "Missing required file: $path"
@@ -31,10 +57,6 @@ ui_ok "Toolkit files present"
 # 2) built-in config defaults
 if [[ ! -f "$TOOLKIT_ROOT/config/defaults.env" ]]; then
   ui_error "config/defaults.env missing"
-  exit 1
-fi
-if ! grep -q '^LOCAL_COMMENT_PATTERN=' "$TOOLKIT_ROOT/config/defaults.env"; then
-  ui_error "LOCAL_COMMENT_PATTERN not set in config/defaults.env"
   exit 1
 fi
 if ! grep -q '^SHADOW_COMMIT_PREFIX=' "$TOOLKIT_ROOT/config/defaults.env"; then

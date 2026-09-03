@@ -59,6 +59,12 @@ teardown() {
   [ "$current" = "test-feature@local" ]
 }
 
+@test "feature start adds an initial checkpoint to the local shadow branch" {
+  git shadow feature start test-feature
+  subject="$(git log -1 --format='%s' test-feature@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
 @test "feature start exits 1 when branch name already exists" {
   git shadow feature start test-feature
   run git shadow feature start test-feature

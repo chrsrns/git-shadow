@@ -10,15 +10,13 @@ setup() {
   echo "initial" > file.txt
   git add file.txt
   git commit -qm "initial"
-  git checkout -q -b "main@local"
-  git checkout -q main
 
-  # Create feature, add code, publish
   git shadow feature start test-feature
   echo "feature code" > feature.txt
   git add feature.txt
-  git shadow commit -m "feat: feature code"
+  git commit -qm "feat: feature code"
   git shadow feature publish
+
   # Simulate the feature being merged into main
   git checkout -q main
   git merge -q --no-edit test-feature
@@ -41,11 +39,17 @@ teardown() {
   [[ "$output" == *"Feature finished successfully"* ]]
 }
 
-@test "feature finish merges feature commits into main@local" {
+@test "feature finish applies public base changes to main@local" {
   git shadow feature finish --no-pull
   git checkout -q "main@local"
-  result="$(git log --oneline)"
-  [[ "$result" == *"feat: feature code"* ]]
+  result="$(cat feature.txt)"
+  [ "$result" = "feature code" ]
+}
+
+@test "feature finish creates a checkpoint on main@local" {
+  git shadow feature finish --no-pull
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
 }
 
 @test "feature finish deletes the public feature branch" {
@@ -66,19 +70,12 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
-# ---------------------------------------------------------------------------
-# Conflict scenarios
-# ---------------------------------------------------------------------------
-
-@test "feature finish exits 1 when sync merge has conflicts" {
-  # Scenario: public base and feature both modified the same file
-  # → git merge of public_base into local_base will conflict
-
-  # Setup: feature is published and merged
+@test "feature finish exits 1 when base sync has conflicts" {
+  # Setup: public base and feature both modified the same file
   git checkout -q main
   git merge -q --no-edit test-feature
 
-  # Now commit a conflicting change on main AFTER the feature was merged
+  # Commit a conflicting change on main AFTER the feature was merged
   git checkout -q main
   echo "conflicting main change" > feature.txt
   git add feature.txt
@@ -96,16 +93,19 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "feature finish exits 1 when feature merge has conflicts" {
-  # Scenario: local base modified a file that the feature branch also modified
-  # → git merge of feature_local_branch into local_base will conflict
-
+@test "feature finish exits 1 when cherry-picking [MEMORY] conflicts" {
   git checkout -q main
   git merge -q --no-edit test-feature
 
+  # Create a [MEMORY] on the feature that touches a public-tracked file
+  git checkout -q "test-feature@local"
+  echo "local change" > feature.txt
+  git add feature.txt
+  git commit -qm "[MEMORY] local change"
+
   # Modify the same file on main@local independently
   git checkout -q "main@local"
-  echo "local base independent change" > feature.txt
+  echo "local base independent" > feature.txt
   git add feature.txt
   git commit -qm "chore: independent change on main@local"
 
@@ -115,39 +115,23 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "feature finish: repo is in conflict state after merge failure" {
-  # After a failed merge, MERGE_HEAD should exist — user can resolve manually
+@test "feature finish preserves branches on [MEMORY] conflict" {
   git checkout -q main
   git merge -q --no-edit test-feature
 
-  # Create conflict between main@local and feature
-  git checkout -q "main@local"
+  git checkout -q "test-feature@local"
   echo "local change" > feature.txt
   git add feature.txt
-  git commit -qm "chore: conflict setup"
+  git commit -qm "[MEMORY] local change"
+
+  git checkout -q "main@local"
+  echo "local base independent" > feature.txt
+  git add feature.txt
+  git commit -qm "chore: independent change on main@local"
 
   git checkout -q "test-feature@local"
   git shadow feature finish --no-pull 2>/dev/null || true
 
-  # After failure, we should be in a merge conflict state on main@local
-  git checkout -q "main@local" 2>/dev/null || true
-  merge_head_file="$(git rev-parse --git-path MERGE_HEAD 2>/dev/null || echo '')"
-  [ -f "$merge_head_file" ]
-}
-
-@test "feature finish --keep-branches: branches are not deleted on conflict" {
-  git checkout -q main
-  git merge -q --no-edit test-feature
-
-  git checkout -q "main@local"
-  echo "local change" > feature.txt
-  git add feature.txt
-  git commit -qm "chore: conflict setup"
-
-  git checkout -q "test-feature@local"
-  git shadow feature finish --no-pull --keep-branches 2>/dev/null || true
-
-  # Branches still exist
   git show-ref --verify --quiet "refs/heads/test-feature"
   git show-ref --verify --quiet "refs/heads/test-feature@local"
 }

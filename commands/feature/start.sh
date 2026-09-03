@@ -3,7 +3,8 @@ set -euo pipefail
 
 # -------------------------------------------------------------------
 # Script: feature/start.sh
-# Purpose: create a feature branch and corresponding @local shadow branch.
+# Purpose: create a feature branch and corresponding @local shadow branch
+#          from the current base checkpoint pair.
 # -------------------------------------------------------------------
 
 # shellcheck disable=SC1091
@@ -22,35 +23,39 @@ if [[ $# -eq 0 ]]; then
     exit 1
   fi
 
-  # Case 1: already on a shadow branch
+  # Case 1: already on a @local branch (other than base) — ask for a name
   if [[ "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
     ui_error "You are already on a shadow branch ('$CURRENT_BRANCH')."
-    ui_info  "Provide a branch name to create a new feature."
+    ui_info  "Provide a feature name to create a new feature branch."
     exit 1
   fi
 
-  # Case 2: on a public branch — check if shadow branch already exists
-  SHADOW_BRANCH="${CURRENT_BRANCH}${LOCAL_SUFFIX}"
-  if git show-ref --verify --quiet "refs/heads/$SHADOW_BRANCH"; then
-    ui_warn "A shadow branch already exists for '$CURRENT_BRANCH': '$SHADOW_BRANCH'."
-    ui_info "To switch to it: git checkout '$SHADOW_BRANCH'"
-    ui_info "To create a new feature branch: git shadow feature start <branch-name>"
-    exit 0
+  # Current branch is a public branch: ensure its local base exists and sync it.
+  PUBLIC_BASE="$CURRENT_BRANCH"
+  LOCAL_BASE="${CURRENT_BRANCH}${LOCAL_SUFFIX}"
+
+  if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BASE"; then
+    ui_error "Public base branch does not exist: $PUBLIC_BASE"
+    exit 1
   fi
 
-  # Case 3: on a public branch with no shadow — create the shadow branch
-  ui_shadow "No shadow branch found for '$CURRENT_BRANCH'. Creating '$SHADOW_BRANCH'..."
-  git checkout -b "$SHADOW_BRANCH"
-  ui_shadow "Switched to new shadow branch '$SHADOW_BRANCH'."
+  if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BASE"; then
+    ui_info "Creating local base '$LOCAL_BASE' from '$PUBLIC_BASE'."
+    git branch "$LOCAL_BASE" "$PUBLIC_BASE"
+  fi
+
+  git checkout "$LOCAL_BASE"
+  "$TOOLKIT_ROOT/commands/base/sync.sh"
+  ui_ok "Switched to local base '$LOCAL_BASE'."
   exit 0
 fi
 
 # ---------------------------------------------------------------------------
 # Argument provided: standard feature creation
 # ---------------------------------------------------------------------------
-PROJECT_ARG='.'
 FEATURE_NAME="$1"
-LOCAL_BRANCH="${FEATURE_NAME}${LOCAL_SUFFIX}"
+PUBLIC_FEATURE="$FEATURE_NAME"
+LOCAL_FEATURE="${FEATURE_NAME}${LOCAL_SUFFIX}"
 
 # Validate branch name before doing any git operations
 if ! git check-ref-format --branch "$FEATURE_NAME" >/dev/null 2>&1; then
@@ -58,51 +63,66 @@ if ! git check-ref-format --branch "$FEATURE_NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Enter project and ensure repo is in clean state
-enter_project "$PROJECT_ARG"
+enter_project '.'
 ensure_clean_repo
 
-# Determine current branch and expansions for public/local base
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
   exit 1
 fi
+
+# Determine the base pair from the current branch.
 PUBLIC_BASE="$(public_branch_from_any "$CURRENT_BRANCH")"
 LOCAL_BASE="$(local_branch_from_any "$CURRENT_BRANCH")"
 
-# Ensure the public base branch exists before creating feature branches
 if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BASE"; then
   ui_error "Public base branch does not exist: $PUBLIC_BASE"
   exit 1
 fi
 
-# If the local base branch does not exist, fall back to the public base
 if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BASE"; then
-  ui_info "Local base branch '$LOCAL_BASE' not found, using '$PUBLIC_BASE' as local base."
-  LOCAL_BASE="$PUBLIC_BASE"
+  ui_info "Local base branch '$LOCAL_BASE' not found, creating from '$PUBLIC_BASE'."
+  git branch "$LOCAL_BASE" "$PUBLIC_BASE"
 fi
 
-ui_git    "Public base: $PUBLIC_BASE"
-ui_shadow "Local base:  $LOCAL_BASE"
+# Run base sync from the local base.
+if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+  git checkout "$LOCAL_BASE"
+fi
+"$TOOLKIT_ROOT/commands/base/sync.sh"
 
-if git show-ref --verify --quiet "refs/heads/$FEATURE_NAME"; then
-  ui_error "Branch already exists: $FEATURE_NAME"
+# The latest checkpoint on the local base is the branch point.
+LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
+if [[ -z "$LATEST_CP" ]]; then
+  ui_error "No checkpoint found on local base '$LOCAL_BASE' after sync."
   exit 1
 fi
-if git show-ref --verify --quiet "refs/heads/$LOCAL_BRANCH"; then
-  ui_error "Branch already exists: $LOCAL_BRANCH"
+
+PUBLIC_CP="$(checkpoint_public "$LATEST_CP")"
+LOCAL_CP="$(checkpoint_local "$LATEST_CP")"
+
+if git show-ref --verify --quiet "refs/heads/$PUBLIC_FEATURE"; then
+  ui_error "Branch already exists: $PUBLIC_FEATURE"
+  exit 1
+fi
+if git show-ref --verify --quiet "refs/heads/$LOCAL_FEATURE"; then
+  ui_error "Branch already exists: $LOCAL_FEATURE"
   exit 1
 fi
 
-# Create public feature branch from public base, then create local shadow branch from local base
-ui_git "Creating public branch '$FEATURE_NAME' from '$PUBLIC_BASE'"
-git checkout "$PUBLIC_BASE"
-git checkout -b "$FEATURE_NAME"
+ui_git "Creating public feature branch '$PUBLIC_FEATURE' from '$PUBLIC_BASE'"
+git branch "$PUBLIC_FEATURE" "$PUBLIC_CP"
 
-ui_shadow "Creating local branch '$LOCAL_BRANCH' from '$LOCAL_BASE'"
-git checkout "$LOCAL_BASE"
-git checkout -b "$LOCAL_BRANCH"
+ui_shadow "Creating local feature branch '$LOCAL_FEATURE' from '$LOCAL_BASE'"
+git branch "$LOCAL_FEATURE" "$LOCAL_CP"
 
-ui_shadow "Switching to local working branch '$LOCAL_BRANCH'"
-git checkout "$LOCAL_BRANCH"
+ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
+git checkout "$LOCAL_FEATURE"
+
+ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
+_new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
+
+ui_info "Install hooks with: git shadow install-hooks"
+
+ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."

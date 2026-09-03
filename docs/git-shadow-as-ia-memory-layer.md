@@ -86,31 +86,25 @@ Crucially, these annotations never leak into the public branch.
 
 Here's what this looks like on a real feature. The developer is building an authentication module with an AI assistant (Claude, Cursor, Copilot, etc.).
 
-On `feature/auth@local`, the file looks like this:
+On `feature/auth@local`, the source code is identical to what will be published, but the branch also contains a local-only memory file:
 
-```ts
-/// ARCHITECTURE NOTE (for AI): This service is the single entry point for auth.
-/// The session store is Redis — see config/redis.ts for connection details.
-/// Known constraint: tokens must be invalidated on password change (see issue #142).
-/// AI context: the team prefers throwing typed errors over returning error codes.
+```text
+# notes/auth-memory.md
 
-export async function login(email: string, password: string): Promise<Session> {
-  /// Step 1: fetch user — email is unique, findUnique is correct here
-  const user = await prisma.user.findUnique({ where: { email } })
-  if (!user) throw new AuthError('INVALID_CREDENTIALS')
+[MEMORY] auth module context
 
-  /// Step 2: bcrypt compare — intentionally constant-time
-  const valid = await bcrypt.compare(password, user.passwordHash)
-  if (!valid) throw new AuthError('INVALID_CREDENTIALS')
-
-  /// Step 3: create session with 30-day TTL (product decision, not a bug)
-  return sessionStore.create({ userId: user.id, ttl: 30 * 24 * 3600 })
-}
+- This service is the single entry point for auth.
+- The session store is Redis — see config/redis.ts for connection details.
+- Tokens must be invalidated on password change (see issue #142).
+- The team prefers throwing typed errors over returning error codes.
+- Step 1: fetch user — email is unique, findUnique is correct here.
+- Step 2: bcrypt compare — intentionally constant-time.
+- Step 3: create session with 30-day TTL (product decision, not a bug).
 ```
 
-On `feature/auth` (the published branch), the same file:
-
 ```ts
+// feature/auth@local and feature/auth both contain this clean code
+
 export async function login(email: string, password: string): Promise<Session> {
   const user = await prisma.user.findUnique({ where: { email } })
   if (!user) throw new AuthError('INVALID_CREDENTIALS')
@@ -128,7 +122,7 @@ The `@local` branch carries:
 - Decision notes explaining non-obvious choices (constant-time comparison, 30-day TTL)
 - Cross-references to issues and config files the AI should know about
 
-These annotations are committed as `[MEMORY]` commits or as the comment layer of regular commits. When you open the file with your AI tool, the context is already there — you don't re-explain the session store, the error convention, or the known constraints. The AI picks them up from the file.
+These notes live in separate files and are committed as `[MEMORY]` commits. The source code itself stays clean. When you open the project with your AI tool, the memory file is available in the `@local` branch — the AI picks up the context without you re-explaining it.
 
 # Versioned AI Memory
 
@@ -174,7 +168,7 @@ The developer becomes the editor of the AI's memory.
 
 # Memory Aligned with the Codebase
 
-Unlike external documentation or knowledge bases, Git Shadow memory can lives next to the code it describes.
+Unlike external documentation or knowledge bases, Git Shadow memory lives in files right next to the code it describes.
 
 Advantages:
 - contextual

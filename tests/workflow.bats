@@ -24,10 +24,10 @@ teardown() {
   [ "$status" -eq 0 ]
   # We are now on workflow-feature@local
 
-  # 2. Add code (plain, no local comments — stripping is tested in commit.bats)
+  # 2. Add code (plain, no local comments)
   echo "public code" > feature.txt
   git add feature.txt
-  run git shadow commit -m "feat: public code"
+  run git commit -m "feat: public code"
   [ "$status" -eq 0 ]
 
   # 3. Publish: cherry-picks code commit to workflow-feature (switches us there)
@@ -54,10 +54,10 @@ teardown() {
   run git branch --list "workflow-feature@local"
   [ -z "$output" ]
 
-  # 8. main@local contains the feature commit
+  # 8. main@local contains the feature work
   git checkout -q "main@local"
-  result="$(git log --oneline)"
-  [[ "$result" == *"feat: public code"* ]]
+  result="$(cat feature.txt)"
+  [ "$result" = "public code" ]
 }
 
 @test "MEMORY commits are not published to public branch" {
@@ -69,7 +69,7 @@ teardown() {
   # Add a normal code commit
   echo "public code" > code.txt
   git add code.txt
-  git shadow commit -m "feat: code"
+  git commit -m "feat: code"
 
   run git shadow feature publish
   [ "$status" -eq 0 ]

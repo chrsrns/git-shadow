@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # -------------------------------------------------------------------
-# Script: feature/sync.sh
-# Purpose: sync a @local feature branch with its public counterpart.
+# Script: base/sync.sh
+# Purpose: sync the local base branch with the public base branch.
 #
-# Usage: git shadow feature sync [--continue|--abort]
+# Usage: git shadow base sync [--recover] [--continue|--abort]
 # -------------------------------------------------------------------
 
 # shellcheck disable=SC1091
@@ -13,7 +13,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 usage() {
   cat <<EOF
-Usage: git shadow feature sync [--recover] [--continue|--abort]
+Usage: git shadow base sync [--recover] [--continue|--abort]
 EOF
 }
 
@@ -23,9 +23,9 @@ ABORT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --recover)  RECOVER=1  ;;
+    --recover) RECOVER=1 ;;
     --continue) CONTINUE=1 ;;
-    --abort)    ABORT=1    ;;
+    --abort) ABORT=1 ;;
     -h|--help)
       usage
       exit 0
@@ -54,14 +54,14 @@ if [[ $ABORT -eq 1 ]]; then
     ui_error "No sync in progress."
     exit 1
   fi
-  if [[ "$SYNC_MODE" != "feature" ]]; then
-    ui_error "A sync is in progress, but it is not a feature sync (mode=$SYNC_MODE)."
+  if [[ "$SYNC_MODE" != "base" ]]; then
+    ui_error "A sync is in progress, but it is not a base sync (mode=$SYNC_MODE)."
     exit 1
   fi
-  git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
+  git checkout -q "$SYNC_LOCAL_BRANCH" || true
   git reset --hard "$SYNC_LOCAL_HEAD"
   sync_clear_state
-  ui_ok "Feature sync aborted."
+  ui_ok "Base sync aborted."
   exit 0
 fi
 
@@ -73,8 +73,8 @@ if [[ $CONTINUE -eq 1 ]]; then
     ui_error "No sync in progress."
     exit 1
   fi
-  if [[ "$SYNC_MODE" != "feature" ]]; then
-    ui_error "A sync is in progress, but it is not a feature sync (mode=$SYNC_MODE)."
+  if [[ "$SYNC_MODE" != "base" ]]; then
+    ui_error "A sync is in progress, but it is not a base sync (mode=$SYNC_MODE)."
     exit 1
   fi
   if sync_has_conflicts; then
@@ -86,12 +86,13 @@ if [[ $CONTINUE -eq 1 ]]; then
     exit 1
   fi
 
+  # The resolved tree is the post-sync tree on the local branch.
   git commit -q -m "sync $SYNC_PUBLIC_BRANCH"
 
   NEW_LOCAL_HEAD="$(git rev-parse "$SYNC_LOCAL_BRANCH")"
   _new_checkpoint="$(checkpoint_create "$SYNC_TARGET_PUBLIC" "$NEW_LOCAL_HEAD" $SYNC_PIDS)"
   sync_clear_state
-  ui_ok "Feature sync continued."
+  ui_ok "Base sync continued."
   exit 0
 fi
 
@@ -107,20 +108,14 @@ if [[ -z "$LOCAL_BRANCH" ]]; then
 fi
 
 if [[ ! "$LOCAL_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "feature sync must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
-
-# Guard: do not sync the local base branch.
-LOCAL_BASE_BRANCH="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
-if [[ "$LOCAL_BRANCH" == "$LOCAL_BASE_BRANCH" ]]; then
-  ui_error "'git shadow feature sync' is for feature shadow branches, not the local base branch '$LOCAL_BASE_BRANCH'."
+  ui_error "base sync must be run from a branch ending with '${LOCAL_SUFFIX}' (got '$LOCAL_BRANCH')."
   exit 1
 fi
 
 PUBLIC_BRANCH="$(public_branch_from_any "$LOCAL_BRANCH")"
+
 if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
-  ui_error "Public branch does not exist: $PUBLIC_BRANCH"
+  ui_error "Public base branch does not exist: $PUBLIC_BRANCH"
   exit 1
 fi
 
@@ -129,8 +124,12 @@ fi
 # ---------------------------------------------------------------------------
 LATEST_CP="$(checkpoint_latest "$LOCAL_BRANCH")"
 if [[ -z "$LATEST_CP" ]]; then
-  ui_error "No checkpoint found on '$LOCAL_BRANCH'. Run 'git shadow feature start' or create one."
-  exit 1
+  # No checkpoint yet: create an initial one.
+  PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
+  LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
+  _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$LOCAL_HEAD")"
+  ui_ok "Created initial checkpoint for '$LOCAL_BRANCH'."
+  exit 0
 fi
 
 CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
@@ -142,35 +141,34 @@ LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 
 if [[ "$CP_PUBLIC" == "$PUBLIC_HEAD" ]]; then
   _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$LOCAL_HEAD" $CP_PIDS)"
-  ui_ok "Feature '$LOCAL_BRANCH' is already up to date."
+  ui_ok "Base '$LOCAL_BRANCH' is already up to date."
   exit 0
 fi
 
-DIFF_START="$CP_PUBLIC"
-
+# If the checkpointed public SHA is not an ancestor of current public HEAD,
+# either try --recover or fail.
 if ! git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_HEAD"; then
   if [[ $RECOVER -eq 0 ]]; then
-    ui_error "Public branch '$PUBLIC_BRANCH' has moved non-fast-forward from the checkpoint. Run 'git shadow feature sync --recover' or 'git shadow re-anchor $LOCAL_BRANCH'."
+    ui_error "Public branch '$PUBLIC_BRANCH' has moved non-fast-forward from the checkpoint. Use --recover or re-anchor."
     exit 1
   fi
-
-  ui_warn "Attempting to recover feature sync from patch-id list."
+  ui_warn "Attempting to recover base sync from patch-id list."
   PIDS_FILE="$(mktemp)"
   trap 'rm -f "$PIDS_FILE"' EXIT
   printf '%s\n' $CP_PIDS | tr ' ' '\n' | grep -v '^$' > "$PIDS_FILE" || true
-
   if ! NEW_ANCESTOR="$(sync_recover_ancestor "$PUBLIC_HEAD" "$PIDS_FILE")"; then
     ui_error "Unable to recover: no checkpointed patch-id found in the new public history. Run 'git shadow re-anchor $LOCAL_BRANCH'."
     exit 1
   fi
-
   if [[ "$NEW_ANCESTOR" == "$PUBLIC_HEAD" ]]; then
+    # No net diff to apply, just move the checkpoint forward.
     _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$LOCAL_HEAD" $CP_PIDS)"
-    ui_ok "Feature '$LOCAL_BRANCH' is already up to date (recovered)."
+    ui_ok "Base sync recovered (no net diff to apply)."
     exit 0
   fi
-
   DIFF_START="$NEW_ANCESTOR"
+else
+  DIFF_START="$CP_PUBLIC"
 fi
 
 # Collect patch-ids of the public commits in the sync range.
@@ -184,17 +182,18 @@ PIDS="${PIDS# }"
 
 # Apply net diff to the local branch.
 if ! sync_apply_range "$DIFF_START" "$PUBLIC_HEAD"; then
-  sync_save_state "feature" "$PUBLIC_BRANCH" "$LOCAL_BRANCH" "$CP_PUBLIC" "$CP_LOCAL" "$PUBLIC_HEAD" "$LOCAL_HEAD" "$PIDS"
-  ui_error "Conflict applying feature net diff. Resolve and run 'git shadow feature sync --continue', or '--abort'."
+  sync_save_state "base" "$PUBLIC_BRANCH" "$LOCAL_BRANCH" "$CP_PUBLIC" "$CP_LOCAL" "$PUBLIC_HEAD" "$LOCAL_HEAD" "$PIDS"
+  ui_error "Conflict applying base net diff. Resolve and run 'git shadow base sync --continue', or '--abort'."
   exit 1
 fi
 
 git add -A
 
+# Create a sync commit only when the applied tree differs from the parent.
 if sync_tree_changed; then
   git commit -q -m "sync $PUBLIC_BRANCH"
 fi
 
 NEW_LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$NEW_LOCAL_HEAD" $PIDS)"
-ui_ok "Feature '$LOCAL_BRANCH' synced with '$PUBLIC_BRANCH'."
+ui_ok "Base '$LOCAL_BRANCH' synced with '$PUBLIC_BRANCH'."

@@ -3,142 +3,166 @@ set -euo pipefail
 
 # -------------------------------------------------------------------
 # Script: feature/finish.sh
-# Purpose: finalize a feature by validating public integration,
-# updating local base branches, merging local feature work back
-# into the local base, and optionally deleting feature branches.
+# Purpose: finalize a feature in the diff-sync model.
+#
+# Usage: git shadow feature finish [--no-pull] [--keep-branches]
 # -------------------------------------------------------------------
 
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
-# Finish-feature operates on current repository only.
-PROJECT_ARG='.'
-DELETE_BRANCHES=1
-PULL_BASES=1
-FORCE_DELETE=0
+NO_PULL=0
+KEEP_BRANCHES=0
 
-# Parse optional flags for finish-feature behavior
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --keep-branches)
-      DELETE_BRANCHES=0
-      shift
-      ;;
-    --no-pull)
-      PULL_BASES=0
-      shift
-      ;;
-    --force)
-      FORCE_DELETE=1
-      shift
-      ;;
+    --no-pull)      NO_PULL=1      ;;
+    --keep-branches) KEEP_BRANCHES=1 ;;
     *)
       ui_error "Unknown argument: $1"
-      echo "Usage: git shadow feature finish [--keep-branches] [--no-pull] [--force]" >&2
+      echo "Usage: git shadow feature finish [--no-pull] [--keep-branches]" >&2
       exit 1
       ;;
   esac
+  shift
 done
 
-# Enter project and ensure repo is in clean state
-enter_project "$PROJECT_ARG"
+enter_project '.'
 ensure_clean_repo
-current_branch_name="$(current_branch)"
-feature_public_branch="$(public_branch_from_any "$current_branch_name")"
-feature_local_branch="$(local_branch_from_any "$current_branch_name")"
-public_base="$PUBLIC_BASE_BRANCH"
-local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
-if [[ "$feature_public_branch" == "$public_base" || "$feature_local_branch" == "$local_base" ]]; then
-  ui_error "This command must be run from a feature branch, not from $public_base or $local_base."
+
+CURRENT_BRANCH="$(current_branch)"
+if [[ -z "$CURRENT_BRANCH" ]]; then
+  ui_error "Unable to determine current branch."
   exit 1
 fi
 
-# Ensure all expected branches exist locally before proceeding
-for branch in "$feature_public_branch" "$feature_local_branch" "$public_base" "$local_base"; do
+if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
+  ui_error "feature finish must be run from a branch ending with '${LOCAL_SUFFIX}'."
+  exit 1
+fi
+
+FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
+FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
+PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
+LOCAL_BASE="${PUBLIC_BASE}${LOCAL_SUFFIX}"
+
+if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then
+  ui_error "This command must be run from a feature branch, not from the base."
+  exit 1
+fi
+
+for branch in "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$PUBLIC_BASE" "$LOCAL_BASE"; do
   if ! git show-ref --verify --quiet "refs/heads/$branch"; then
     ui_error "Branch does not exist locally: $branch"
     exit 1
   fi
 done
 
-# Display summary of detected branches and bases
-ui_shadow "Finalizing feature branches"
-ui_git    "   Public branch : $feature_public_branch"
-ui_shadow "   Local branch  : $feature_local_branch"
-ui_git    "   Public base   : $public_base"
-ui_shadow "   Local base    : $local_base"
-echo
+ui_shadow "Finalizing feature '$FEATURE_PUBLIC_BRANCH'"
+ui_git    "   Public base   : $PUBLIC_BASE"
+ui_shadow "   Local base    : $LOCAL_BASE"
 
-# Sync public base
-ui_git "Checkout $public_base"
-git checkout "$public_base"
-if [[ "$PULL_BASES" -eq 1 ]]; then
-  ui_git "Pulling latest changes for $public_base"
-  git pull
-fi
-public_branch_merged=0
-if git merge-base --is-ancestor "$feature_public_branch" "$public_base"; then
-  public_branch_merged=1
+# ---------------------------------------------------------------------------
+# Pull / refresh the public base
+# ---------------------------------------------------------------------------
+if [[ "$NO_PULL" -eq 0 ]]; then
+  ui_git "Pulling latest changes for '$PUBLIC_BASE'"
+  git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
+  if ! git pull >/dev/null 2>&1; then
+    ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
+  fi
 fi
 
-# Warn if the public branch does not appear to be merged into the public base
-if [[ "$public_branch_merged" -eq 1 ]]; then
-  ui_ok "'$feature_public_branch' is already merged into '$public_base'."
-else
-  ui_warn "'$feature_public_branch' does NOT appear to be merged into '$public_base'."
-  if [[ "$DELETE_BRANCHES" -eq 1 && "$FORCE_DELETE" -eq 0 ]]; then
-    ui_error "Branch deletion aborted to avoid losing work."
-    ui_step "Run with --force if you really want to continue."
+PUBLIC_BASE_HEAD="$(git rev-parse "$PUBLIC_BASE")"
+
+# Verify the public feature branch has been merged into the public base.
+if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE"; then
+  ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE'. Merge it first."
+  exit 1
+fi
+
+# ---------------------------------------------------------------------------
+# Apply the public base net diff to the local base.
+# ---------------------------------------------------------------------------
+ui_shadow "Checkout '$LOCAL_BASE'"
+git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
+
+LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
+if [[ -z "$LATEST_CP" ]]; then
+  ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow base sync' first."
+  exit 1
+fi
+
+CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
+CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+LOCAL_BASE_BEFORE="$(git rev-parse "$LOCAL_BASE")"
+
+PIDS_BASE=""
+if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
+  if ! git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"; then
+    ui_error "Public base '$PUBLIC_BASE' has moved non-fast-forward from the local checkpoint."
     exit 1
   fi
-fi
 
-# Sync local base with public base to prepare for final merge
-ui_shadow "Checkout $local_base"
-git checkout "$local_base"
-if [[ "$PULL_BASES" -eq 1 ]]; then
-  ui_shadow "Pulling latest changes for $local_base"
-  if ! git pull; then
-    ui_warn "Failed to pull '$local_base'. Continuing with local state."
-  fi
-fi
-
-# Merge public base into local base, then feature local branch into local base
-# shellcheck disable=SC2059
-sync_message="$(printf "$SYNC_MERGE_MESSAGE_TEMPLATE" "$public_base" "$local_base")"
-# shellcheck disable=SC2059
-feature_message="$(printf "$FEATURE_MERGE_MESSAGE_TEMPLATE" "$feature_local_branch" "$local_base")"
-ui_shadow "Merging '$public_base' into '$local_base'"
-git merge --no-edit -m "$sync_message" "$public_base"
-ui_shadow "Merging '$feature_local_branch' into '$local_base'"
-git merge --no-edit -m "$feature_message" "$feature_local_branch"
-
-# Handle branch cleanup based on user preferences
-if [[ "$DELETE_BRANCHES" -eq 1 ]]; then
-  ui_info "Cleaning up feature branches"
-
-  if [[ "$public_branch_merged" -eq 1 ]]; then
-    git branch -d "$feature_public_branch"
-  else
-    ui_warn "Forcing deletion of '$feature_public_branch' (--force used)"
-    git branch -D "$feature_public_branch"
-  fi
-
-  if git merge-base --is-ancestor "$feature_local_branch" "$local_base"; then
-    git branch -d "$feature_local_branch"
-  else
-    if [[ "$FORCE_DELETE" -eq 1 ]]; then
-      ui_warn "Forcing deletion of '$feature_local_branch'"
-      git branch -D "$feature_local_branch"
-    else
-      ui_warn "'$feature_local_branch' was not fully merged into '$local_base'."
-      ui_step "Local branch kept."
+  for pid in $(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"); do
+    if [[ -n "$pid" ]]; then
+      PIDS_BASE="$PIDS_BASE $pid"
     fi
+  done
+  PIDS_BASE="${PIDS_BASE# }"
+
+  if ! sync_apply_range "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"; then
+    git reset --hard "$LOCAL_BASE_BEFORE"
+    ui_error "Conflict applying public base net diff to '$LOCAL_BASE'. Resolve and run base sync, then retry."
+    exit 1
   fi
-else
-  ui_info "Feature branches preserved (--keep-branches)"
+
+  git add -A
+  if sync_tree_changed; then
+    git commit -q -m "sync $PUBLIC_BASE"
+  fi
 fi
 
-echo
-ui_ok     "Feature finished successfully."
-ui_shadow "Current branch: $local_base"
+# ---------------------------------------------------------------------------
+# Cherry-pick [MEMORY] commits from the feature's @local branch.
+# ---------------------------------------------------------------------------
+ui_shadow "Cherry-picking [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
+MEMORY_SHAS=()
+while IFS= read -r sha; do
+  [[ -z "$sha" ]] && continue
+  subject="$(git log -1 --format='%s' "$sha")"
+  if [[ "$subject" == "[MEMORY]"* ]]; then
+    MEMORY_SHAS+=("$sha")
+  fi
+done < <(git rev-list --reverse "$FEATURE_LOCAL_BRANCH")
+
+if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
+  LOCAL_BASE_HEAD_AFTER_SYNC="$(git rev-parse "$LOCAL_BASE")"
+  for sha in "${MEMORY_SHAS[@]}"; do
+    if ! git cherry-pick --quiet "$sha" >/dev/null 2>&1; then
+      git cherry-pick --abort >/dev/null 2>&1 || true
+      git reset --hard "$LOCAL_BASE_HEAD_AFTER_SYNC"
+      KEEP_BRANCHES=1
+      ui_error "Conflict cherry-picking [MEMORY] commit $sha. Feature branches preserved. Resolve manually if needed."
+      exit 1
+    fi
+  done
+fi
+
+LOCAL_BASE_HEAD="$(git rev-parse "$LOCAL_BASE")"
+
+# ---------------------------------------------------------------------------
+# Final checkpoint on the local base
+# ---------------------------------------------------------------------------
+_new_checkpoint="$(checkpoint_create "$PUBLIC_BASE_HEAD" "$LOCAL_BASE_HEAD" $PIDS_BASE)"
+
+# ---------------------------------------------------------------------------
+# Branch cleanup
+# ---------------------------------------------------------------------------
+if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
+  git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1 || true
+  git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1 || true
+  ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
+fi
+
+ui_ok "Feature finished successfully."

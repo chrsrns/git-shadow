@@ -6,243 +6,128 @@ setup() {
   git init -q
   git config user.name "Test User"
   git config user.email "test@example.com"
-  git symbolic-ref HEAD refs/heads/develop
+  git symbolic-ref HEAD refs/heads/main
   echo "initial" > file.txt
   git add file.txt
   git commit -qm "initial"
-  git checkout -q -b "develop@local"
-  git checkout -q develop
-  # Create a shadow/public feature branch pair with one publishable commit
+
   git shadow feature start test-feature
-  printf '/// local comment\nreal code\n' > feature.txt
+  # Add a publishable public commit and a [MEMORY] commit
+  echo "feature code" > feature.txt
   git add feature.txt
-  git shadow commit -m "feat: real code"
-  # Now on test-feature@local with 2 commits: feat + [MEMORY]
+  git commit -q -m "feat: feature code"
+
+  echo "memory" > notes.md
+  git add notes.md
+  git commit -q -m "[MEMORY] agent context"
 }
 
 teardown() {
   rm -rf "$TEST_DIR"
 }
 
-# --- Branch detection ---
-
-@test "status exits 1 on a non-shadow-managed branch" {
-  git checkout -q -b "unrelated-branch"
+@test "status exits 1 on unknown branch" {
+  git checkout -q main
+  git checkout -q -b unrelated
   run git shadow status
   [ "$status" -eq 1 ]
   [[ "$output" == *"Not a Git Shadow branch"* ]]
 }
 
-@test "status exits 1 in detached HEAD state" {
+@test "status exits 1 in detached HEAD" {
   sha="$(git rev-parse HEAD)"
   git checkout -q "$sha"
   run git shadow status
   [ "$status" -eq 1 ]
-  [[ "$output" == *"Detached HEAD"* ]]
 }
 
 @test "status exits 0 from shadow branch" {
   run git shadow status
   [ "$status" -eq 0 ]
+  [[ "$output" == *"publishable"* ]]
 }
 
 @test "status exits 0 from public branch" {
   git checkout -q test-feature
   run git shadow status
   [ "$status" -eq 0 ]
+  [[ "$output" == *"publishable"* ]]
 }
 
-# --- Branch type detection ---
-
-@test "status reports branch type shadow when on @local branch" {
+@test "status reports branch type shadow" {
   run git shadow status
-  [ "$status" -eq 0 ]
   [[ "$output" == *"Branch type    : shadow"* ]]
 }
 
-@test "status reports branch type public when on public branch" {
+@test "status reports branch type public" {
   git checkout -q test-feature
   run git shadow status
-  [ "$status" -eq 0 ]
   [[ "$output" == *"Branch type    : public"* ]]
 }
 
-@test "status shows public branch name when on shadow branch" {
+@test "status reports 1 publishable commit pending" {
   run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Public branch  : test-feature"* ]]
-}
-
-@test "status shows shadow branch name when on public branch" {
-  git checkout -q test-feature
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Shadow branch  : test-feature@local"* ]]
-}
-
-# --- Commit counting ---
-
-@test "status reports 1 publishable commit pending before publish" {
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Publishable commits pending : 1"* ]]
-}
-
-@test "status reports 1 MEMORY commit" {
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Shadow-only [MEMORY] commits: 1"* ]]
+  [[ "$output" == *"publishable  : 1"* ]]
 }
 
 @test "status reports 0 publishable commits after publish" {
   git shadow feature publish
-  git checkout -q "test-feature@local"
+  git checkout -q test-feature@local
   run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Publishable commits pending : 0"* ]]
+  [[ "$output" == *"publishable  : 0"* ]]
 }
 
 @test "status reports public branch not ahead when in sync" {
   run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Public branch ahead         : no"* ]]
+  [[ "$output" == *"public-ahead : 0"* ]]
 }
 
-@test "status reports public branch ahead when public has new commits" {
+@test "status reports public branch ahead" {
   git shadow feature publish
   git checkout -q test-feature
   echo "extra" > extra.txt
   git add extra.txt
-  git commit -qm "fix: extra on public"
-  git checkout -q "test-feature@local"
+  GIT_SHADOW=1 git commit -q -m "fix: extra on public"
+  git checkout -q test-feature@local
   run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Public branch ahead         : yes"* ]]
+  [[ "$output" == *"public-ahead : 1"* ]]
 }
 
-# --- Status labels ---
-
-@test "status label is 'ready to publish' when shadow has publishable commits" {
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Status    : ready to publish"* ]]
-}
-
-@test "status label is 'up to date' after publish with no new commits" {
-  git shadow feature publish
-  git checkout -q "test-feature@local"
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Status    : up to date"* ]]
-}
-
-@test "status label is 'public branch ahead' when public has unpulled commits" {
+@test "status reports diverged" {
   git shadow feature publish
   git checkout -q test-feature
   echo "extra" > extra.txt
   git add extra.txt
-  git commit -qm "fix: extra on public"
-  git checkout -q "test-feature@local"
+  GIT_SHADOW=1 git commit -q -m "fix: extra on public"
+  git checkout -q test-feature@local
+  echo "shadow extra" > shadow.txt
+  git add shadow.txt
+  git commit -q -m "feat: shadow extra"
   run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Status    : public branch ahead"* ]]
+  [[ "$output" == *"diverged     : true"* ]]
 }
 
-@test "status label is 'diverged' when both branches have unpublished commits" {
-  git checkout -q test-feature
-  echo "extra" > extra.txt
-  git add extra.txt
-  git commit -qm "fix: extra on public"
-  git checkout -q "test-feature@local"
-  run git shadow status
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"Status    : diverged"* ]]
-}
-
-# --- Missing counterpart ---
-
-@test "status reports shadow branch missing when public branch has no shadow counterpart" {
-  # Create an orphan public branch with no @local counterpart
-  git checkout -q -b "orphan-feature"
-  run git shadow status
-  [ "$status" -eq 1 ]
-  [[ "$output" == *"Not a Git Shadow branch"* ]]
-}
-
-@test "status reports public branch missing when shadow exists but public does not" {
+@test "status reports public branch missing" {
   git branch -D test-feature
   run git shadow status
   [ "$status" -eq 0 ]
-  [[ "$output" == *"Status    : public branch missing"* ]]
+  [[ "$output" == *"public branch missing"* ]]
 }
 
-# --- JSON output ---
-
-@test "status --json exits 0 from shadow branch" {
+@test "status --json exits 0" {
   run git shadow status --json
   [ "$status" -eq 0 ]
+  [[ "$output" == *"\"publishable\""* ]]
+  [[ "$output" == *"\"public_ahead\""* ]]
+  [[ "$output" == *"\"diverged\""* ]]
 }
 
-@test "status --json outputs valid JSON structure" {
+@test "status --json reports 1 publishable" {
   run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"current_branch"'* ]]
-  [[ "$output" == *'"branch_type"'* ]]
-  [[ "$output" == *'"publishable_count"'* ]]
-  [[ "$output" == *'"status"'* ]]
+  [[ "$output" == *'"publishable":1'* ]]
 }
 
-@test "status --json reports branch type shadow" {
+@test "status --json reports 0 public-ahead" {
   run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"branch_type": "shadow"'* ]]
-}
-
-@test "status --json reports correct shadow and public branch names" {
-  run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"shadow_branch": "test-feature@local"'* ]]
-  [[ "$output" == *'"public_branch": "test-feature"'* ]]
-}
-
-@test "status --json reports 1 publishable commit pending" {
-  run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"publishable_count": 1'* ]]
-}
-
-@test "status --json reports 0 publishable commits after publish" {
-  git shadow feature publish
-  git checkout -q "test-feature@local"
-  run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"publishable_count": 0'* ]]
-}
-
-@test "status --json reports status up to date after publish" {
-  git shadow feature publish
-  git checkout -q "test-feature@local"
-  run git shadow status --json
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"status": "up to date"'* ]]
-}
-
-@test "status --json exits 1 on non-shadow branch" {
-  git checkout -q -b "unrelated-json"
-  run git shadow status --json
-  [ "$status" -eq 1 ]
-  [[ "$output" == *'"error"'* ]]
-}
-
-@test "status --json detached HEAD contains current_branch null" {
-  git commit --allow-empty -qm "detach point"
-  git checkout -q --detach HEAD
-  run git shadow status --json
-  [ "$status" -eq 1 ]
-  [[ "$output" == *'"current_branch": null'* ]]
-}
-
-@test "status exits 1 on unknown argument" {
-  run git shadow status --unknown
-  [ "$status" -eq 1 ]
+  [[ "$output" == *'"public_ahead":0'* ]]
 }

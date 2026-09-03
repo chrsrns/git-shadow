@@ -7,126 +7,91 @@ setup() {
   git config user.name "Test User"
   git config user.email "test@example.com"
 
-  # Public base
   git symbolic-ref HEAD refs/heads/main
-  echo "app code" > app.ts
-  git add app.ts
-  git commit -qm "initial"
+  echo "initial" > file.txt
+  git add file.txt
+  git commit -q -m "initial"
 
-  # Local counterpart
-  git checkout -q -b "main@local"
+  git shadow feature start test-feature
 }
 
 teardown() {
   rm -rf "$TEST_DIR"
 }
 
-# ---------------------------------------------------------------------------
-# Shadow commits
-# ---------------------------------------------------------------------------
-
-@test "check public exits 1 when [MEMORY] commit is on public branch" {
-  git checkout -q main
-  echo "x" >> app.ts
-  git add app.ts
-  git commit -qm "[MEMORY] local note"
-  git checkout -q main@local
-
-  run git shadow check public main
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"[MEMORY]"* ]]
+@test "check public requires a public branch" {
+  git checkout -q test-feature@local
+  run git shadow check public test-feature@local
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"public branch"* ]]
 }
 
-@test "check public exits 0 on a clean public branch" {
-  git checkout -q main
-  run git shadow check public main
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"clean"* ]] || [[ "$output" == *"ok"* ]]
-}
-
-# ---------------------------------------------------------------------------
-# Local comments in tree
-# ---------------------------------------------------------------------------
-
-@test "check public exits 1 when a file with local comments is on public branch" {
-  git checkout -q main
-  printf "/// local note\napp code\n" > app.ts
-  git add app.ts
-  git commit -qm "feat: update app"
-  git checkout -q main@local
-
-  run git shadow check public main
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"local comments"* ]] || [[ "$output" == *"app.ts"* ]]
-}
-
-@test "check public respects LOCAL_COMMENT_EXCLUDE" {
-  git checkout -q main
-  printf "## heading\n" > notes.md
-  git add notes.md
-  git commit -qm "docs: notes"
-  git checkout -q main@local
-
-  run git shadow check public main
-  [ "$status" -eq 0 ]
-}
-
-# ---------------------------------------------------------------------------
-# Branch resolution
-# ---------------------------------------------------------------------------
-
-@test "check public from a shadow branch resolves to its public counterpart" {
-  git checkout -q main@local
-  run git shadow check public
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"main"* ]]
-}
-
-@test "check public with a local branch argument resolves to its public counterpart" {
-  git checkout -q main
-  run git shadow check public main@local
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"main"* ]] || [[ "$output" == *"clean"* ]]
-}
-
-# ---------------------------------------------------------------------------
-# Unpromoted / memory-first files
-# ---------------------------------------------------------------------------
-
-@test "check public exits 1 when a file originated from a [MEMORY] commit on the local branch but was not promoted" {
-  # Public branch adds leaked.md with a normal commit
-  git checkout -q main
-  echo "leaked content" > leaked.md
-  git add leaked.md
-  git commit -qm "feat: add leaked.md"
-
-  # Local counterpart adds the same file in a [MEMORY] commit
-  git checkout -q main@local
-  echo "leaked content" > leaked.md
-  git add leaked.md
-  git commit -qm "[MEMORY] leaked notes"
-
-  run git shadow check public main
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"leaked.md"* ]] || [[ "$output" == *"unpromoted"* ]] || [[ "$output" == *"[MEMORY]"* ]]
-}
-
-@test "check public passes when a file was promoted via shadow: publish" {
-  # Create a feature pair
-  git checkout -q main
-  git checkout -q -b feature/foo
-  git checkout -q -b feature/foo@local
-
-  # Add a memory-first file and promote it
-  echo "promoted content" > promoted.md
-  git add promoted.md
-  git commit -qm "[MEMORY] add promoted.md"
-  git shadow promote promoted.md
-
-  # Publish the promoted file
+@test "check public exits 0 when no unpromoted files" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
   git shadow feature publish
 
-  # The public branch should be clean
-  run git shadow check public feature/foo
+  run git shadow check public test-feature
+  [ "$status" -eq 0 ]
+}
+
+@test "check public flags a file added by [MEMORY] and pushed to public" {
+  # Add a [MEMORY] file on the local branch
+  echo "local note" > notes.md
+  git add notes.md
+  git commit -q -m "[MEMORY] local note"
+
+  # Simulate the same file leaking to the public branch
+  git checkout -q test-feature
+  echo "local note" > notes.md
+  git add notes.md
+  GIT_SHADOW=1 git commit -q -m "feat: add notes"
+
+  run git shadow check public test-feature
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"notes.md"* ]]
+}
+
+@test "check public flags a [MEMORY] modification to a public-tracked file" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
+  git shadow feature publish
+
+  # [MEMORY] modifies the public-tracked file
+  git checkout -q test-feature@local
+  echo "modified" > feature.txt
+  git add feature.txt
+  git commit -q -m "[MEMORY] tweak feature"
+
+  # Simulate the same content leaking to the public branch
+  git checkout -q test-feature
+  echo "modified" > feature.txt
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "feat: update feature"
+
+  run git shadow check public test-feature
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"feature.txt"* ]]
+}
+
+@test "check public exits 0 when public and local differ" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
+  git shadow feature publish
+
+  git checkout -q test-feature@local
+  echo "local version" > feature.txt
+  git add feature.txt
+  git commit -q -m "[MEMORY] tweak feature"
+
+  git checkout -q test-feature
+  echo "public version" > feature.txt
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "feat: update feature"
+
+  run git shadow check public test-feature
   [ "$status" -eq 0 ]
 }

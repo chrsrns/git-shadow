@@ -30,8 +30,9 @@ else
       cat <<HOOK
 # Reject commits on public branches unless GIT_SHADOW=1 is set.
 # Public = any branch whose name does not end with the configured local suffix.
+[ "\${GIT_SHADOW:-0}" = "1" ] && exit 0
 branch="\$(git branch --show-current 2>/dev/null || true)"
-if [ -n "\$branch" ] && [ "\${branch%${LOCAL_SUFFIX}}" = "\$branch" ] && [ "\${GIT_SHADOW:-0}" != "1" ]; then
+if [ -n "\$branch" ] && [ "\${branch%${LOCAL_SUFFIX}}" = "\$branch" ]; then
   echo "[git-shadow] Refusing to commit on public branch '\$branch'." >&2
   echo "Set GIT_SHADOW=1 to bypass, or commit from a branch ending with '${LOCAL_SUFFIX}'." >&2
   exit 1
@@ -44,8 +45,9 @@ HOOK
       cat <<HOOK
 # Reject commits on public branches unless GIT_SHADOW=1 is set.
 # Public = any branch whose name does not end with the configured local suffix.
+[ "\${GIT_SHADOW:-0}" = "1" ] && exit 0
 branch="\$(git branch --show-current 2>/dev/null || true)"
-if [ -n "\$branch" ] && [ "\${branch%${LOCAL_SUFFIX}}" = "\$branch" ] && [ "\${GIT_SHADOW:-0}" != "1" ]; then
+if [ -n "\$branch" ] && [ "\${branch%${LOCAL_SUFFIX}}" = "\$branch" ]; then
   echo "[git-shadow] Refusing to commit on public branch '\$branch'." >&2
   echo "Set GIT_SHADOW=1 to bypass, or commit from a branch ending with '${LOCAL_SUFFIX}'." >&2
   exit 1

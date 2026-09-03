@@ -70,9 +70,11 @@ sync_commit() {
 sync_patch_ids() {
   local start="$1"
   local end="$2"
-  git rev-list --reverse "${start}..${end}" 2>/dev/null | while IFS= read -r sha; do
-    git show --format=email --no-color "$sha" 2>/dev/null | git patch-id --stable 2>/dev/null | awk '{print $1}'
-  done
+  local shas
+  shas="$(git rev-list --reverse "${start}..${end}" 2>/dev/null | tr '\n' ' ')"
+  if [[ -n "$shas" ]]; then
+    patch_ids_for $shas
+  fi
 }
 
 # Apply the net diff from start..end to the current working tree using a
@@ -91,7 +93,7 @@ sync_recover_ancestor() {
   local pids_file="$2"
   while IFS= read -r sha; do
     local pid
-    pid="$(git show --format=email --no-color "$sha" 2>/dev/null | git patch-id --stable 2>/dev/null | awk '{print $1}')"
+    pid="$(patch_id_for "$sha")"
     if [[ -n "$pid" ]] && grep -qxF "$pid" "$pids_file" 2>/dev/null; then
       printf '%s\n' "$sha"
       return 0

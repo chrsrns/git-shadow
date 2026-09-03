@@ -55,7 +55,7 @@ while IFS= read -r sha; do
     continue
   fi
   PUBLIC_COMMITS="$PUBLIC_COMMITS $sha"
-  pid="$(git show --format=email --no-color "$sha" | git patch-id --stable | awk '{print $1}')"
+  pid="$(patch_id_for "$sha")"
   if [[ -n "$pid" ]]; then
     PIDS="$PIDS $pid"
   fi

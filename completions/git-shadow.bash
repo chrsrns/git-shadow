@@ -21,9 +21,12 @@ _git_shadow() {
   local subcmd="${COMP_WORDS[$((offset + 1))]:-}"
   local pos=$(( COMP_CWORD - offset ))
 
+  local branches
+  branches="$(git branch --format='%(refname:short)' 2>/dev/null)"
+
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status commit promote check-local-comments feature config completion" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status completion feature base re-anchor push check config" -- "$cur"))
     return
   fi
 
@@ -33,8 +36,16 @@ _git_shadow() {
         COMPREPLY=($(compgen -W "start publish finish sync" -- "$cur"))
       else
         case "$subcmd" in
-          publish) COMPREPLY=($(compgen -W "--commit -m" -- "$cur")) ;;
-          finish)  COMPREPLY=($(compgen -W "--keep-branches --no-pull --force" -- "$cur")) ;;
+          sync) COMPREPLY=($(compgen -W "--recover --continue --abort" -- "$cur")) ;;
+        esac
+      fi
+      ;;
+    base)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "sync" -- "$cur"))
+      else
+        case "$subcmd" in
+          sync) COMPREPLY=($(compgen -W "--recover --continue --abort" -- "$cur")) ;;
         esac
       fi
       ;;
@@ -60,19 +71,20 @@ _git_shadow() {
     status)
       COMPREPLY=($(compgen -W "--json" -- "$cur"))
       ;;
-    commit)
-      COMPREPLY=($(compgen -W "-m" -- "$cur"))
-      ;;
-    promote)
-      # Complete with files tracked in the current shadow branch
-      local tracked_files
-      tracked_files="$(git ls-files 2>/dev/null)"
-      COMPREPLY=($(compgen -W "$tracked_files" -- "$cur"))
+    check)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "public" -- "$cur"))
+      else
+        COMPREPLY=($(compgen -W "$branches" -- "$cur"))
+      fi
       ;;
     completion)
       if [[ $pos -eq 1 ]]; then
         COMPREPLY=($(compgen -W "install" -- "$cur"))
       fi
+      ;;
+    push|re-anchor)
+      COMPREPLY=($(compgen -W "$branches" -- "$cur"))
       ;;
   esac
 }

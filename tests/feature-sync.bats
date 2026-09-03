@@ -143,91 +143,17 @@ teardown() {
   [ -d "$(git rev-parse --git-dir)/rebase-merge" ]
 }
 
+
 # ---------------------------------------------------------------------------
-# --merge mode
+# Base branch guard
 # ---------------------------------------------------------------------------
 
-@test "feature sync --merge succeeds and integrates public commits" {
-  git checkout -q "feature/foo@local"
-  run git shadow feature sync --merge
-  [ "$status" -eq 0 ]
-  # Public branch content should be present
-  [ "$(cat app.ts)" = "v2" ]
-  # [MEMORY] file should still be present
-  [ -f notes.md ]
-}
+@test "feature sync exits with warning when run on the local base branch" {
+  git shadow config set PUBLIC_BASE_BRANCH=develop --project-config
+  git checkout -q develop
+  git checkout -q -b "develop@local"
 
-@test "feature sync --merge preserves [MEMORY] files" {
-  git checkout -q "feature/foo@local"
-  git shadow feature sync --merge
-
-  # The [MEMORY] commit's file should be intact
-  run git log --oneline --all
-  [[ "$output" == *"[MEMORY] local notes"* ]]
-  [ -f notes.md ]
-  [ "$(cat notes.md)" = "/// local note" ]
-}
-
-@test "feature sync --merge auto-resolves conflicts on files without local comments" {
-  # Shadow branch: add a code file without local comments
-  git checkout -q "feature/foo@local"
-  echo "shadow v1" > util.ts
-  git add util.ts
-  git commit -qm "shadow: add util"
-
-  # Public branch: modify the same file differently
-  git checkout -q feature/foo
-  echo "public v2" > util.ts
-  git add util.ts
-  git commit -qm "feat: update util"
-
-  git checkout -q "feature/foo@local"
-  run git shadow feature sync --merge
-  [ "$status" -eq 0 ]
-  # Public version should win
-  [ "$(cat util.ts)" = "public v2" ]
-}
-
-@test "feature sync --merge pauses on conflict when file has local comments" {
-  # Shadow branch: add local comments to a file
-  git checkout -q "feature/foo@local"
-  printf "/// shadow note\ncode line\n" > lib.ts
-  git add lib.ts
-  git commit -qm "shadow: lib with local comment"
-
-  # Public branch: modify the same file
-  git checkout -q feature/foo
-  echo "public lib content" > lib.ts
-  git add lib.ts
-  git commit -qm "feat: update lib"
-
-  git checkout -q "feature/foo@local"
-  run git shadow feature sync --merge
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"local comments"* ]]
-  [[ "$output" == *"--continue"* ]]
-  # Merge should still be in progress
-  [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]
-}
-
-@test "feature sync --abort aborts a merge in progress" {
-  # Force a merge conflict to get into a mid-merge state
-  git checkout -q "feature/foo@local"
-  printf "/// local note\nsome code\n" > lib.ts
-  git add lib.ts
-  git commit -qm "shadow: lib with local comment"
-
-  git checkout -q feature/foo
-  echo "public lib content" > lib.ts
-  git add lib.ts
-  git commit -qm "feat: update lib"
-
-  git checkout -q "feature/foo@local"
-  git shadow feature sync --merge || true
-  [ -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]
-
-  run git shadow feature sync --abort
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"aborted"* ]]
-  [ ! -f "$(git rev-parse --git-dir)/MERGE_HEAD" ]
+  run git shadow feature sync
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"base"* ]]
 }

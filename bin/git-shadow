@@ -48,7 +48,7 @@ case "$COMMAND" in
     cat <<EOF
 git-shadow
 
-Shadow branch pattern utilities.
+Diff-sync utilities for public/@local branch pairs.
 
 Commands:
   version
@@ -56,13 +56,14 @@ Commands:
   doctor
   status [--json]
   completion install
-  feature start [<branch>]
-  feature publish [--commit] [-m MESSAGE] [--push]
-  feature sync [--merge] [--continue | --abort]
-  feature finish [--keep-branches] [--no-pull] [--force]
-  commit [-m "message"]
-  promote <file>
-  check-local-comments
+  feature start <name>
+  feature publish
+  feature sync [--recover] [--continue|--abort]
+  feature finish
+  base sync [--recover] [--continue|--abort]
+  re-anchor <branch@local>
+  push <branch>
+  check public <branch>
   config list [--json]
   config show [--json]
   config get <KEY> [--json]
@@ -71,10 +72,14 @@ Commands:
 
 Examples:
   git shadow feature start feature/login
-  git shadow commit -m "feat(auth): login route"
-  git shadow feature publish --commit -m "feat: login"
+  git shadow feature publish
+  git shadow feature sync
   git shadow feature finish
-  git shadow promote src/notes.md
+  git shadow base sync
+  git shadow re-anchor feature/login@local
+  git shadow push feature/login
+  git shadow check public feature/login
+  git shadow status --json
   git shadow config show
   git shadow config get LOCAL_SUFFIX
   git shadow config set LOCAL_SUFFIX=@mine --project-config

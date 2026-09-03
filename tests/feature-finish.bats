@@ -17,7 +17,7 @@ setup() {
   git shadow feature start test-feature
   echo "feature code" > feature.txt
   git add feature.txt
-  git shadow commit -m "feat: feature code"
+  git commit -m "feat: feature code"
   git shadow feature publish
   # Simulate the feature being merged into main
   git checkout -q main

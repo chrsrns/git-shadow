@@ -25,11 +25,6 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "edge: commit exits gracefully in empty repo with no staged changes" {
-  run git shadow commit -m "test"
-  [ "$status" -ne 0 ]
-}
-
 @test "edge: feature start exits gracefully in empty repo" {
   run git shadow feature start my-feature
   [ "$status" -ne 0 ]
@@ -42,11 +37,6 @@ teardown() {
 
 @test "edge: install-hooks exits 0 in empty repo" {
   run git shadow install-hooks
-  [ "$status" -eq 0 ]
-}
-
-@test "edge: check-local-comments exits 0 in empty repo (no staged files)" {
-  run git shadow check-local-comments
   [ "$status" -eq 0 ]
 }
 
@@ -85,7 +75,7 @@ setup_with_commit() {
   git shadow feature start test-feature
   echo "feature code" > feature.txt
   git add feature.txt
-  git shadow commit -m "feat: code"
+  git commit -m "feat: code"
   git shadow feature publish
   git checkout -q main
   git merge -q --no-edit test-feature
@@ -102,7 +92,7 @@ setup_with_commit() {
   git shadow feature start test-feature
   echo "feature code" > feature.txt
   git add feature.txt
-  git shadow commit -m "feat: code"
+  git commit -m "feat: code"
   # Dirty the working tree before publish
   echo "dirty" >> file.txt
   run git shadow feature publish
@@ -122,34 +112,12 @@ setup_with_commit() {
   [ "$status" -eq 1 ]
 }
 
-@test "edge: status --json in detached HEAD has error field" {
-  git symbolic-ref HEAD refs/heads/main
-  echo "x" > f.txt && git add f.txt && git commit -qm "c"
-  git checkout -q --detach HEAD
-  run git shadow status --json
-  [ "$status" -eq 1 ]
-  [[ "$output" == *'"error"'* ]]
-  [[ "$output" == *'"current_branch": null'* ]]
-}
-
 @test "edge: feature start exits 1 in detached HEAD" {
   git symbolic-ref HEAD refs/heads/main
   echo "x" > f.txt && git add f.txt && git commit -qm "c"
   git checkout -q --detach HEAD
   run git shadow feature start my-feature
   [ "$status" -eq 1 ]
-}
-
-@test "edge: commit exits 1 in detached HEAD with staged changes" {
-  git symbolic-ref HEAD refs/heads/main
-  echo "x" > f.txt && git add f.txt && git commit -qm "c"
-  git checkout -q --detach HEAD
-  echo "new" > new.txt && git add new.txt
-  run git shadow commit -m "test"
-  # Should fail: either no branch or ensure_clean_repo fails in some step
-  # At minimum, the git commit itself may succeed but the shadow workflow is broken
-  # We verify the command doesn't hang and returns a meaningful exit code
-  [ "$status" -ne 0 ] || true  # commit itself may work on detached HEAD
 }
 
 # ---------------------------------------------------------------------------

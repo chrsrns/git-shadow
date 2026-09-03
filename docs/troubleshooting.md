@@ -13,87 +13,122 @@ This page covers failure recovery for the most common situations where git shado
 
 ## Table of contents
 
-1. [Cherry-pick conflict during `feature publish`](#1-cherry-pick-conflict-during-feature-publish)
-2. [Merge conflict during `feature finish`](#2-merge-conflict-during-feature-finish)
-3. [Nothing left to commit after `git shadow commit`](#3-nothing-left-to-commit-after-git-shadow-commit)
-4. [Pre-commit hook is blocking a legitimate commit](#4-pre-commit-hook-is-blocking-a-legitimate-commit)
-5. [Public branch is ahead of the shadow branch](#5-public-branch-is-ahead-of-the-shadow-branch)
-6. [Shadow branch is behind after a team pull](#6-shadow-branch-is-behind-after-a-team-pull)
-7. [Public branch was accidentally deleted](#7-public-branch-was-accidentally-deleted)
-8. [LOCAL_COMMENT_PATTERN matches real code](#8-local_comment_pattern-matches-real-code)
-9. [Removing git shadow hooks from a project](#9-removing-git-shadow-hooks-from-a-project)
-10. [Adopting git shadow on an existing repo](#10-adopting-git-shadow-on-an-existing-repo)
-11. [Binary not found after installation](#11-binary-not-found-after-installation)
+1. [`feature publish` check pass failed](#1-feature-publish-check-pass-failed)
+2. [Conflicts during `feature sync` / `base sync`](#2-conflicts-during-feature-sync--base-sync)
+3. [`[MEMORY]` cherry-pick conflict during `feature finish`](#3-memory-cherry-pick-conflict-during-feature-finish)
+4. [Public branch is not an ancestor of the checkpoint](#4-public-branch-is-not-an-ancestor-of-the-checkpoint)
+5. [`git shadow status` reports `diverged`](#5-git-shadow-status-reports-diverged)
+6. [`git shadow check public` finds unpromoted files](#6-git-shadow-check-public-finds-unpromoted-files)
+7. [When to use `--recover` vs `re-anchor`](#7-when-to-use---recover-vs-re-anchor)
+8. [Removing git shadow hooks from a project](#8-removing-git-shadow-hooks-from-a-project)
+9. [Adopting git shadow on an existing repo](#9-adopting-git-shadow-on-an-existing-repo)
+10. [Binary not found after installation](#10-binary-not-found-after-installation)
 
 ---
 
-## 1. Cherry-pick conflict during `feature publish`
+## 1. `feature publish` check pass failed
 
-**Symptom:** `feature publish` stops mid-run with a message like:
+**Symptom:** `git shadow feature publish` aborts with a message like:
 
 ```
-CONFLICT (content): Merge conflict in src/auth.ts
-error: could not apply abc1234... feat: login function
-hint: After resolving the conflicts, run:
-      git cherry-pick --continue
+Check pass failed: public diff does not match filtered local diff
 ```
 
-**What happened:** `feature publish` cherry-picks each publishable commit from your `@local` branch to the public branch one by one. A conflict means the public branch has changes that overlap with the commit being cherry-picked.
+**What happened:** `feature publish` replays the public commits (non-`[MEMORY]` and non-`[CHECKPOINT]`) from the `@local` branch onto the public checkpoint base, then compares the resulting diff to the public diff. A mismatch means the public branch and the `@local` branch do not have the same content for the files that should be public.
 
-**Where you are:** You are on the **public branch** (e.g. `feature/login`) with `CHERRY_PICK_HEAD` set.
+**Common causes:**
 
-**Recovery — option A: resolve and continue**
+- A `[MEMORY]` commit modified a file that is also tracked by the public branch.
+- A non-`[MEMORY]` commit contains local-only content in a public-tracked file.
+- The public branch moved past the checkpoint SHA stored in the latest `[CHECKPOINT]`.
+- A file was renamed or deleted on one side but not the other.
+
+**Recovery:**
 
 ```bash
-# 1. Open the conflicting file(s) and resolve the markers (<<<<, ====, >>>>)
-# 2. Stage the resolved files
+# 1. Check the branch-pair state
+git shadow status
+
+# 2. Compare the public and local trees
+git diff feature/login feature/login@local
+```
+
+- If `git shadow status` shows `public-ahead` greater than zero, sync first:
+  ```bash
+  git shadow feature sync
+  git shadow feature publish
+  ```
+- If the public *base* has moved, run `git shadow base sync` first.
+- Inspect the diff for **public-tracked files**. If a `[MEMORY]` commit changed a tracked file, split the change:
+  - Move the local-only content to a new local-only file.
+  - Commit it as `[MEMORY] <subject>`.
+  - Revert the tracked-file change (use `git rebase -i` or `git commit --amend`).
+- Re-run `git shadow feature publish`.
+
+---
+
+## 2. Conflicts during `feature sync` / `base sync`
+
+**Symptom:** `git shadow feature sync` or `git shadow base sync` stops with:
+
+```
+error: patch failed: src/auth.ts:12
+error: src/auth.ts: patch does not apply
+```
+
+**What happened:** The command is applying the *net diff* from the checkpoint public SHA to the current public HEAD onto the `@local` branch. A hunk in that net diff overlaps with changes that are already on `@local`.
+
+**Where you are:** You are on the `@local` branch with conflict markers in the working tree and a sync in progress.
+
+**Recovery:**
+
+```bash
+# 1. See which files are conflicted
+git status
+
+# 2. Open each conflicting file and resolve the markers (<<<<, ====, >>>>)
+# 3. Stage the resolved files
 git add src/auth.ts
 
-# 3. Continue the cherry-pick
-git cherry-pick --continue
-
-# 4. Re-run publish — it will skip already-cherry-picked commits
-git checkout feature/login@local
-git shadow feature publish
+# 4. Continue the sync
+git shadow feature sync --continue
+# or, for the base:
+git shadow base sync --continue
 ```
 
-**Recovery — option B: abort and go back**
+**To abort and return to the last checkpoint:**
 
 ```bash
-# Cancel the cherry-pick entirely — the public branch is left as it was before publish
-git cherry-pick --abort
-
-# You are back on the public branch. Return to your shadow branch to investigate.
-git checkout feature/login@local
+git shadow feature sync --abort
+# or
+git shadow base sync --abort
 ```
 
-**Prevention:** Keep your shadow and public branches in sync. If the public branch received changes since your last publish, merge them into your shadow branch first:
-
-```bash
-git checkout feature/login@local
-git merge feature/login
-git shadow feature publish
-```
+**Prevention:** Sync regularly, especially before adding more local changes. Keep `[MEMORY]` commits limited to **new local-only files**; they must not modify files already tracked by the public branch.
 
 ---
 
-## 2. Merge conflict during `feature finish`
+## 3. `[MEMORY]` cherry-pick conflict during `feature finish`
 
-**Symptom:** `feature finish` exits with a non-zero status mid-run. You may see:
+**Symptom:** `git shadow feature finish` aborts with:
 
 ```
-Auto-merging file.txt
-CONFLICT (content): Merge conflict in file.txt
-Automatic merge failed; fix conflicts and then commit the result.
+CONFLICT (content): Merge conflict in notes/feature-x.md
+error: could not apply <sha>... [MEMORY] feature x notes
 ```
 
-**What happened:** `feature finish` runs two merges in sequence:
-1. Sync merge: `main` → `main@local` (integrates public changes into the local base)
-2. Feature merge: `feature@local` → `main@local` (integrates your feature's local history)
+or a base net-diff conflict message.
 
-The conflict occurred in one of those two merges.
+**What happened:** `feature finish` does the following:
 
-**Where you are:** You are on **`main@local`** (the local base branch) with `MERGE_HEAD` set.
+1. Pulls / fast-forwards the public base.
+2. Applies the base net diff onto the `@local` base (without creating an intermediate checkpoint).
+3. Cherry-picks each `[MEMORY]` commit from the feature's `@local` branch onto the `@local` base.
+4. Creates one final `[CHECKPOINT]` and deletes the feature branches.
+
+A conflict can happen in the base net diff or in any of the `[MEMORY]` cherry-picks.
+
+**Where you are:** You are on the local base branch (e.g. `main@local`) with conflict markers or a cherry-pick in progress.
 
 **Recovery:**
 
@@ -101,232 +136,144 @@ The conflict occurred in one of those two merges.
 # 1. Check which files are in conflict
 git status
 
-# 2. Open each conflicting file and resolve the markers
+# 2. Resolve each conflicting file
 # 3. Stage the resolved files
-git add path/to/file.txt
+git add notes/feature-x.md
 
-# 4. Complete the merge
-git merge --continue
+# 4. Re-run finish — it resumes from the resolved state
+git shadow feature finish
+```
 
-# 5. If the conflict was in the sync merge, the feature merge still needs to run.
-#    Return to your feature branch and re-run finish — it will skip already-merged work.
-git checkout feature/login@local
+If you already pulled the public base and want to avoid re-pulling while you retry:
+
+```bash
 git shadow feature finish --no-pull
 ```
 
-**If the situation is complex and you want to start over:**
+If the conflict is in a `[MEMORY]` file that accidentally touched a public-tracked file, move the local-only content to a new file and re-run.
 
-```bash
-# Abort the current merge
-git merge --abort
-
-# You are back on main@local in a clean state.
-# Investigate the divergence before retrying.
-git log --oneline --graph main main@local feature/login@local
-```
-
-**Note:** Use `--no-pull` when retrying `feature finish` if the conflict was caused by a pull from the remote. This avoids re-triggering the same conflict before you are ready.
+**Note:** `feature finish` aborts and **preserves both feature branches** on conflict, so no work is lost.
 
 ---
 
-## 3. Nothing left to commit after `git shadow commit`
+## 4. Public branch is not an ancestor of the checkpoint
 
-**Symptom:**
+**Symptom:** `git shadow feature sync`, `git shadow base sync`, `git shadow feature publish`, or `git shadow feature finish` aborts with:
 
 ```
-❌ After removing local comments, nothing remains to commit.
+checkpoint public SHA <sha> is not an ancestor of <public-branch>
 ```
 
-**What happened:** Every line in your staged files matched `LOCAL_COMMENT_PATTERN`. The git index was cleaned but the commit was aborted.
+**What happened:** The public branch was rewritten (rebase, squash, amend, or a history rewrite on the remote). The commit stored in the latest `[CHECKPOINT]` no longer appears in the public branch history, so the tool cannot safely apply the recorded diff range.
 
-**Where you are:** Your staged files are now in the index **without** local comments (the working tree is unchanged). The working tree still has the original content.
+**Recovery:**
 
-**Recovery — option A: restore the original staged state**
+1. **Try `--recover`** if the public branch was only rebased on the same base with identical patches:
+   ```bash
+   git shadow feature sync --recover
+   # or, for the base:
+   git shadow base sync --recover
+   ```
+   `--recover` uses patch-id matching to find the most recent checkpointed patch in the new public history and applies the net diff from that commit to the new public HEAD. It then creates a new `[CHECKPOINT]`.
 
-```bash
-# Discard the index changes and restore the staged state to what the working tree contains
-git restore --staged .
-# Your files are staged again with local comments, as they were before
-```
+2. **Use `re-anchor`** if `--recover` cannot find a matching patch-id, or if the base changed, or the patches were squashed/rewritten:
+   ```bash
+   git shadow re-anchor feature/login@local
+   # or, for the base:
+   git shadow re-anchor main@local
+   ```
+   `re-anchor` fetches the remote for the corresponding public branch, fast-forwards/resets the public branch to the remote, verifies that the `@local` tree contains the new public tree for all public-tracked files, and creates a fresh `[CHECKPOINT]`. It intentionally discards the previous checkpoint.
 
-**Recovery — option B: commit the local comments as a [MEMORY] commit directly**
+   `re-anchor` requires a clean working tree and no in-progress sync/publish.
 
-```bash
-git add .
-git commit -m "[MEMORY] my local notes" --no-verify
-```
-
-This is the correct approach if the staged content was intentionally notes-only (e.g. a memory file for AI context).
+3. If `re-anchor` fails because the local tree is missing or differs on a public-tracked file, compare the trees:
+   ```bash
+   git diff feature/login feature/login@local
+   ```
+   Move local-only changes into new `[MEMORY]` files and then `re-anchor`.
 
 ---
 
-## 4. Pre-commit hook is blocking a legitimate commit
+## 5. `git shadow status` reports `diverged`
 
-**Symptom:** A regular `git commit` is rejected with:
+**Symptom:** `git shadow status` prints:
 
 ```
-❌ Commit blocked: local comments are still present in staged files.
+publishable: 0
+public-ahead: 0
+diverged: true
 ```
 
-**Cause A: you staged local comments by accident**
+or a status line saying `diverged`.
 
-Run `git shadow commit` instead of `git commit` — it strips comments automatically.
+**What it means:** The `@local` tree and the current public tree differ on at least one public-tracked file, but there are no public commits to sync. This usually means a `[MEMORY]` or other local commit modified a file that is also tracked by the public branch.
+
+**Recovery:**
 
 ```bash
-git shadow commit -m "your message"
+# Compare the public and local trees
+git diff feature/login feature/login@local
 ```
 
-**Cause B: the pattern is matching code that is not a local comment**
-
-The default `LOCAL_COMMENT_PATTERN` matches lines starting with `///`, `##`, `%%`, or `<!--`. If your code legitimately contains these patterns (e.g. a Rust doc comment `///`, or a bash case statement with `##` prefixed), you need to adjust the pattern:
-
-```bash
-# Check which lines are being flagged
-git shadow check-local-comments
-
-# Adjust the pattern for your project
-git shadow config set LOCAL_COMMENT_PATTERN '^[[:space:]]*(///|%%)' --project-config
-```
-
-See [case 8](#8-local_comment_pattern-matches-real-code) for a detailed guide.
-
-**Cause C: you want to bypass the hook for a one-off commit**
-
-```bash
-git commit --no-verify -m "your message"
-```
-
-Use this sparingly. If you use it regularly, consider adjusting `LOCAL_COMMENT_PATTERN` instead.
+- If the differences are only in files that were **created by `[MEMORY]` commits and do not exist on the public branch**, those are expected and ignored by `git shadow status`.
+- If the differences are in public-tracked files, split them:
+  - Move local-only content to a new local-only file.
+  - Commit it as `[MEMORY] <subject>`.
+  - Revert the change to the public-tracked file.
+  - Run `git shadow feature sync` or `git shadow base sync` to rebuild the checkpoint.
+- If `public-ahead` is greater than zero, sync first:
+  ```bash
+  git shadow feature sync
+  git shadow status
+  ```
 
 ---
 
-## 5. Public branch is ahead of the shadow branch
+## 6. `git shadow check public` finds unpromoted files
 
-**Symptom:** `git shadow status` reports `public branch ahead`.
+**Symptom:** `git shadow check public main` or `git shadow check public feature/x` exits non-zero and lists files:
 
-**What happened:** Commits were added to the public branch (e.g. by a teammate's merge, or by cherry-picks from another tool) that your shadow branch does not contain.
-
-**Recovery:** Merge the public branch into the shadow branch to synchronize them.
-
-```bash
-git checkout feature/login@local
-git merge feature/login
+```
+Unpromoted local-only files on public branch 'main':
+  src/scratchpad.ts (first added on main@local as: [MEMORY] scratch notes)
 ```
 
-If there are conflicts (unlikely, since public commits were originally derived from your shadow commits via cherry-pick):
+**What it means:** A file that appears on the public branch was first created in a `[MEMORY]` commit on the local counterpart. In the diff-sync model this is a leak: `[MEMORY]` commits must not modify files tracked by the public branch, and files that start as local-only should not end up on the public branch.
 
-```bash
-# Resolve conflicts, then:
-git add .
-git merge --continue
-```
+**Recovery:**
 
-After this, `git shadow status` should report `up to date` or `ready to publish`.
+- If the file is truly local-only (notes, scratch, plans), remove it from the public branch and keep it only on `@local` in a `[MEMORY]` commit that **adds a new file**.
+- If the file should be public, remove it from the public branch, add it as a normal public commit on `@local` (or commit it on the public branch with `GIT_SHADOW=1`), and re-publish/push.
+- After fixing, re-run `git shadow check public <branch>`.
+
+**Note:** The diff-sync model has no `shadow: promote` step and no `LOCAL_COMMENT_PATTERN`. Local-only content belongs in separate files and is committed manually as `[MEMORY]`.
 
 ---
 
-## 6. Shadow branch is behind after a team pull
+## 7. When to use `--recover` vs `re-anchor`
 
-**Symptom:** Your teammates merged changes into `main`. Your `main@local` is behind.
+Use **`--recover`** when:
 
-**What happened:** `main` advanced but `main@local` did not automatically follow.
+- The public branch was rebased on the **same base**.
+- The individual patches are **identical** (same `patch-id`s).
+- The order may have been linearized, but the diffs are the same.
 
-**Recovery:** Update your shadow base branch manually.
+`--recover` is the safe, non-destructive option: it keeps your `@local` work untouched and creates a new `[CHECKPOINT]`.
 
-```bash
-# Update the public base
-git checkout main
-git pull
+Use **`re-anchor`** when:
 
-# Sync the shadow base
-git checkout main@local
-git merge main
-```
+- The public branch was **squashed** or otherwise rewritten.
+- The **base** of the public branch changed.
+- `--recover` could not find a checkpointed `patch-id`.
+- You want a clean reset of the checkpoint range.
 
-If you are on a feature branch:
+`re-anchor` discards the previous checkpoint and starts a new one from the current public and `@local` trees. It requires the `@local` tree to contain the new public tree for every public-tracked file; otherwise it aborts.
 
-```bash
-# From feature/login@local, keep working — this will be handled at feature finish time.
-# Or sync proactively:
-git checkout main && git pull
-git checkout main@local && git merge main
-git checkout feature/login@local
-```
-
-`git shadow feature finish` performs this sync automatically when you complete a feature.
+If both fail, the public and local lines have truly diverged. Resolve the content differences manually, then `re-anchor`.
 
 ---
 
-## 7. Public branch was accidentally deleted
-
-**Symptom:** The public feature branch (e.g. `feature/login`) was deleted — either locally with `git branch -D` or remotely.
-
-**Recovery:** Recreate the public branch from the shadow branch by cherry-picking the publishable commits.
-
-```bash
-# Find the base commit of the public branch (the commit in common with main)
-git checkout feature/login@local
-git log --oneline main..feature/login@local
-
-# Recreate the public branch from the public base
-git checkout main
-git checkout -b feature/login
-
-# Re-publish from the shadow branch — publish detects which commits are missing
-git checkout feature/login@local
-git shadow feature publish
-```
-
-`feature publish` uses patch-content comparison (not SHAs), so it will correctly identify which commits need to be cherry-picked, even if the branch was rebuilt from scratch.
-
----
-
-## 8. LOCAL_COMMENT_PATTERN matches real code
-
-**Symptom:** Lines of real code are being stripped by `git shadow commit`, or the pre-commit hook is blocking commits with false positives.
-
-**Common triggers:**
-
-| Pattern triggered | Real code causing it | Fix |
-|---|---|---|
-| `##` | Bash `##` comments used as section headers | Remove `##` from pattern |
-| `///` | Rust doc comments (`/// Description`) | Remove `///` from pattern |
-| `<!--` | Regular HTML comments | Remove `<!--` from pattern |
-
-**Check what is being flagged:**
-
-```bash
-git shadow check-local-comments
-```
-
-**Adjust the pattern for your project:**
-
-```bash
-# Example: keep only %% as local marker, remove the others
-git shadow config set LOCAL_COMMENT_PATTERN '^[[:space:]]*(%%)'  --project-config
-
-# Verify
-git shadow config get LOCAL_COMMENT_PATTERN
-```
-
-The pattern is a POSIX extended regex. Only include markers that are **never** valid syntax in your project's languages.
-
-**Recommended single-language patterns:**
-
-```bash
-# TypeScript / JavaScript only
-LOCAL_COMMENT_PATTERN='^[[:space:]]*(///)'
-
-# Python only
-LOCAL_COMMENT_PATTERN='^[[:space:]]*(##)'
-
-# Mixed projects — use a very specific marker unlikely to appear naturally
-LOCAL_COMMENT_PATTERN='^[[:space:]]*(//!|##!)'
-```
-
----
-
-## 9. Removing git shadow hooks from a project
+## 8. Removing git shadow hooks from a project
 
 **When to do this:** You want to stop using git shadow in a project, or you need to temporarily disable the hooks.
 
@@ -357,57 +304,72 @@ rm .git/hooks/pre-commit
 rm .git/hooks/pre-push
 ```
 
-**Option B: disable hooks temporarily for one commit**
+**Option B: bypass the hooks for one commit/push**
 
 ```bash
 git commit --no-verify -m "your message"
 git push --no-verify
 ```
 
+Use this sparingly. The hooks in the diff-sync model protect public branches from accidentally receiving `[MEMORY]` or other local-only commits.
+
 ---
 
-## 10. Adopting git shadow on an existing repo
+## 9. Adopting git shadow on an existing repo
 
-**Scenario:** You have an existing feature branch (`feature/login`) and want to adopt the shadow branch pattern without losing your work.
+**Scenario:** You have an existing project and want to adopt the shadow branch pattern.
 
-**Step 1: create the shadow branch from your existing branch**
-
-```bash
-# Make sure you are on your existing branch
-git checkout feature/login
-
-# Create the shadow branch at the same point
-git checkout -b feature/login@local
-```
-
-Your `feature/login@local` and `feature/login` now share the same history. This is the expected starting state.
-
-**Step 2: install hooks**
+**Step 1: install hooks**
 
 ```bash
 git shadow install-hooks
 ```
 
-**Step 3: work normally from the shadow branch**
+**Step 2: ensure a shadow base branch exists**
 
-From now on, work on `feature/login@local`. Use `git shadow commit` to commit (strips local comments and separates them into a `[MEMORY]` commit), and `git shadow feature publish` to push clean commits to `feature/login`.
+For new features, `git shadow feature start` creates `main@local` from `main` and adds the first `[CHECKPOINT]` if it does not exist.
 
-**Step 4: set up the base shadow branch**
-
-If your repo has a `main` (or `develop`) branch but no `main@local`, create it once:
+If you want to set it up manually:
 
 ```bash
 git checkout main
 git checkout -b main@local
 ```
 
-This shadow base branch is where `feature finish` will merge your local history when the feature is complete.
+**Step 3: create a feature pair and start working**
 
-**Note:** Your existing commits on `feature/login` will not be retroactively split — only new commits made via `git shadow commit` will be separated.
+```bash
+git shadow feature start feature/login
+# work on feature/login@local
+```
+
+Use `git commit` for public commits and `git commit -m "[MEMORY] ..."` for local-only notes. `[MEMORY]` commits must add **new local-only files** (notes, scratch files, plans); they must not modify files already tracked by the public branch.
+
+**Step 4: publish and sync**
+
+```bash
+git shadow feature publish
+git shadow push feature/login
+# after the PR is merged
+git shadow feature finish
+git shadow push main
+```
+
+**For an existing public branch without a shadow:**
+
+Create the shadow branch at the same commit and bring it under checkpoint control:
+
+```bash
+git checkout feature/login
+git checkout -b feature/login@local
+git shadow re-anchor feature/login@local
+```
+
+`re-anchor` creates the first `[CHECKPOINT]` for the pair. The public branch must already contain the content you want the shadow branch to contain.
 
 ---
 
-## 11. Binary not found after installation
+## 10. Binary not found after installation
 
 **Symptom:** `git shadow` or `git-shadow` returns `command not found`.
 

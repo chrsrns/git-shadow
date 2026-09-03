@@ -59,9 +59,9 @@ teardown() {
   [[ "$output" == *"already installed"* ]]
 }
 
-@test "install-hooks pre-push hook contains shadow push check" {
+@test "install-hooks pre-push hook contains public branch guard" {
   git shadow install-hooks
-  grep -q "check-shadow-push" ".git/hooks/pre-push"
+  grep -q "public branch" ".git/hooks/pre-push"
 }
 
 @test "install-hooks pre-commit hook is syntactically valid sh" {

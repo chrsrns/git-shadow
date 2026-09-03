@@ -82,9 +82,11 @@ git shadow feature publish
 
 The toolkit:
 
-1. strips `/// ` comments (or other pattern you configure)
-2. creates two commits : one with your changes and one with your local comments
-3. then cherry-picks it to the public branch
+1. looks for the latest `[CHECKPOINT]` on `feature/login@local`
+2. collects the non-`[MEMORY]` commits after that checkpoint
+3. replays them onto `feature/login`
+4. runs a diff-based check pass
+5. creates a new `[CHECKPOINT]` on `feature/login@local`
 
 ---
 
@@ -159,8 +161,8 @@ LOCAL_SUFFIX="@local"
 git shadow install-hooks
 ```
 
-The hook prevents accidental commits containing your local comment pattern (by default one extra comment marker, see LOCAL_COMMENT_PATTERN env var).
-The hook will not provoke error on other team members environments if they haven't install git shadow.
+The client-side hooks prevent accidental commits or pushes directly to public branches. Public branch writes are allowed only when `GIT_SHADOW=1` is set, which `git shadow` commands set internally.
+The hooks will not error on other team members' environments if they haven't installed git shadow.
 
 ---
 
@@ -205,38 +207,10 @@ feature/login@local
 
 Write your code normally on your "@local" branch.
 
-Example (look at the triple "/" used for comments here):
-
-```ts
-  /// Get user from database
-  const user = await prisma.user.findUnique({
-    where: { email },
-  })
-  if (!user) {
-    throw new Error('Invalid credentials')
-  }
-
-  /// Verify if user is able to connect
-  if (!user.isActive) {
-    throw new Error('User account is disabled')
-  }
-
-  /// Verify user password
-  const isPasswordValid = await bcrypt.compare(password, user.passwordHash)
-  if (!isPasswordValid) {
-    throw new Error('Invalid credentials')
-  }
-
-  /// Build session for user
-  const session = await prisma.session.create({
-    data: {
-      userId: user.id,
-      token: crypto.randomUUID(),
-      createdAt: new Date(),
-    },
-  })
-
-```
+Use regular `git commit` for code you plan to publish.
+Use `git commit -m "[MEMORY] ..."` for reasoning, notes, debug code, and anything that should stay local.
+`[MEMORY]` commits are filtered out during `git shadow feature publish`.
+`[MEMORY]` commits must not modify files already tracked by the public branch; put reasoning in separate local files (notes, scratch files, markdowns).
 
 ---
 
@@ -244,32 +218,25 @@ Example (look at the triple "/" used for comments here):
 
 ```bash
 git add .
-git shadow commit -m "feat(auth): user login function"
+git commit -m "feat(auth): user login function"
 git shadow feature publish
-
-# OR
-git add .
-git shadow feature publish --commit -m "feat(auth): user login function"
 ```
 
 This:
 
-1. removes local comments from staged code
-2. commits your changes in two commits : one with your changes and one with your local comments
-3. cherry-picks the commits without comments from your @local branch to the public branch (every commit with a title which begin by [MEMORY] are not cherry-picked)
+1. finds the latest `[CHECKPOINT]` on `feature/login@local`
+2. collects the non-`[MEMORY]` commits after that checkpoint
+3. replays them onto the public branch
+4. runs a diff-based check pass to verify the public branch matches the filtered local tree
+5. creates a new `[CHECKPOINT]` on `feature/login@local`
 
-Push normally:
+Push with the provided helper:
 
 ```bash
-git push origin feature/login
+git shadow push feature/login
 ```
 
-If you have commits which you only want to keep in your shadow branch your can prefix them with "[MEMORY]" inside theirs titles.
-Example of usages : 
-- Remove some form validations rules inside your dev env only
-- Local env improvements which your team does not want to use
-- Scripts for your usage only
-- Memory markdowns files for your local agent
+Commits with a subject starting with `[MEMORY]` are filtered from publication and stay on the `@local` branch.
 
 ---
 
@@ -281,18 +248,20 @@ When your colleagues push new commits to the public branch while you are still w
 git shadow feature sync
 ```
 
-This rebases your `@local` shadow branch onto the updated public branch:
-
-- **Regular code commits** that conflict are auto-resolved in favour of the public branch (their changes win — you can always re-apply yours on top).
-- **`[MEMORY]` commits** that conflict are paused for manual resolution, so your local AI context is never silently overwritten.
+This applies the **net diff** between the last `[CHECKPOINT]` and the current public branch head to your `@local` branch, then creates a new `[CHECKPOINT]`. It does not rebase or rewrite `@local` history; it works for rebase, squash, and merge public workflows.
 
 ```bash
-# After a [MEMORY] conflict — resolve manually, then:
+# If the public branch was rebased and the checkpoint SHA is no longer an ancestor:
+git shadow feature sync --recover
+
+# If the diff application conflicts, resolve and continue:
 git shadow feature sync --continue
 
-# To give up and go back:
+# To abort an in-progress sync:
 git shadow feature sync --abort
 ```
+
+> ⚠️ **Use `git shadow feature sync` only on feature shadow branches (`feature/x@local`).** For base branches (e.g. `main@local`) use `git shadow base sync`.
 
 ---
 
@@ -306,12 +275,57 @@ git shadow feature finish
 
 This command:
 
-* updates your main branch (default : `develop`)
-* merges your main branch into his "@local" shadow branch (default: `develop@local`)
-* merges `feature@local` into `develop@local`
-* optionally deletes feature branches
+* pulls the public base branch (default: `main`)
+* syncs the public base into `main@local` using net diff
+* cherry-picks each `[MEMORY]` commit from `feature/x@local` onto `main@local`
+* creates a new `[CHECKPOINT]` on `main@local`
+* deletes the feature branches
 
-(every branch naming is configurable inside your own .env file)
+(every branch naming is configurable inside your own `.env` file)
+
+---
+
+# Check a public branch
+
+Before pushing `main` or a feature public branch to the remote, you can audit it for local-only leakage:
+
+```bash
+git shadow check public main
+
+# or for a feature branch
+git shadow check public feature/login
+```
+
+This checks for:
+
+- `[MEMORY]` or `[CHECKPOINT]` commits in the public branch history
+- files that originated in a `[MEMORY]` commit on the local counterpart branch but were not promoted
+
+The `feature publish` check pass already verifies the public diff matches the filtered local diff, so `check public` is a secondary audit.
+
+---
+
+# Sync a base branch
+
+When new public work lands on `main`, sync it into `main@local`:
+
+```bash
+git shadow base sync
+```
+
+This applies the net diff from the last `[CHECKPOINT]` to current `main` HEAD onto `main@local`. Use `--recover` if `main` was rebased.
+
+## Recover from a rewritten public branch
+
+If `main` was force-pushed and the checkpointed SHA is no longer an ancestor:
+
+```bash
+# Try patch-id recovery (works for rebases that keep the same patches)
+git shadow base sync --recover
+
+# Or start over after manual review
+git shadow re-anchor main@local
+```
 
 ---
 
@@ -327,7 +341,7 @@ develop@local
    └── feature/login@local
 ```
 
-Your develop@local branches keep design comments and local features permanently.
+Your `@local` branches keep `[MEMORY]` commits and `[CHECKPOINT]` markers. Public branches never contain either.
 
 ---
 
@@ -344,7 +358,10 @@ Work normally on your @local branch
 Publish:
 
 ```bash
-git shadow feature publish --commit -m "feat(auth): user login function" --push
+git add .
+git commit -m "feat(auth): user login function"
+git shadow feature publish
+git shadow push feature/user-login
 ```
 
 If colleagues pushed new commits to the public branch in the meantime:
@@ -357,6 +374,7 @@ Finish after your branch has been merged on the main branch:
 
 ```bash
 git shadow feature finish
+git shadow push main
 ```
 
 ---
@@ -399,7 +417,7 @@ Git Shadow implements a workflow called the **Shadow Branch Pattern**.
 
 - **Local-only information** : Your team members won’t benefit from your local commits, since that is the purpose of this pattern. Your local reasoning is therefore not directly visible to others, and important insights may still need to be promoted to shared documentation or code when relevant.
 
--  **Conflict management** : Since `@local` branches diverge from public branches, you may encounter merge conflicts when updating your base branch or finishing features. `git shadow feature sync` automates most of this — code conflicts are auto-resolved in favour of the public branch, and only `[MEMORY]` conflicts require manual attention.
+-  **Conflict management** : Since `@local` branches diverge from public branches, you may encounter merge conflicts when updating your base branch or finishing features. `git shadow feature sync` and `git shadow base sync` apply net diffs to keep the local branch current. If a replay or diff application fails, the tool aborts and asks you to resolve the conflict.
 
 - **Not always necessary** : Everything Git Shadow does can be achieved manually with Git. Its value lies in automation, consistency, and reduced cognitive load. For simple workflows or small projects, the pattern may be unnecessary.
 

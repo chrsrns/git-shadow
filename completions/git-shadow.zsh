@@ -20,10 +20,12 @@ _git_shadow() {
     args)
       case $line[1] in
         feature)    _git_shadow_feature ;;
+        base)       _git_shadow_base ;;
+        check)      _git_shadow_check ;;
         config)     _git_shadow_config ;;
         status)     _arguments '--json[output as JSON]' ;;
-        commit)     _arguments '-m[commit message]:message:' ;;
         completion) _arguments '1: :_git_shadow_completion_subcommands' ;;
+        push|re-anchor) _arguments '*:branch:__git_refs2' ;;
       esac
       ;;
   esac
@@ -35,13 +37,14 @@ _git_shadow_commands() {
     'version:show the current git-shadow version'
     'install-hooks:install pre-commit and pre-push git hooks'
     'doctor:run diagnostic checks on the environment and repository'
-    'status:show the current shadow/public branch state'
-    'commit:create a shadow-aware commit (separates code from local comments)'
-    'promote:promote a local @local commit to the public branch'
-    'check-local-comments:check staged files for local comment markers'
-    'feature:manage the feature branch lifecycle (start / publish / finish)'
-    'config:manage git-shadow configuration'
+    'status:show publishable/public-ahead/diverged state'
     'completion:manage shell completion'
+    'feature:manage the feature branch lifecycle'
+    'base:sync the public/@local base pair'
+    're-anchor:re-anchor a @local branch to new public history'
+    'push:push a public branch with GIT_SHADOW=1'
+    'check:audit a public branch'
+    'config:manage git-shadow configuration'
   )
   _describe 'command' commands
 }
@@ -56,20 +59,9 @@ _git_shadow_feature() {
   case $state in
     args)
       case $line[1] in
-        publish)
-          _arguments \
-            '--commit[commit staged changes before publishing]' \
-            '-m[commit message]:message:'
-          ;;
-        finish)
-          _arguments \
-            '--keep-branches[do not delete branches after finishing]' \
-            '--no-pull[skip pulling base branches]' \
-            '--force[force delete branches even if not fully merged]'
-          ;;
         sync)
           _arguments \
-            '--merge[merge instead of rebase (for shared shadow branches)]' \
+            '--recover[recover after public history rewrite]' \
             '--continue[resume after manual conflict resolution]' \
             '--abort[abort the sync]'
           ;;
@@ -81,10 +73,39 @@ _git_shadow_feature() {
 _git_shadow_feature_subcommands() {
   local subcommands
   subcommands=(
-    'start:create a new shadow/public feature branch pair'
-    'publish:cherry-pick clean commits to the public branch'
-    'finish:merge and finalize the feature, then clean up branches'
-    'sync:rebase the shadow branch onto its public counterpart'
+    'start:create a new public/@local feature branch pair'
+    'publish:publish public commits from the @local feature branch'
+    'finish:finalize the feature and integrate [MEMORY] commits'
+    'sync:apply public net diff onto the @local feature branch'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_base() {
+  local context state line
+
+  _arguments -C \
+    '1: :_git_shadow_base_subcommands' \
+    '*:: :->args'
+
+  case $state in
+    args)
+      case $line[1] in
+        sync)
+          _arguments \
+            '--recover[recover after public history rewrite]' \
+            '--continue[resume after manual conflict resolution]' \
+            '--abort[abort the sync]'
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_git_shadow_base_subcommands() {
+  local subcommands
+  subcommands=(
+    'sync:sync the public/@local base pair'
   )
   _describe 'subcommand' subcommands
 }
@@ -132,6 +153,18 @@ _git_shadow_config_subcommands() {
     'get:get a single configuration value'
     'set:set a configuration value'
     'unset:remove a configuration value'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_check() {
+  _arguments '1: :_git_shadow_check_subcommands' '*:branch:__git_refs2'
+}
+
+_git_shadow_check_subcommands() {
+  local subcommands
+  subcommands=(
+    'public:audit a public branch for unpromoted files'
   )
   _describe 'subcommand' subcommands
 }

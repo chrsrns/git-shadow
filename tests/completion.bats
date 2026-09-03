@@ -45,8 +45,13 @@ _bash_complete() {
   [[ "$output" == *"status"* ]]
   [[ "$output" == *"config"* ]]
   [[ "$output" == *"doctor"* ]]
-  [[ "$output" == *"commit"* ]]
   [[ "$output" == *"version"* ]]
+  [[ "$output" == *"base"* ]]
+  [[ "$output" == *"re-anchor"* ]]
+  [[ "$output" == *"push"* ]]
+  [[ "$output" == *"check"* ]]
+  [[ "$output" != *"commit"* ]]
+  [[ "$output" != *"promote"* ]]
 }
 
 @test "bash completion filters top-level commands by prefix" {
@@ -64,19 +69,12 @@ _bash_complete() {
   [[ "$output" == *"finish"* ]]
 }
 
-@test "bash completion suggests flags for feature publish" {
-  run _bash_complete 3 git-shadow feature publish ''
+@test "bash completion suggests flags for feature sync" {
+  run _bash_complete 3 git-shadow feature sync ''
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--commit"* ]]
-  [[ "$output" == *"-m"* ]]
-}
-
-@test "bash completion suggests flags for feature finish" {
-  run _bash_complete 3 git-shadow feature finish ''
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"--keep-branches"* ]]
-  [[ "$output" == *"--no-pull"* ]]
-  [[ "$output" == *"--force"* ]]
+  [[ "$output" == *"--recover"* ]]
+  [[ "$output" == *"--continue"* ]]
+  [[ "$output" == *"--abort"* ]]
 }
 
 @test "bash completion suggests config subcommands" {
@@ -120,7 +118,7 @@ _bash_complete() {
   run _bash_complete 3 git-shadow config set ''
   [ "$status" -eq 0 ]
   [[ "$output" == *"LOCAL_SUFFIX"* ]]
-  [[ "$output" == *"AUTO_PULL_BASE_BRANCHES"* ]]
+  [[ "$output" == *"PUBLIC_BASE_BRANCH"* ]]
 }
 
 @test "bash completion suggests config keys for config unset" {
@@ -133,7 +131,6 @@ _bash_complete() {
   run _bash_complete 3 git-shadow config get 'LOCAL'
   [ "$status" -eq 0 ]
   [[ "$output" == *"LOCAL_SUFFIX"* ]]
-  [[ "$output" == *"LOCAL_COMMENT_PATTERN"* ]]
   [[ "$output" != *"PUBLIC_BASE_BRANCH"* ]]
 }
 
@@ -141,12 +138,6 @@ _bash_complete() {
   run _bash_complete 2 git-shadow status ''
   [ "$status" -eq 0 ]
   [[ "$output" == *"--json"* ]]
-}
-
-@test "bash completion suggests -m for commit" {
-  run _bash_complete 2 git-shadow commit ''
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"-m"* ]]
 }
 
 @test "bash completion works for git shadow invocation (offset 2)" {
@@ -258,13 +249,13 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"unset"* ]]
 }
 
-@test "zsh completion _git_shadow_feature body mentions publish flags" {
+@test "zsh completion _git_shadow_feature body mentions sync flags" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   run zsh -c "source '$COMPLETION_ZSH' 2>/dev/null; typeset -f _git_shadow_feature"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--commit"* ]]
-  [[ "$output" == *"--keep-branches"* ]]
-  [[ "$output" == *"--force"* ]]
+  [[ "$output" == *"--recover"* ]]
+  [[ "$output" == *"--continue"* ]]
+  [[ "$output" == *"--abort"* ]]
 }
 
 @test "zsh completion _git_shadow_config body mentions --json and --project-config" {
@@ -294,9 +285,13 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"status"* ]]
   [[ "$output" == *"config"* ]]
   [[ "$output" == *"doctor"* ]]
-  [[ "$output" == *"commit"* ]]
   [[ "$output" == *"version"* ]]
   [[ "$output" == *"completion"* ]]
+  [[ "$output" == *"base"* ]]
+  [[ "$output" == *"re-anchor"* ]]
+  [[ "$output" == *"push"* ]]
+  [[ "$output" == *"check"* ]]
+  [[ "$output" != *"commit"* ]]
 }
 
 @test "fish completion suggests feature subcommands" {
@@ -308,21 +303,13 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"finish"* ]]
 }
 
-@test "fish completion suggests flags for feature publish" {
+@test "fish completion suggests flags for feature sync" {
   command -v fish >/dev/null 2>&1 || skip "fish not installed"
-  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow feature publish -'"
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow feature sync -'"
   [ "$status" -eq 0 ]
-  [[ "$output" == *"--commit"* ]]
-  [[ "$output" == *"-m"* ]]
-}
-
-@test "fish completion suggests flags for feature finish" {
-  command -v fish >/dev/null 2>&1 || skip "fish not installed"
-  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow feature finish -'"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *"--keep-branches"* ]]
-  [[ "$output" == *"--no-pull"* ]]
-  [[ "$output" == *"--force"* ]]
+  [[ "$output" == *"--recover"* ]]
+  [[ "$output" == *"--continue"* ]]
+  [[ "$output" == *"--abort"* ]]
 }
 
 @test "fish completion suggests config subcommands" {
@@ -365,7 +352,7 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow config set '"
   [ "$status" -eq 0 ]
   [[ "$output" == *"LOCAL_SUFFIX"* ]]
-  [[ "$output" == *"AUTO_PULL_BASE_BRANCHES"* ]]
+  [[ "$output" == *"PUBLIC_BASE_BRANCH"* ]]
 }
 
 @test "fish completion suggests config keys for config unset" {
@@ -505,7 +492,7 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
 # Internal commands not exposed to users must be listed in INTERNAL_COMMANDS.
 # ---------------------------------------------------------------------------
 
-INTERNAL_COMMANDS="check-shadow-push"
+INTERNAL_COMMANDS=""
 
 _user_facing_toplevel_commands() {
   # Emit one command name per line from commands/*.sh and commands/*/

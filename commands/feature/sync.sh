@@ -86,7 +86,7 @@ if [[ $CONTINUE -eq 1 ]]; then
     exit 1
   fi
 
-  git commit -q -m "sync $SYNC_PUBLIC_BRANCH"
+  sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_CHECKPOINT_PUBLIC" "$SYNC_TARGET_PUBLIC"
 
   NEW_LOCAL_HEAD="$(git rev-parse "$SYNC_LOCAL_BRANCH")"
   _new_checkpoint="$(checkpoint_create "$SYNC_TARGET_PUBLIC" "$NEW_LOCAL_HEAD" $SYNC_PIDS)"
@@ -192,7 +192,7 @@ fi
 git add -A
 
 if sync_tree_changed; then
-  git commit -q -m "sync $PUBLIC_BRANCH"
+  sync_commit "$LOCAL_BRANCH" "$PUBLIC_BRANCH" "$DIFF_START" "$PUBLIC_HEAD"
 fi
 
 NEW_LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"

@@ -25,6 +25,47 @@ sync_tree_changed() {
   ! git diff --cached --quiet
 }
 
+# Create a well-formed sync commit from a staged net diff.
+#
+# Arguments:
+#   <local_branch>  name of the local branch receiving the sync
+#   <public_branch> name of the public branch the diff came from
+#   <start_sha>     start of the public diff range
+#   <end_sha>       end of the public diff range
+#   [source_branch] optional feature branch that produced the diff (for feature finish)
+#
+# The caller must stage the diff before calling. This function only runs
+# `git commit` with a [SYNC] subject and a body describing the provenance.
+sync_commit() {
+  local local_branch="$1"
+  local public_branch="$2"
+  local start_sha="$3"
+  local end_sha="$4"
+  local source_branch="${5:-}"
+
+  local short_start short_end
+  short_start="$(git rev-parse --short "$start_sha")"
+  short_end="$(git rev-parse --short "$end_sha")"
+
+  local subject="[SYNC] $local_branch: net diff from $public_branch ($short_start..$short_end)"
+
+  local -a body_args=()
+  body_args+=(-m "Source: $public_branch")
+  body_args+=(-m "Range: $start_sha..$end_sha")
+
+  if [[ -n "$source_branch" ]]; then
+    body_args+=(-m "Finished feature: $source_branch")
+  fi
+
+  local pids
+  pids="$(sync_patch_ids "$start_sha" "$end_sha" | tr '\n' ' ' | sed 's/ $//')"
+  if [[ -n "$pids" ]]; then
+    body_args+=(-m "Patch-ids: $pids")
+  fi
+
+  env GIT_SHADOW=1 git commit --quiet -m "$subject" "${body_args[@]}"
+}
+
 # Print the patch-ids of the public commits in start..end, one per line.
 sync_patch_ids() {
   local start="$1"

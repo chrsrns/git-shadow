@@ -22,6 +22,7 @@ fi
 needed=(
   "bin/git-shadow"
   "lib/common.sh"
+  "lib/check.sh"
   "lib/checkpoint.sh"
   "lib/config-utils.sh"
   "lib/env.sh"

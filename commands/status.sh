@@ -40,15 +40,13 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if git rev-parse --verify HEAD >/dev/null 2>&1; then
-  if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
-    if [[ "$JSON" -eq 1 ]]; then
-      printf '{"current_branch":"%s","error":"Empty repository"}\n' "$CURRENT_BRANCH"
-    else
-      ui_error "Repository has no commits."
-    fi
-    exit 1
+if ! git rev-parse --verify HEAD >/dev/null 2>&1; then
+  if [[ "$JSON" -eq 1 ]]; then
+    printf '{"current_branch":null,"error":"Empty repository"}\n'
+  else
+    ui_error "Repository has no commits."
   fi
+  exit 1
 fi
 
 # Branch type detection

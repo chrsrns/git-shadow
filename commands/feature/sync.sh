@@ -13,15 +13,17 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 usage() {
   cat <<EOF
-Usage: git shadow feature sync [--continue|--abort]
+Usage: git shadow feature sync [--recover] [--continue|--abort]
 EOF
 }
 
+RECOVER=0
 CONTINUE=0
 ABORT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --recover)  RECOVER=1  ;;
     --continue) CONTINUE=1 ;;
     --abort)    ABORT=1    ;;
     -h|--help)
@@ -144,14 +146,36 @@ if [[ "$CP_PUBLIC" == "$PUBLIC_HEAD" ]]; then
   exit 0
 fi
 
+DIFF_START="$CP_PUBLIC"
+
 if ! git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_HEAD"; then
-  ui_error "Public branch '$PUBLIC_BRANCH' has moved non-fast-forward from the checkpoint. Run 'git shadow re-anchor $LOCAL_BRANCH'."
-  exit 1
+  if [[ $RECOVER -eq 0 ]]; then
+    ui_error "Public branch '$PUBLIC_BRANCH' has moved non-fast-forward from the checkpoint. Run 'git shadow feature sync --recover' or 'git shadow re-anchor $LOCAL_BRANCH'."
+    exit 1
+  fi
+
+  ui_warn "Attempting to recover feature sync from patch-id list."
+  PIDS_FILE="$(mktemp)"
+  trap 'rm -f "$PIDS_FILE"' EXIT
+  printf '%s\n' $CP_PIDS | tr ' ' '\n' | grep -v '^$' > "$PIDS_FILE" || true
+
+  if ! NEW_ANCESTOR="$(sync_recover_ancestor "$PUBLIC_HEAD" "$PIDS_FILE")"; then
+    ui_error "Unable to recover: no checkpointed patch-id found in the new public history. Run 'git shadow re-anchor $LOCAL_BRANCH'."
+    exit 1
+  fi
+
+  if [[ "$NEW_ANCESTOR" == "$PUBLIC_HEAD" ]]; then
+    _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$LOCAL_HEAD" $CP_PIDS)"
+    ui_ok "Feature '$LOCAL_BRANCH' is already up to date (recovered)."
+    exit 0
+  fi
+
+  DIFF_START="$NEW_ANCESTOR"
 fi
 
 # Collect patch-ids of the public commits in the sync range.
 PIDS=""
-for pid in $(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_HEAD"); do
+for pid in $(sync_patch_ids "$DIFF_START" "$PUBLIC_HEAD"); do
   if [[ -n "$pid" ]]; then
     PIDS="$PIDS $pid"
   fi
@@ -159,7 +183,7 @@ done
 PIDS="${PIDS# }"
 
 # Apply net diff to the local branch.
-if ! sync_apply_range "$CP_PUBLIC" "$PUBLIC_HEAD"; then
+if ! sync_apply_range "$DIFF_START" "$PUBLIC_HEAD"; then
   sync_save_state "feature" "$PUBLIC_BRANCH" "$LOCAL_BRANCH" "$CP_PUBLIC" "$CP_LOCAL" "$PUBLIC_HEAD" "$LOCAL_HEAD" "$PIDS"
   ui_error "Conflict applying feature net diff. Resolve and run 'git shadow feature sync --continue', or '--abort'."
   exit 1

@@ -54,6 +54,30 @@ teardown() {
   [[ "$subject" == "[CHECKPOINT]"* ]]
 }
 
+@test "base sync --recover handles an amended public commit" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  git checkout -q main
+  echo "public change" >> file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "public change"
+
+  git checkout -q main@local
+  git shadow base sync
+
+  # Amend the public commit with the same diff
+  git checkout -q main
+  GIT_SHADOW=1 git commit -q --amend -m "public change (amended)"
+
+  git checkout -q main@local
+  run git shadow base sync --recover
+  [ "$status" -eq 0 ]
+
+  # Local base still has the public content
+  [ "$(cat file.txt)" = $'initial\npublic change' ]
+}
+
 @test "base sync --abort restores local branch" {
   git checkout -q -b main@local
   git shadow base sync

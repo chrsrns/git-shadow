@@ -141,6 +141,24 @@ teardown() {
   [ "$before" = "$after" ]
 }
 
+@test "feature sync --recover handles an amended public feature commit" {
+  # Add a public commit on the local branch and publish it.
+  git checkout -q feature-foo@local
+  echo "v2" >> app.ts
+  git add app.ts
+  git commit -q -m "feat: app update"
+  git shadow feature publish
+
+  # Amend the public feature commit with the same diff.
+  git checkout -q feature-foo
+  git commit -q --amend -m "feat: app update (amended)"
+
+  git checkout -q feature-foo@local
+  run git shadow feature sync --recover
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already up to date"* ]]
+}
+
 @test "feature sync exits with warning when run on the local base branch" {
   git shadow config set PUBLIC_BASE_BRANCH=develop --project-config >/dev/null
   git checkout -q "develop@local"

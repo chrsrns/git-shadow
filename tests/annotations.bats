@@ -126,6 +126,31 @@ EOF
   diff "$SRC" "$OUT"
 }
 
+@test "annotations reanchor: finds hunk after a line is inserted" {
+  # Original hunk: search block [top, bottom] (2 lines), marker in the middle.
+  printf 'top\n/// note\nbottom\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --clean-out "$CLEAN" --records-out "$RECORDS" --meta-out "$META"
+
+  # The marker is removed and a public line is inserted inside the hunk.
+  # The best candidate is now a 3-line window [top, mid, bottom].
+  printf 'top\nmid\nbottom\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" reanchor \
+    --source "$SRC" --annotations "$RECORDS" --output "$OUT" \
+    --threshold 0.6 \
+    --pattern-triple '^\s*///' --pattern-local '^\s*// @local'
+
+  # Re-apply the re-anchored record to the clean source.
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" reapply \
+    --source "$SRC" --annotations "$OUT" --output "${TEST_DIR}/tmp/rendered.txt" \
+    --pattern-triple '^\s*///' --pattern-local '^\s*// @local'
+
+  printf 'top\n/// note\nmid\nbottom\n' > "${TEST_DIR}/tmp/expected.txt"
+  diff "${TEST_DIR}/tmp/expected.txt" "${TEST_DIR}/tmp/rendered.txt"
+}
+
 @test "annotations reanchor: updates hunk when one after line changes" {
   # Build a hunk whose minimal unique search block is 6 public lines.
   cat > "$SRC" <<-'EOF'

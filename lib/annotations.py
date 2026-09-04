@@ -257,29 +257,43 @@ def normalize_leading(lines):
 def find_fuzzy_match(search_lines, source_lines, threshold, original_pos=None):
     """Find the best candidate hunk in source_lines for search_lines.
 
-    Uses normalized line sets and Jaccard similarity. Returns (pos, score) or (None, None).
+    Tries windows whose length is close to len(search_lines) so that a hunk
+    that grew or shrank by a few public lines can still be found. Returns
+    (pos, length, score) or (None, None, None).
     """
     if not search_lines:
-        return None, None
+        return None, None, None
     search_norm = set(normalize_leading(normalize_block(search_lines)))
     best_pos = None
     best_score = 0.0
+    best_len = None
     best_dist = float("inf")
+    best_len_dist = float("inf")
     m = len(search_lines)
     n = len(source_lines)
-    for i in range(n - m + 1):
-        window = source_lines[i:i + m]
-        window_norm = set(normalize_leading(normalize_block(window)))
-        score = jaccard(search_norm, window_norm)
-        if score > best_score or (score == best_score and score >= threshold):
-            dist = abs(i - original_pos) if original_pos is not None else i
-            if score > best_score or (score == best_score and dist < best_dist):
-                best_score = score
-                best_pos = i
-                best_dist = dist
+    # Try window lengths near m (m-2 .. m+2, clamped to >= 1) to handle
+    # line insertions/deletions inside the hunk.
+    for L in range(max(1, m - 2), m + 3):
+        if L > n:
+            continue
+        for i in range(n - L + 1):
+            window = source_lines[i:i + L]
+            window_norm = set(normalize_leading(normalize_block(window)))
+            score = jaccard(search_norm, window_norm)
+            if score >= threshold:
+                dist = abs(i - original_pos) if original_pos is not None else i
+                len_dist = abs(L - m)
+                if (score > best_score or
+                    (score == best_score and (dist < best_dist or
+                                              (dist == best_dist and len_dist < best_len_dist)))):
+                    best_score = score
+                    best_pos = i
+                    best_len = L
+                    best_dist = dist
+                    best_len_dist = len_dist
     if best_score >= threshold:
-        return best_pos, best_score
-    return None, best_score
+        return best_pos, best_len, best_score
+    return None, None, best_score
 
 
 def align_split(old_search, new_search, old_split):
@@ -322,13 +336,13 @@ def reanchor_records(records, source_lines, patterns, threshold):
         original_pos = rec.get("original_pos")
         if original_pos is None:
             original_pos = 0
-        fuzzy_pos, _ = find_fuzzy_match(search, source_lines, threshold, original_pos=original_pos)
-        if fuzzy_pos is None:
+        fuzzy_pos, fuzzy_len, _ = find_fuzzy_match(search, source_lines, threshold, original_pos=original_pos)
+        if fuzzy_pos is None or fuzzy_len is None:
             orphans.append(rec["key"])
             rec["orphan"] = True
             new_records.append(rec)
             continue
-        candidate = source_lines[fuzzy_pos:fuzzy_pos + len(search)]
+        candidate = source_lines[fuzzy_pos:fuzzy_pos + fuzzy_len]
         old_split = rec["split"]
         if old_split is None:
             old_split = len(search) // 2

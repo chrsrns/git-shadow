@@ -14,12 +14,13 @@ complete -c git-shadow -f
 # Top-level commands
 # ---------------------------------------------------------------------------
 
-set -l top_cmds version install-hooks doctor status completion feature base re-anchor push check config
+set -l top_cmds version install-hooks doctor status commit completion feature base re-anchor push check config
 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a version              -d "show the current version"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a install-hooks        -d "install pre-commit and pre-push git hooks"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a doctor               -d "run diagnostic checks on the environment"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a status               -d "show publishable/public-ahead/diverged state"
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a commit               -d "split staged changes into public and [MEMORY] commits"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a completion           -d "manage shell completion"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a feature              -d "manage feature branch lifecycle"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a base                 -d "sync the public/@local base pair"
@@ -66,6 +67,12 @@ complete -c git-shadow -n "__fish_seen_subcommand_from check; and not __fish_see
 # ---------------------------------------------------------------------------
 
 complete -c git-shadow -n "__fish_seen_subcommand_from status" -l json -d "output as JSON"
+
+# ---------------------------------------------------------------------------
+# commit flags
+# ---------------------------------------------------------------------------
+
+complete -c git-shadow -n "__fish_seen_subcommand_from commit" -s m -l message -d "public commit message"
 
 # ---------------------------------------------------------------------------
 # config subcommands and flags

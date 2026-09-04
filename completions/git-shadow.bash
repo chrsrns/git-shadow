@@ -26,7 +26,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status completion feature base re-anchor push check config" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status commit completion feature base re-anchor push check config" -- "$cur"))
     return
   fi
 
@@ -70,6 +70,9 @@ _git_shadow() {
       ;;
     status)
       COMPREPLY=($(compgen -W "--json" -- "$cur"))
+      ;;
+    commit)
+      COMPREPLY=($(compgen -W "-m --message" -- "$cur"))
       ;;
     check)
       if [[ $pos -eq 1 ]]; then

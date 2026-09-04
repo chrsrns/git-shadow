@@ -50,7 +50,7 @@ _bash_complete() {
   [[ "$output" == *"re-anchor"* ]]
   [[ "$output" == *"push"* ]]
   [[ "$output" == *"check"* ]]
-  [[ "$output" != *"commit"* ]]
+  [[ "$output" == *"commit"* ]]
   [[ "$output" != *"promote"* ]]
 }
 

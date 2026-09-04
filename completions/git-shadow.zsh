@@ -24,6 +24,7 @@ _git_shadow() {
         check)      _git_shadow_check ;;
         config)     _git_shadow_config ;;
         status)     _arguments '--json[output as JSON]' ;;
+        commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' ;;
         completion) _arguments '1: :_git_shadow_completion_subcommands' ;;
         push|re-anchor) _arguments '*:branch:__git_refs2' ;;
       esac
@@ -38,6 +39,7 @@ _git_shadow_commands() {
     'install-hooks:install pre-commit and pre-push git hooks'
     'doctor:run diagnostic checks on the environment and repository'
     'status:show publishable/public-ahead/diverged state'
+    'commit:split staged changes into public and [MEMORY] commits'
     'completion:manage shell completion'
     'feature:manage the feature branch lifecycle'
     'base:sync the public/@local base pair'

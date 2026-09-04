@@ -1,0 +1,95 @@
+#!/usr/bin/env bats
+
+# Integration tests for git shadow commit.
+
+setup() {
+  TEST_DIR="$(mktemp -d)"
+  XDG_DIR="$(mktemp -d)"
+  export XDG_CONFIG_HOME="$XDG_DIR"
+  cd "$TEST_DIR"
+  git init -q
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo "initial" > file.txt
+  git add file.txt
+  git commit -qm "initial"
+  PATH="/run/media/flavolite/30524ad5-1cdc-4501-a036-1312a6bfad76/Development/git-shadow/bin:$PATH"
+}
+
+teardown() {
+  rm -rf "$TEST_DIR" "$XDG_DIR"
+}
+
+@test "commit: requires a @local branch" {
+  git checkout -q -b my-feature
+  run git shadow commit -m "test"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"@local"* ]]
+}
+
+@test "commit: requires staged changes" {
+  git shadow feature start my-feature
+  run git shadow commit -m "test"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No staged changes"* ]]
+}
+
+@test "commit: rejects a public message matching [MEMORY]" {
+  git shadow feature start my-feature
+  echo "/// note" > file.txt
+  git add file.txt
+  run git shadow commit -m "[MEMORY] test"
+  [ "$status" -ne 0 ]
+}
+
+@test "commit: creates clean public commit and [MEMORY] sidecar" {
+  git shadow feature start my-feature
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  run git shadow commit -m "add note"
+  [ "$status" -eq 0 ]
+
+  # Public tree has no marker.
+  run git show HEAD~1:file.txt
+  [[ "$output" == *"public before"* ]]
+  [[ "$output" != *"/// local note"* ]]
+
+  # Memory tree has the sidecar and the marker-inside source.
+  run git show HEAD:.git-shadow/annotations/file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"## hunk"* ]]
+
+  # Working tree is clean.
+  git diff --quiet
+}
+
+@test "commit: keeps /// markers in LOCAL_COMMENT_EXCLUDE files" {
+  git shadow feature start my-feature
+  printf '/// csdoc\npublic code\n' > "app.cs"
+  git add app.cs
+  run git shadow commit -m "add cs file"
+  [ "$status" -eq 0 ]
+
+  # Public commit (HEAD because there was no [MEMORY] sidecar) keeps the /// marker.
+  run git show HEAD:app.cs
+  [[ "$output" == *"/// csdoc"* ]]
+
+  # No annotation sidecar for /// in the excluded file.
+  [ ! -f .git-shadow/annotations/app.cs ]
+}
+
+@test "commit: extracts // @local markers even in LOCAL_COMMENT_EXCLUDE files" {
+  git shadow feature start my-feature
+  printf '/// csdoc\n// @local local-only\npublic code\n' > "app.cs"
+  git add app.cs
+  run git shadow commit -m "add cs file with local"
+  [ "$status" -eq 0 ]
+
+  # Public commit keeps ///, drops @local.
+  run git show HEAD~1:app.cs
+  [[ "$output" == *"/// csdoc"* ]]
+  [[ "$output" != *"// @local"* ]]
+
+  # Annotation sidecar records the @local marker.
+  [ -f .git-shadow/annotations/app.cs ]
+}

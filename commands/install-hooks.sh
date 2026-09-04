@@ -14,19 +14,9 @@ source "$TOOLKIT_ROOT/lib/common.sh"
 # Install hooks in current repository only
 enter_project "."
 
-# Derive a sh-friendly list of LOCAL_COMMENT_EXCLUDE patterns, dropping any
-# .git-shadow/ paths and any extglob-style patterns that sh cannot handle.
-EXCLUDE_TRIPLE_LIST=""
-for pat in $LOCAL_COMMENT_EXCLUDE; do
-  case "$pat" in
-    .git-shadow/*) continue ;;
-  esac
-  # Drop patterns that contain an opening parenthesis (extglob).
-  case "$pat" in
-    *\(*) continue ;;
-  esac
-  EXCLUDE_TRIPLE_LIST="${EXCLUDE_TRIPLE_LIST}${EXCLUDE_TRIPLE_LIST:+ }$pat"
-done
+# The generated pre-commit hook runs under bash with extglob enabled, so the
+# full LOCAL_COMMENT_EXCLUDE list can be embedded verbatim.
+EXCLUDE_TRIPLE_LIST="$LOCAL_COMMENT_EXCLUDE"
 
 # ---------------------------------------------------------------------------
 # pre-commit hook — rejects commits on public branches unless GIT_SHADOW=1,
@@ -39,8 +29,12 @@ mkdir -p "$(dirname "$pre_commit_file")"
 
 pre_commit_hook_template() {
   cat <<'HOOK'
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -e
+# Keep glob patterns in $EXCLUDE_TRIPLE literal when iterating; enable extglob
+# so LOCAL_COMMENT_EXCLUDE patterns are matched with extended glob semantics.
+set -f
+shopt -s extglob
 
 tmp_list="$(mktemp -t git-shadow-pre-commit.XXXXXX)"
 trap 'rm -f "$tmp_list"' EXIT

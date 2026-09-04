@@ -43,11 +43,7 @@ EOF
 }
 
 @test "annotations extract: // @local marker is removed and recorded" {
-  cat > "$SRC" <<-'EOF'
-public before
-// @local note
-public after
-EOF
+  printf 'public before\n// @local note\npublic after\n' > "$SRC"
   python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
     --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
     --extract-triple 1 --extract-local 1 \

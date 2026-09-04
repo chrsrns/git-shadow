@@ -241,7 +241,7 @@ Unpromoted local-only files on public branch 'main':
 - If the file should be public, remove it from the public branch, add it as a normal public commit on `@local` (or commit it on the public branch with `GIT_SHADOW=1`), and re-publish/push.
 - After fixing, re-run `git shadow check public <branch>`.
 
-**Note:** The diff-sync model has no `shadow: promote` step and no `LOCAL_COMMENT_PATTERN`. Local-only content belongs in separate files and is committed manually as `[MEMORY]`.
+**Note:** Use `///` or `// @local` markers to keep local-only reasoning directly in source files. Run `git shadow commit` to split them into a clean public commit and a `[MEMORY]` sidecar stored in `.git-shadow/annotations/`. Use `git shadow show --with-annotations <file>` to view the source with markers overlaid. See `AGENTS.md` and `docs/shadow-branch-pattern.md` for the full workflow.
 
 ---
 

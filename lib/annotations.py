@@ -103,6 +103,7 @@ def parse_annotations(text, pattern_triple=None, pattern_local=None, for_marker_
             search_lines = []
             replace_sections = []
             section = None
+            orphan = False
             while i < n:
                 current = lines[i]
                 if current.startswith("## hunk "):
@@ -118,6 +119,7 @@ def parse_annotations(text, pattern_triple=None, pattern_local=None, for_marker_
                     continue
                 if current == "### orphan":
                     section = "orphan"
+                    orphan = True
                     i += 1
                     continue
                 if section == "search":
@@ -144,6 +146,7 @@ def parse_annotations(text, pattern_triple=None, pattern_local=None, for_marker_
                 "marker_groups": marker_groups,
                 "split": split,
                 "original_pos": original_pos,
+                "orphan": orphan,
             })
         else:
             i += 1
@@ -206,6 +209,9 @@ def render_annotated(source_lines, records, patterns, for_reapply=False):
     orphans = []
     for rec in records:
         search = rec["search_lines"]
+        if rec.get("orphan"):
+            orphans.append(rec["key"])
+            continue
         pos = find_subarray(source_lines, search, idx)
         if pos == -1:
             orphans.append(rec["key"])
@@ -359,6 +365,8 @@ def records_to_text(records, keep_all_replaces=True):
             parts.append("### replace")
             for line in rep:
                 parts.append(line)
+        if rec.get("orphan"):
+            parts.append("### orphan")
     return "\n".join(parts) + "\n" if parts else ""
 
 
@@ -403,6 +411,12 @@ def extract(source_text, pattern_triple, pattern_local, extract_triple, extract_
     is_marker = [is_marker_line(line, patterns) for line in lines]
 
     if not any(is_marker):
+        if existing_records:
+            # No markers in the staged source: every existing key is absent,
+            # so all records are kept but marked orphan.
+            for rec in existing_records:
+                rec["orphan"] = True
+            return source_text, existing_records, False, False, None
         return source_text, [], False, False, None
 
     # marker-only if all lines are markers
@@ -489,8 +503,12 @@ def extract(source_text, pattern_triple, pattern_local, extract_triple, extract_
 
     # Merge with existing records. For git shadow commit semantics, a newly
     # extracted hunk with the same key replaces the old replace section(s).
+    # Keys not present in the staged source are kept but marked orphan.
     if existing_records:
+        new_keys = {r["key"] for r in records}
         records = merge_records(existing_records, records, mode="replace")
+        for rec in records:
+            rec["orphan"] = rec["key"] not in new_keys
 
     # clean content: remove active marker lines
     clean_text = "\n".join(clean_lines)

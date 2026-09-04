@@ -252,3 +252,55 @@ EOF
   search_lines=$(awk '/### search/{f=1; next} /### replace/{f=0} f' "$RECORDS" | wc -l)
   [ "$search_lines" -eq 3 ]
 }
+
+@test "annotations extract: keys absent from source are marked orphan" {
+  printf 'aaa\n/// note one\nbbb\nccc\n/// note two\nddd\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --clean-out "$CLEAN" --records-out "$RECORDS" --meta-out "$META"
+
+  # Remove the second marker and re-extract against the existing sidecar.
+  printf 'aaa\n/// note one\nbbb\nccc\nddd\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --existing-annotations "$RECORDS" \
+    --clean-out "$CLEAN" --records-out "$OUT" --meta-out "$META"
+
+  # Both records are kept; only the absent key is flagged orphan.
+  [ "$(grep -c '## hunk' "$OUT")" -eq 2 ]
+  [ "$(grep -c '### orphan' "$OUT")" -eq 1 ]
+
+  # The orphan record is skipped on render: the removed marker is not
+  # resurrected.
+  run python3 "$TOOLKIT_ROOT/lib/annotations.py" render \
+    --source "$CLEAN" --annotations "$OUT" --output "${TEST_DIR}/tmp/rendered.txt" \
+    --pattern-triple '^\s*///' --pattern-local '^\s*// @local'
+  [ "$status" -eq 0 ]
+  grep -q '/// note one' "${TEST_DIR}/tmp/rendered.txt"
+  run grep -q '/// note two' "${TEST_DIR}/tmp/rendered.txt"
+  [ "$status" -ne 0 ]
+}
+
+@test "annotations extract: removing all markers orphans every existing record" {
+  printf 'aaa\n/// note one\nbbb\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --clean-out "$CLEAN" --records-out "$RECORDS" --meta-out "$META"
+
+  printf 'aaa\nbbb\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --existing-annotations "$RECORDS" \
+    --clean-out "$CLEAN" --records-out "$OUT" --meta-out "$META"
+
+  # The record is kept in the sidecar but flagged orphan.
+  [ "$(grep -c '## hunk' "$OUT")" -eq 1 ]
+  [ "$(grep -c '### orphan' "$OUT")" -eq 1 ]
+  source "$META"
+  [ "$record_count" = "1" ]
+  [ "$has_markers" = "false" ]
+}

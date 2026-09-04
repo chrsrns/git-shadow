@@ -93,3 +93,56 @@ teardown() {
   # Annotation sidecar records the @local marker.
   [ -f .git-shadow/annotations/app.cs ]
 }
+
+@test "commit: preserves unstaged non-marker changes in public-tracked files" {
+  git shadow feature start my-feature
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  printf 'public before\n/// local note\npublic after\nunstaged change\n' > file.txt
+  run git shadow commit -m "add note"
+  [ "$status" -eq 0 ]
+
+  # Public tree has no marker and no unstaged change.
+  run git show HEAD~1:file.txt
+  [[ "$output" == *"public before"* ]]
+  [[ "$output" == *"public after"* ]]
+  [[ "$output" != *"/// local note"* ]]
+  [[ "$output" != *"unstaged change"* ]]
+
+  # Working tree has the clean content plus the unstaged change.
+  run cat file.txt
+  [[ "$output" == *"public before"* ]]
+  [[ "$output" == *"public after"* ]]
+  [[ "$output" == *"unstaged change"* ]]
+  [[ "$output" != *"/// local note"* ]]
+}
+
+@test "commit: [MEMORY] sidecar bypasses pre-commit hook" {
+  git shadow feature start my-feature
+  run git shadow install-hooks
+  [ "$status" -eq 0 ]
+  [ -f .git/hooks/pre-commit ]
+
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  run git shadow commit -m "add note"
+  [ "$status" -eq 0 ]
+}
+
+@test "commit: marker-only public file is removed from public tree and stored in [MEMORY]" {
+  git shadow feature start my-feature
+  printf '/// only markers\n// @local too\n' > file.txt
+  git add file.txt
+  run git shadow commit -m "marker only"
+  [ "$status" -eq 0 ]
+
+  # Public commit deleted the file.
+  run git show "HEAD~1:file.txt"
+  [ "$status" -ne 0 ]
+
+  # [MEMORY] commit has the marker content.
+  run git show "HEAD:file.txt"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/// only markers"* ]]
+  [[ "$output" == *"// @local too"* ]]
+}

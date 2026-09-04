@@ -99,14 +99,6 @@ declare -a CHECKOUT_PATHS=()
 declare -a MEMORY_PATHS=()
 declare -a ANNOTATION_PATHS=()
 
-# Empty file blob, for marker-only public files.
-EMPTY_BLOB="e69de29bb2d1d6434b8b29ae775ad8c2e48c5391"
-
-# Verify and load the empty blob into the object database if needed.
-if ! git rev-parse --verify "$EMPTY_BLOB" >/dev/null 2>&1; then
-  EMPTY_BLOB="$(printf '' | git hash-object -w --stdin)"
-fi
-
 # Helper: determine whether a staged file is binary.
 _is_binary() {
   local path="$1"
@@ -171,9 +163,9 @@ for path in "${STAGED[@]}"; do
   fi
 
   if $binary; then
-    # Binary files are included unchanged; no annotation extraction.
+    # Binary files are included unchanged; no annotation extraction and no
+    # working-tree update (unstaged binary changes are preserved).
     PUBLIC_PATHS+=("$relpath")
-    CHECKOUT_PATHS+=("$relpath")
     continue
   fi
 
@@ -202,8 +194,11 @@ for path in "${STAGED[@]}"; do
   if [[ "$marker_only" == "true" ]]; then
     # Marker-only file.
     if $public; then
-      # Keep it in [MEMORY] as a local-only file, but make the public tree empty.
-      git update-index --add --cacheinfo 100644 "$EMPTY_BLOB" "$relpath"
+      # Public-tracked marker-only file: remove it from the public index so the
+      # public commit deletes it, then commit the marker content in [MEMORY] as
+      # a local-only file.  Do not write an empty public blob and do not store
+      # the markers in .git-shadow/annotations (there is no public context).
+      git rm -q --cached "$relpath" 2>/dev/null || true
       MEMORY_PATHS+=("$relpath")
     else
       # Not public-tracked: remove from index, commit as-is in [MEMORY].
@@ -265,8 +260,22 @@ else
 fi
 
 # Update the working tree for public source files that are not marker-only.
+# Preserve unstaged non-marker changes by applying the staged→clean diff via
+# a three-way merge; on conflict the working tree is left unchanged.
 if [[ ${#CHECKOUT_PATHS[@]} -gt 0 ]]; then
-  git checkout -- "${CHECKOUT_PATHS[@]}"
+  for path in "${CHECKOUT_PATHS[@]}"; do
+    relpath="$path"
+    staged_tmp="$TMP_DIR/staged_${relpath////_}"
+    clean_tmp="$TMP_DIR/clean_${relpath////_}"
+    merged_tmp="$TMP_DIR/merged_${relpath////_}"
+    if [[ -f "$staged_tmp" && -f "$clean_tmp" && -f "$relpath" ]]; then
+      if git merge-file -p "$relpath" "$staged_tmp" "$clean_tmp" > "$merged_tmp" 2>/dev/null; then
+        cp "$merged_tmp" "$relpath"
+      else
+        ui_warn "Unstaged changes in $relpath conflict with marker removal; working tree left unchanged."
+      fi
+    fi
+  done
 fi
 
 # Stage [MEMORY] content.
@@ -288,7 +297,7 @@ if [[ ${#MEMORY_PATHS[@]} -gt 0 ]]; then
   fi
 
   if ! git diff --cached --quiet; then
-    git commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
+    env GIT_SHADOW=1 git commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
     ui_shadow "Memory sidecar committed."
   else
     ui_info "No memory changes to commit."

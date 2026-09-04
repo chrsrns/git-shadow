@@ -45,15 +45,31 @@ annotations_triple_excluded() {
     return 1
   fi
 
+  # Patterns are Bash extended globs. Disable pathname expansion so patterns
+  # like .git-shadow/!(annotations) are not expanded to concrete files before
+  # case can match them; keep extglob on so the patterns work in case.
   local pattern
+  local old_flags="$-"
+  local extglob_restore
+  extglob_restore="$(shopt -p extglob)"
+  set -f
   shopt -s extglob
   # shellcheck disable=SC2206
   for pattern in $LOCAL_COMMENT_EXCLUDE; do
     case "$relpath" in
-      $pattern) shopt -u extglob; return 0 ;;
+      $pattern) 
+        if [[ "$old_flags" != *f* ]]; then
+          set +f
+        fi
+        $extglob_restore
+        return 0 
+        ;;
     esac
   done
-  shopt -u extglob
+  if [[ "$old_flags" != *f* ]]; then
+    set +f
+  fi
+  $extglob_restore
   return 1
 }
 

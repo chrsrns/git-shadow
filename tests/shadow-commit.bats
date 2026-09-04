@@ -207,3 +207,20 @@ teardown() {
   run git show "HEAD~1:bin.dat"
   [ "$status" -eq 0 ]
 }
+
+@test "commit: keeps /// markers in deeply nested .git-shadow/ paths" {
+  git shadow feature start my-feature
+  mkdir -p .git-shadow/config.d/nested
+  printf '/// nested note\npublic config\n' > .git-shadow/config.d/nested/example.md
+  git add .git-shadow/config.d/nested/example.md
+  run git shadow commit -m "add config"
+  [ "$status" -eq 0 ]
+
+  # Public commit keeps the /// marker.
+  run git show HEAD:.git-shadow/config.d/nested/example.md
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/// nested note"* ]]
+
+  # No annotation sidecar for the excluded path.
+  [ ! -f .git-shadow/annotations/.git-shadow/config.d/nested/example.md ]
+}

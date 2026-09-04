@@ -56,6 +56,8 @@ Commands:
   doctor
   status [--json]
   commit -m <message>
+  show --with-annotations <file>
+  annotations reapply [path]
   completion install
   feature start <name>
   feature publish

@@ -47,4 +47,16 @@ Type `git show HEAD~1:auth.ts`
 Enter
 Sleep 4s
 
+# ── 5. Review the annotated committed source ─────────────────────────────────
+Sleep 300ms
+Type `git shadow show --with-annotations auth.ts`
+Enter
+Sleep 4s
+
+# ── 6. Re-apply markers to the working tree for editing ─────────────────────
+Sleep 300ms
+Type `git shadow annotations reapply auth.ts`
+Enter
+Sleep 4s
+
 Sleep 1s

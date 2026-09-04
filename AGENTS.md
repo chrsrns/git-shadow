@@ -20,6 +20,15 @@ feature/x         → published branch
 The @local branch is for exploration, reasoning, debug code, pseudo-code, and local-only comments.
 The public branch is for clean, reviewable, shareable code.
 
+## Local comments workflow
+
+- Write local-only reasoning directly in source files with `///` or `// @local` markers.
+- `.git-shadow/annotations/<relpath>` stores extracted markers and is gitignored; it is a local-only sidecar.
+- Run `git shadow commit -m "<public message>"` on a `@local` branch to split staged changes into a clean public commit and a `[MEMORY]` sidecar.
+- Use `git shadow show --with-annotations <file>` to view the committed source with markers overlaid.
+- Use `git shadow annotations reapply [path]` to write markers back into the working tree for editing.
+- Do not rely on publish-time stripping; always use `git shadow commit` to remove markers from public commits before `git shadow feature publish`.
+
 ## Agent behavior rules
 
 1. Default to the shadow branch

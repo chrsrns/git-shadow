@@ -6,6 +6,8 @@ setup() {
   TEST_DIR="$(mktemp -d)"
   XDG_DIR="$(mktemp -d)"
   export XDG_CONFIG_HOME="$XDG_DIR"
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export TOOLKIT_ROOT
   cd "$TEST_DIR"
   git init -q
   git config user.name "Test User"
@@ -13,6 +15,7 @@ setup() {
   echo "initial" > file.txt
   git add file.txt
   git commit -qm "initial"
+  PATH="$TOOLKIT_ROOT/bin:$PATH"
 }
 
 teardown() {
@@ -55,6 +58,42 @@ teardown() {
   run git shadow config list --json
   [[ "$output" == *'"key":"LOCAL_SUFFIX"'* ]]
   [[ "$output" == *'"default":"@local"'* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Local comment configuration
+# ---------------------------------------------------------------------------
+
+@test "config list includes local comment pattern keys" {
+  run git shadow config list
+  [[ "$output" == *"LOCAL_COMMENT_PATTERN_TRIPLE"* ]]
+  [[ "$output" == *"LOCAL_COMMENT_PATTERN_LOCAL"* ]]
+  [[ "$output" == *"LOCAL_COMMENT_EXCLUDE"* ]]
+  [[ "$output" == *"ANNOTATION_FUZZY_THRESHOLD"* ]]
+}
+
+@test "config get returns default local comment pattern triple" {
+  run git shadow config get LOCAL_COMMENT_PATTERN_TRIPLE
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"^\\s*///"* ]]
+}
+
+@test "config get returns default local comment pattern local" {
+  run git shadow config get LOCAL_COMMENT_PATTERN_LOCAL
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"^\\s*// @local"* ]]
+}
+
+@test "config get returns default local comment exclude" {
+  run git shadow config get LOCAL_COMMENT_EXCLUDE
+  [ "$status" -eq 0 ]
+  [[ "$output" == *".git-shadow"* ]]
+}
+
+@test "config get returns default annotation fuzzy threshold" {
+  run git shadow config get ANNOTATION_FUZZY_THRESHOLD
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"0.80"* ]]
 }
 
 # ---------------------------------------------------------------------------

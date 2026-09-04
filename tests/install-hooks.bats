@@ -2,10 +2,13 @@
 
 setup() {
   TEST_DIR="$(mktemp -d)"
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export TOOLKIT_ROOT
   cd "$TEST_DIR"
   git init -q
   git config user.name "Test User"
   git config user.email "test@example.com"
+  PATH="$TOOLKIT_ROOT/bin:$PATH"
 }
 
 teardown() {
@@ -108,6 +111,27 @@ teardown() {
   git add file.txt
   run git commit -q -m "local commit"
   [ "$status" -eq 0 ]
+}
+
+@test "pre-commit honors extglob patterns in LOCAL_COMMENT_EXCLUDE" {
+  git commit --allow-empty -q -m "initial"
+  git checkout -q -b "test@local"
+  printf 'LOCAL_COMMENT_EXCLUDE="docs/!(public).md"\n' > .git-shadow.env
+  git shadow install-hooks
+
+  # docs/internal.md matches docs/!(public).md → /// check is skipped.
+  mkdir -p docs
+  printf 'public\n/// local note\n' > docs/internal.md
+  git add docs/internal.md
+  run git commit -q -m "excluded file with /// marker"
+  [ "$status" -eq 0 ]
+
+  # docs/public.md does NOT match the extglob → /// is still rejected.
+  printf 'public\n/// local note\n' > docs/public.md
+  git add docs/public.md
+  run git commit -q -m "not excluded"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"/// markers"* ]]
 }
 
 @test "pre-push rejects a public branch push without GIT_SHADOW" {

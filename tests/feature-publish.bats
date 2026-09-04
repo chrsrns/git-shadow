@@ -2,6 +2,9 @@
 
 setup() {
   TEST_DIR="$(mktemp -d)"
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export TOOLKIT_ROOT
+  PATH="$TOOLKIT_ROOT/bin:$PATH"
   cd "$TEST_DIR"
   git init -q
   git config user.name "Test User"
@@ -67,4 +70,19 @@ teardown() {
   git shadow feature publish
   subject="$(git log -1 --format='%s' test-feature@local)"
   [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature publish allows excluded docs with marker examples" {
+  mkdir -p docs
+  cat > docs/git-shadow-as-ia-memory-layer.md <<'EOF'
+```ts
+/// This is an example local note.
+```
+EOF
+  git add docs/git-shadow-as-ia-memory-layer.md
+  git commit -m "docs: add marker example"
+
+  run git shadow feature publish
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Published to"* ]]
 }

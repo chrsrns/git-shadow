@@ -55,6 +55,9 @@ Commands:
   install-hooks
   doctor
   status [--json]
+  commit -m <message>
+  show --with-annotations <file>
+  annotations reapply [path]
   completion install
   feature start <name>
   feature publish
@@ -71,6 +74,7 @@ Commands:
   config unset <KEY> [--project-config|--user-config]
 
 Examples:
+  git shadow commit -m "add user model"
   git shadow feature start feature/login
   git shadow feature publish
   git shadow feature sync

@@ -136,3 +136,18 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *".git-shadow/annotations"* ]]
 }
+
+@test "show: reads committed sidecar, not working tree" {
+  git shadow feature start my-feature
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Remove the working-tree sidecar; only the committed version remains.
+  rm -f .git-shadow/annotations/file.txt
+
+  run git shadow show --with-annotations file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/// local note"* ]]
+  [[ "$output" == *"public before"* ]]
+}

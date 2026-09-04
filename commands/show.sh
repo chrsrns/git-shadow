@@ -52,17 +52,6 @@ if ! $WITH_ANNOTATIONS; then
   exit 1
 fi
 
-ann_path=".git-shadow/annotations/$FILE"
-if [[ ! -f "$ann_path" ]]; then
-  # Fall back to the committed source if there is no sidecar.
-  if git show "HEAD:$FILE" 2>/dev/null; then
-    exit 0
-  else
-    ui_error "File not found in HEAD or annotations: $FILE"
-    exit 1
-  fi
-fi
-
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -72,7 +61,14 @@ if ! git show "HEAD:$FILE" > "$source_tmp" 2>/dev/null; then
   exit 1
 fi
 
-if ! annotations_render "$source_tmp" "$ann_path"; then
-  ui_error "Failed to render annotations for $FILE"
-  exit 1
+ann_path=".git-shadow/annotations/$FILE"
+if git rev-parse "HEAD:$ann_path" >/dev/null 2>&1; then
+  ann_tmp="$TMP_DIR/annotations"
+  git show "HEAD:$ann_path" > "$ann_tmp" 2>/dev/null || true
+  if ! annotations_render "$source_tmp" "$ann_tmp"; then
+    ui_error "Failed to render annotations for $FILE"
+    exit 1
+  fi
+else
+  cat "$source_tmp"
 fi

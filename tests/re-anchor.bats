@@ -7,6 +7,10 @@ setup() {
   git config user.name "Test User"
   git config user.email "test@example.com"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Create a public base and a feature using git shadow
   git symbolic-ref HEAD refs/heads/main
   echo "initial" > file.txt
@@ -85,6 +89,66 @@ teardown() {
 
   run git shadow re-anchor feature-foo@local
   [ "$status" -ne 0 ]
+}
+
+@test "re-anchor re-anchors sidecars when public source changes" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Create a sidecar on the local base.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Public base gets an additional commit that changes a line in the hunk.
+  git checkout -q main
+  cat > file.txt <<-'EOF'
+A
+B2
+C
+EOF
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "change B"
+  git push -q origin main
+
+  # Update the local source to match the new public tree.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B2
+C
+EOF
+  git add file.txt
+  git commit -q -m "update source"
+
+  run git shadow re-anchor main@local
+  [ "$status" -eq 0 ]
+
+  [ "$(cat file.txt)" = $'A\nB2\nC' ]
+  run git shadow show --with-annotations file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"B2"* ]]
+  [[ "$output" == *"/// note"* ]]
+
+  # Checkpoint should record patch-ids for all public commits (M7).
+  body="$(git log -1 --format='%b' main@local)"
+  [[ "$body" == *"patches:"* ]]
+}
+
+@test "re-anchor refuses to run while a sync is in progress" {
+  # Force a sync state file.
+  mkdir -p .git
+  echo "base main@local" > .git/git-shadow-sync
+
+  git checkout -q "feature-foo@local"
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sync is in progress"* ]]
 }
 
 @test "re-anchor works when local tree only adds local-only files" {

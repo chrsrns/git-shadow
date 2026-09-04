@@ -11,6 +11,9 @@ setup() {
   echo "initial" > file.txt
   git add file.txt
   git commit -q -m "initial"
+
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
 }
 
 teardown() {
@@ -76,6 +79,56 @@ teardown() {
 
   # Local base still has the public content
   [ "$(cat file.txt)" = $'initial\npublic change' ]
+}
+
+@test "base sync re-anchors annotation sidecars" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Create a public base commit with the clean source.
+  cat > file.txt <<-'EOF'
+A
+B
+C
+EOF
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "add ABC"
+
+  git checkout -q -b main@local
+  git shadow base sync
+
+  # Add a marker on the local branch and commit with git shadow.
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Public base changes a line inside the hunk.
+  git checkout -q main
+  cat > file.txt <<-'EOF'
+A
+B2
+C
+EOF
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "change B"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+
+  # Source is clean but rendered view includes re-anchored marker.
+  [ "$(cat file.txt)" = $'A\nB2\nC' ]
+  run git shadow show --with-annotations file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"B2"* ]]
+  [[ "$output" == *"/// note"* ]]
+
+  # A [MEMORY] re-anchor sidecar commit was created.
+  git log --format='%s' -n 4 main@local | grep -q 're-anchor sidecars'
 }
 
 @test "base sync --abort restores local branch" {

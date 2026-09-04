@@ -12,6 +12,10 @@ setup() {
   git add app.ts
   git commit -qm "initial"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Create feature pair using git shadow so an initial checkpoint exists.
   git shadow feature start feature-foo
 
@@ -157,6 +161,43 @@ teardown() {
   run git shadow feature sync --recover
   [ "$status" -eq 0 ]
   [[ "$output" == *"already up to date"* ]]
+}
+
+@test "feature sync re-anchors annotation sidecars" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Add a marker on the local branch and publish the clean public commit.
+  git checkout -q "feature-foo@local"
+  cat > app.ts <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add app.ts
+  git shadow commit -q -m "add note"
+  git shadow feature publish
+
+  # Colleague adds a public commit that changes a line in the hunk.
+  git checkout -q feature-foo
+  cat > app.ts <<-'EOF'
+A
+B2
+C
+EOF
+  git add app.ts
+  GIT_SHADOW=1 git commit -q -m "change B"
+
+  git checkout -q "feature-foo@local"
+  run git shadow feature sync
+  [ "$status" -eq 0 ]
+
+  # Source is clean but rendered view includes re-anchored marker.
+  [ "$(cat app.ts)" = $'A\nB2\nC' ]
+  run git shadow show --with-annotations app.ts
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"B2"* ]]
+  [[ "$output" == *"/// note"* ]]
 }
 
 @test "feature sync exits with warning when run on the local base branch" {

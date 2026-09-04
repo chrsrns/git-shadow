@@ -146,3 +146,12 @@ teardown() {
   [[ "$output" == *"/// only markers"* ]]
   [[ "$output" == *"// @local too"* ]]
 }
+
+@test "commit: aborts on staged conflict markers" {
+  git shadow feature start my-feature
+  printf 'public before\n<<<<<<< HEAD\nconflict\n=======\nother\n>>>>>>> branch\npublic after\n' > file.txt
+  git add file.txt
+  run git shadow commit -m "conflict"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"conflict marker"* ]]
+}

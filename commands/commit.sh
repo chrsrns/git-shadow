@@ -93,6 +93,14 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 mapfile -t STAGED < <(git diff --cached --name-only --diff-filter=ACMRT)
 mapfile -t DELETED < <(git diff --cached --name-only --diff-filter=D)
 
+# Abort if staged content contains conflict markers.
+conflict_output="$(git diff --cached --check 2>&1 || true)"
+if [[ -n "$conflict_output" ]] && grep -q "conflict marker" <<< "$conflict_output"; then
+  ui_error "Staged content contains conflict markers."
+  echo "$conflict_output" >&2
+  exit 1
+fi
+
 # Arrays for bookkeeping.
 declare -a PUBLIC_PATHS=()
 declare -a CHECKOUT_PATHS=()

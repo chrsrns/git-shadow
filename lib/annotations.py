@@ -410,6 +410,7 @@ def extract(source_text, pattern_triple, pattern_local, extract_triple, extract_
         return "", [], True, True, None
 
     clean_lines = [line for line, marker in zip(lines, is_marker) if not marker]
+    clean_norm = normalize_block(clean_lines)
 
     # find marker blocks
     blocks = []
@@ -453,20 +454,20 @@ def extract(source_text, pattern_triple, pattern_local, extract_triple, extract_
         # expand until the search block is unique in the clean source
         while True:
             search_lines = before + after
-            if count_subarray(clean_lines, search_lines) == 1:
+            if count_subarray(clean_norm, normalize_block(search_lines)) == 1:
                 break
             expanded = False
             if can_before(b_pos):
                 before.insert(0, lines[b_pos])
                 b_pos -= 1
                 expanded = True
-                if count_subarray(clean_lines, before + after) == 1:
+                if count_subarray(clean_norm, normalize_block(before + after)) == 1:
                     break
             if can_after(a_pos):
                 after.append(lines[a_pos])
                 a_pos += 1
                 expanded = True
-                if count_subarray(clean_lines, before + after) == 1:
+                if count_subarray(clean_norm, normalize_block(before + after)) == 1:
                     break
             if not expanded:
                 return None, [], True, False, f"cannot find unique search block for marker at line {start + 1}"

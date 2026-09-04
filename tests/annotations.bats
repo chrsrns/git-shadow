@@ -238,3 +238,17 @@ EOF
     --clean-out "$CLEAN" --records-out "$RECORDS" --meta-out "$META"
   [ "$status" -ne 0 ]
 }
+
+@test "annotations extract: uniqueness test normalizes trailing whitespace" {
+  # 'foo   ' and 'foo' normalize to the same line, so the 2-line block
+  # 'foo/bar' is NOT unique after normalization. Extraction must expand the
+  # search block to include 'top' (3 lines) instead of stopping at 2.
+  printf 'top\nfoo   \n/// note\nbar\nmid\nfoo\nbar\nbottom\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source "$SRC" --pattern-triple '^\s*///' --pattern-local '^\s*// @local' \
+    --extract-triple 1 --extract-local 1 \
+    --clean-out "$CLEAN" --records-out "$RECORDS" --meta-out "$META"
+
+  search_lines=$(awk '/### search/{f=1; next} /### replace/{f=0} f' "$RECORDS" | wc -l)
+  [ "$search_lines" -eq 3 ]
+}

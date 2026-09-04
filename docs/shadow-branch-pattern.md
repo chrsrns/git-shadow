@@ -69,16 +69,19 @@ feature/x@local
 feature/x@local
 ```
 
-3. Keep development scaffolding locally in `[MEMORY]` commits.
+3. Keep development scaffolding locally.
 
-Example:
+- Use `///` or `// @local` markers in source files for local-only reasoning.
+- Run `git shadow commit -m "<public message>"` on a `@local` branch to split staged changes into a clean public commit and a `[MEMORY]` sidecar stored under `.git-shadow/annotations/<relpath>`.
+- Use `git shadow show --with-annotations <file>` to view the committed source with markers overlaid.
+- Use `git shadow annotations reapply [path]` to write markers back into the working tree for editing.
 
 ```bash
-git add -f notes/feature-x-plan.md
-git commit -m "[MEMORY] design plan for feature/x"
+# Edit source with /// or // @local markers, then stage
+git shadow commit -m "add auth flow"
 ```
 
-`[MEMORY]` commits are kept only on the shadow branch and are filtered out when publishing to the public branch.
+`[MEMORY]` commits, including `.git-shadow/annotations/` sidecars, are kept only on the shadow branch and are filtered out when publishing to the public branch.
 
 4. Publish clean commits to the public branch.
 
@@ -183,8 +186,10 @@ Example usage:
 
 ```bash
 git shadow feature start feature/login
-# work on feature/login@local; use `git commit` for public work,
-# `git commit -m "[MEMORY] ..."` for local-only notes
+# work on feature/login@local; use `git shadow commit -m "..."` to split
+# public work from `///` and `// @local` markers stored in .git-shadow/annotations/
+# use `git shadow show --with-annotations <file>` to review annotated source
+# use `git shadow annotations reapply [path]` to edit with markers again
 git shadow feature publish
 git shadow push feature/login
 # after PR merge

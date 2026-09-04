@@ -86,43 +86,35 @@ Crucially, these annotations never leak into the public branch.
 
 Here's what this looks like on a real feature. The developer is building an authentication module with an AI assistant (Claude, Cursor, Copilot, etc.).
 
-On `feature/auth@local`, the source code is identical to what will be published, but the branch also contains a local-only memory file:
-
-```text
-# notes/auth-memory.md
-
-[MEMORY] auth module context
-
-- This service is the single entry point for auth.
-- The session store is Redis — see config/redis.ts for connection details.
-- Tokens must be invalidated on password change (see issue #142).
-- The team prefers throwing typed errors over returning error codes.
-- Step 1: fetch user — email is unique, findUnique is correct here.
-- Step 2: bcrypt compare — intentionally constant-time.
-- Step 3: create session with 30-day TTL (product decision, not a bug).
-```
+On `feature/auth@local`, the source code contains local-only markers that are stripped from the public branch:
 
 ```ts
-// feature/auth@local and feature/auth both contain this clean code
+// feature/auth@local
 
 export async function login(email: string, password: string): Promise<Session> {
+  /// This service is the single entry point for auth.
+  /// Step 1: fetch user — email is unique, findUnique is correct here.
   const user = await prisma.user.findUnique({ where: { email } })
   if (!user) throw new AuthError('INVALID_CREDENTIALS')
 
+  /// Step 2: bcrypt compare — intentionally constant-time.
   const valid = await bcrypt.compare(password, user.passwordHash)
   if (!valid) throw new AuthError('INVALID_CREDENTIALS')
 
+  /// Step 3: create session with 30-day TTL (product decision, not a bug).
   return sessionStore.create({ userId: user.id, ttl: 30 * 24 * 3600 })
 }
 ```
 
-The `@local` branch carries:
+The AI observations are written directly as `///` or `// @local` comments in the source file. When you run:
 
-- Architecture context the AI needs to not make incorrect assumptions
-- Decision notes explaining non-obvious choices (constant-time comparison, 30-day TTL)
-- Cross-references to issues and config files the AI should know about
+```bash
+git shadow commit -m "add auth flow"
+```
 
-These notes live in separate files and are committed as `[MEMORY]` commits. The source code itself stays clean. When you open the project with your AI tool, the memory file is available in the `@local` branch — the AI picks up the context without you re-explaining it.
+the markers are extracted into `.git-shadow/annotations/auth.ts` as a `[MEMORY]` sidecar, and the public commit contains the clean code. Use `git shadow show --with-annotations auth.ts` to review the source with markers overlaid, and `git shadow annotations reapply auth.ts` to write the markers back into the working tree for editing.
+
+The public branch receives only the clean code, while the `@local` branch keeps the annotated reasoning.
 
 # Versioned AI Memory
 

@@ -60,8 +60,8 @@ git diff feature/login feature/login@local
   ```
 - If the public *base* has moved, run `git shadow base sync` first.
 - Inspect the diff for **public-tracked files**. If a `[MEMORY]` commit changed a tracked file, split the change:
-  - Move the local-only content to a new local-only file.
-  - Commit it as `[MEMORY] <subject>`.
+  - If the local-only content is `///` or `// @local` markers, run `git shadow commit -m "<public message>"` to split them into a clean public commit and a `[MEMORY]` sidecar.
+  - Otherwise, move the local-only content to a new local-only file and commit it as `[MEMORY] <subject>`.
   - Revert the tracked-file change (use `git rebase -i` or `git commit --amend`).
 - Re-run `git shadow feature publish`.
 
@@ -410,3 +410,26 @@ If the binary exists but still fails with an error like `TOOLKIT_ROOT not found`
 ```bash
 curl -fsSL https://raw.githubusercontent.com/filozofer/git-shadow/main/install.sh | bash
 ```
+
+---
+
+## 11. Local comment markers leaked into a public commit
+
+**Symptom:** `git shadow feature publish` or `git shadow check public` aborts with a message about local-only markers or `.git-shadow/annotations/` paths in the public tree.
+
+**What happened:** A public commit contains `///` or `// @local` markers, or a `.git-shadow/annotations/` sidecar file was added to a public commit. Public commits must be clean of these artifacts.
+
+**Recovery:**
+
+- If you are still on the `@local` branch and the markers are in a public commit, split them:
+  ```bash
+  git reset --soft <public-commit>^
+  git shadow commit -m "clean public message"
+  ```
+- If the public branch has already been pushed, rewrite the public history (e.g. `git rebase -i`) to remove the markers or sidecar files, then force-push with care.
+
+**Prevention:**
+
+- Use `git shadow commit -m "..."` on `@local` branches to split public work from `///` and `// @local` markers.
+- Never run `git add .git-shadow/annotations/ ; git commit` on a public branch.
+- Install the pre-commit hook with `git shadow install-hooks` to catch staged markers before they are committed.

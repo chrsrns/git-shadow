@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **`git shadow commit -m "<message>"`** — split staged source into a clean public commit and a `[MEMORY]` sidecar. Extracts `///` and `// @local` markers into `.git-shadow/annotations/<relpath>` and re-anchors existing records by hunk key.
+- **`git shadow show --with-annotations <file>`** — render the committed source file with stored markers overlaid without modifying the working tree.
+- **`git shadow annotations reapply [path]`** — write markers from `.git-shadow/annotations/` back into the working tree as unstaged changes, refusing to overwrite non-marker changes.
+- **Local-comment guards** — the pre-commit hook on `@local` branches, `git shadow feature publish`, and `git shadow check public` now reject `///`, `// @local`, and `.git-shadow/annotations/` paths in public-tracked content.
+- **Updated docs and completions** — help, shell completions, and AGENTS.md reflect the in-source marker workflow.
+
 ## [1.1.1] — 2026-03-23
 
 ### Added

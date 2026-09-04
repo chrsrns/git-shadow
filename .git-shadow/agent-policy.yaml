@@ -27,7 +27,7 @@ behavior:
   allow_debug_code_in_shadow: true
   avoid_premature_cleanup_in_shadow: true
   require_clean_publish: true
-  strip_local_artifacts_on_publish: true
+  strip_local_artifacts_on_publish: false
 decision_rules:
   - when: "change supports reasoning, planning, or exploration"
     action: "keep in shadow branch"
@@ -37,9 +37,12 @@ agent_guidance:
   summary:
     - "Work in @local by default"
     - "Think explicitly when needed"
-    - "Keep reasoning visible in shadow branch"
+    - "Keep reasoning visible in shadow branch using /// and // @local markers"
+    - "Use git shadow commit to split public work from local markers"
+    - "Use git shadow show --with-annotations <file> to review annotated source"
+    - "Use git shadow annotations reapply [path] to edit with markers again"
     - "Publish only clean code"
-  short_rule: "Use @local to think. Use publish to share."
+  short_rule: "Use @local to think. Use git shadow commit to split. Use publish to share."
 compatibility:
   human_readable: true
   machine_readable: true

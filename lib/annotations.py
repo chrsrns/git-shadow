@@ -387,7 +387,7 @@ def records_to_text(records, keep_all_replaces=True):
     return "\n".join(parts) + "\n" if parts else ""
 
 
-def merge_records(base_records, feature_records, mode="append"):
+def merge_records(base_records, feature_records, mode="append", warn_on_differing=False):
     """Merge feature records into base.
 
     mode='append' (feature finish): same hunk key appends replace sections.
@@ -399,6 +399,12 @@ def merge_records(base_records, feature_records, mode="append"):
         key = frec["key"]
         if key in base_by_key:
             if mode == "append":
+                if warn_on_differing:
+                    base_reps = base_by_key[key]["replace_sections"]
+                    for f_rep in frec["replace_sections"]:
+                        f_norm = "\n".join(normalize_block(f_rep))
+                        if not any(f_norm == "\n".join(normalize_block(b_rep)) for b_rep in base_reps):
+                            warn(f"hunk {key}: feature replace section differs from base")
                 base_by_key[key]["replace_sections"].extend(frec["replace_sections"])
                 base_by_key[key]["marker_groups"].extend(frec["marker_groups"])
             else:
@@ -643,7 +649,7 @@ def main_merge(args):
     feature_text = load_text(args.feature)
     base_records = parse_annotations(base_text, for_marker_extraction=False)
     feature_records = parse_annotations(feature_text, for_marker_extraction=False)
-    merged = merge_records(base_records, feature_records, mode=args.mode)
+    merged = merge_records(base_records, feature_records, mode=args.mode, warn_on_differing=args.warn_differing)
     save_text(args.output, records_to_text(merged, keep_all_replaces=True))
 
 
@@ -698,6 +704,7 @@ def main():
     p_merge.add_argument("--feature", required=True)
     p_merge.add_argument("--output", required=True)
     p_merge.add_argument("--mode", default="append", choices=["append", "replace"])
+    p_merge.add_argument("--warn-differing", action="store_true", default=False)
     p_merge.set_defaults(func=main_merge)
 
     args = parser.parse_args()

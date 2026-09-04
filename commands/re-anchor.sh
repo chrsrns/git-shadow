@@ -14,6 +14,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 enter_project '.'
 ensure_clean_repo
 
+# Guard: do not re-anchor while a git-shadow sync is in progress.
+if [[ -f "$(sync_state_file)" ]]; then
+  ui_error "A git-shadow sync is in progress. Resolve it before re-anchoring."
+  exit 1
+fi
+
 if [[ $# -gt 0 ]]; then
   LOCAL_BRANCH="$1"
   shift
@@ -82,20 +88,21 @@ fi
 # ---------------------------------------------------------------------------
 # Create a fresh checkpoint
 # ---------------------------------------------------------------------------
+# V10: store patch-ids for all public commits reachable from the new head.
 PIDS=""
-LATEST_CP="$(checkpoint_latest "$LOCAL_BRANCH")"
-if [[ -n "$LATEST_CP" ]]; then
-  CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-  if git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_HEAD"; then
-    for pid in $(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_HEAD"); do
-      if [[ -n "$pid" ]]; then
-        PIDS="$PIDS $pid"
-      fi
-    done
-    PIDS="${PIDS# }"
+for sha in $(git rev-list --reverse "$PUBLIC_HEAD"); do
+  pid="$(patch_id_for "$sha")"
+  if [[ -n "$pid" ]]; then
+    PIDS="$PIDS $pid"
   fi
-fi
+done
+PIDS="${PIDS# }"
 
 git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1
-_new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$LOCAL_HEAD" $PIDS)"
+
+# Re-anchor local annotation sidecars to the (possibly rewritten) public source.
+annotations_reanchor_all_commit
+
+NEW_LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
+_new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$NEW_LOCAL_HEAD" $PIDS)"
 ui_ok "Re-anchored '$LOCAL_BRANCH' to '$PUBLIC_BRANCH'."

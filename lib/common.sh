@@ -27,6 +27,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"
 
+# Load local annotation helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/annotations.sh"
+
 # Load diff-sync check pass helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"

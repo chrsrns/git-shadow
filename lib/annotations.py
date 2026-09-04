@@ -390,6 +390,7 @@ def merge_records(base_records, feature_records, mode="append"):
                 base_by_key[key]["marker_groups"] = frec["marker_groups"]
                 base_by_key[key]["split"] = frec["split"]
                 base_by_key[key]["original_pos"] = frec["original_pos"]
+                base_by_key[key]["orphan"] = frec.get("orphan", False)
         else:
             base_records.append(frec)
     return base_records
@@ -625,7 +626,7 @@ def main_merge(args):
     feature_text = load_text(args.feature)
     base_records = parse_annotations(base_text, for_marker_extraction=False)
     feature_records = parse_annotations(feature_text, for_marker_extraction=False)
-    merged = merge_records(base_records, feature_records)
+    merged = merge_records(base_records, feature_records, mode=args.mode)
     save_text(args.output, records_to_text(merged, keep_all_replaces=True))
 
 
@@ -679,6 +680,7 @@ def main():
     p_merge.add_argument("--base", required=True)
     p_merge.add_argument("--feature", required=True)
     p_merge.add_argument("--output", required=True)
+    p_merge.add_argument("--mode", default="append", choices=["append", "replace"])
     p_merge.set_defaults(func=main_merge)
 
     args = parser.parse_args()

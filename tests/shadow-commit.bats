@@ -155,3 +155,30 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"conflict marker"* ]]
 }
+
+@test "commit: staged sidecar is merged by hunk key with the committed one" {
+  git shadow feature start my-feature
+  printf 'aaa\n/// note one\nbbb\nccc\n/// note two\nddd\n' > file.txt
+  git add file.txt
+  run git shadow commit -m "add notes"
+  [ "$status" -eq 0 ]
+
+  # Drop the second hunk from the sidecar and edit the first hunk's marker,
+  # then stage only the sidecar.
+  awk '/^## hunk / { h++ } h >= 2 { next } { print }' \
+    .git-shadow/annotations/file.txt | sed 's/note one/edited note/' \
+    > "$TEST_DIR/edited.md"
+  cp "$TEST_DIR/edited.md" .git-shadow/annotations/file.txt
+  git add -f .git-shadow/annotations/file.txt
+  run git shadow commit -m "update sidecar"
+  [ "$status" -eq 0 ]
+
+  # The committed sidecar must still contain both hunks: the dropped record is
+  # merged back from the committed version, and the staged edit to the first
+  # hunk wins.
+  run git show "HEAD:.git-shadow/annotations/file.txt"
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | grep -c '## hunk')" -eq 2 ]
+  [[ "$output" == *"edited note"* ]]
+  [[ "$output" == *"note two"* ]]
+}

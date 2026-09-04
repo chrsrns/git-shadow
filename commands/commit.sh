@@ -128,6 +128,18 @@ for path in "${STAGED[@]}"; do
   # Sidecar files are not source; they belong to [MEMORY].
   if [[ "$relpath" == .git-shadow/annotations/* ]]; then
     MEMORY_PATHS+=("$relpath")
+    # Merge the staged sidecar with the committed one by hunk key when the
+    # sidecar is already tracked. The staged version wins for keys it
+    # contains; committed-only records are kept.
+    committed_ann="$TMP_DIR/committed_ann_${relpath////_}.md"
+    if [[ -f "$relpath" ]] && git show "HEAD:$relpath" > "$committed_ann" 2>/dev/null; then
+      staged_ann="$TMP_DIR/staged_ann_${relpath////_}.md"
+      merged_ann="$TMP_DIR/merged_ann_${relpath////_}.md"
+      git show ":$relpath" > "$staged_ann"
+      if annotations_merge "$committed_ann" "$staged_ann" "$merged_ann" replace; then
+        cp "$merged_ann" "$relpath"
+      fi
+    fi
     # Make sure it is not in the public index.
     git reset -q HEAD -- "$relpath" 2>/dev/null || true
     continue

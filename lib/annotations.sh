@@ -182,14 +182,16 @@ annotations_reanchor() {
 
 # Merge feature annotation records into base records.
 #
-# Usage: annotations_merge <base> <feature> <output>
+# Usage: annotations_merge <base> <feature> <output> [mode]
+#   mode is 'append' (default) or 'replace'.
 annotations_merge() {
   local base="$1"
   local feature="$2"
   local output="$3"
+  local mode="${4:-append}"
   if ! _annotations_python_available; then
     echo "python3 is required for annotation merge" >&2
     return 1
   fi
-  python3 "$ANNOTATIONS_PY" merge --base "$base" --feature "$feature" --output "$output"
+  python3 "$ANNOTATIONS_PY" merge --base "$base" --feature "$feature" --output "$output" --mode "$mode"
 }

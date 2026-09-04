@@ -182,3 +182,28 @@ teardown() {
   [[ "$output" == *"edited note"* ]]
   [[ "$output" == *"note two"* ]]
 }
+
+@test "commit: LOCAL_COMMENT_EXCLUDE and binary files are public-tracked" {
+  git shadow feature start my-feature
+  # foo.cs matches the default LOCAL_COMMENT_EXCLUDE; /// is a doc marker.
+  printf '/// <summary>doc</summary>\npublic class X {}\n' > foo.cs
+  # bin.dat contains NUL bytes → binary, cannot be scanned for markers.
+  printf 'PK\x03\x04\x00\x00' > bin.dat
+  # file.txt carries a /// marker so a [MEMORY] commit is also created.
+  printf 'pub\n/// note\n' > file.txt
+  git add foo.cs bin.dat file.txt
+  run git shadow commit -m "add files"
+  [ "$status" -eq 0 ]
+
+  # Exclusion only affects /// scanning; the file is still public-tracked and
+  # lands in the public commit (parent of the [MEMORY] sidecar commit) with
+  # its /// doc comments intact.
+  run git show "HEAD~1:foo.cs"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"public class X"* ]]
+  [[ "$output" == *"/// <summary>"* ]]
+
+  # Binary files are public-tracked too; they publish unchanged.
+  run git show "HEAD~1:bin.dat"
+  [ "$status" -eq 0 ]
+}

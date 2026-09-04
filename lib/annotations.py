@@ -325,6 +325,7 @@ def reanchor_records(records, source_lines, patterns, threshold):
         fuzzy_pos, _ = find_fuzzy_match(search, source_lines, threshold, original_pos=original_pos)
         if fuzzy_pos is None:
             orphans.append(rec["key"])
+            rec["orphan"] = True
             new_records.append(rec)
             continue
         candidate = source_lines[fuzzy_pos:fuzzy_pos + len(search)]
@@ -333,15 +334,17 @@ def reanchor_records(records, source_lines, patterns, threshold):
             old_split = len(search) // 2
         new_split = align_split(search, candidate, old_split)
         marker_groups = rec["marker_groups"] or [[]]
-        all_markers = []
-        for mg in marker_groups:
-            all_markers.extend(mg)
-        new_replace = candidate[:new_split] + all_markers + candidate[new_split:]
+        # Regenerate one ### replace section per marker group so a record with
+        # multiple replace sections keeps all of them.
+        new_replaces = [
+            candidate[:new_split] + mg + candidate[new_split:]
+            for mg in marker_groups
+        ]
         new_key = key_for_search(candidate)
         new_records.append({
             "key": new_key,
             "search_lines": candidate,
-            "replace_sections": [new_replace],
+            "replace_sections": new_replaces,
             "marker_groups": marker_groups,
             "split": new_split,
         })

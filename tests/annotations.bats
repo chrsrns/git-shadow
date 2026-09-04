@@ -304,3 +304,49 @@ EOF
   [ "$record_count" = "1" ]
   [ "$has_markers" = "false" ]
 }
+
+@test "annotations reanchor: preserves multiple replace sections" {
+  # Merge two records with the same hunk key → one hunk, two replace sections
+  # (the feature-finish merge semantics).
+  cat > "$TEST_DIR/tmp/base.md" <<-'EOF'
+## hunk K1
+### search
+a
+b
+c
+### replace
+a
+/// base note
+b
+c
+EOF
+  cat > "$TEST_DIR/tmp/feature.md" <<-'EOF'
+## hunk K1
+### search
+a
+b
+c
+### replace
+a
+/// feature note
+b
+c
+EOF
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" merge \
+    --base "$TEST_DIR/tmp/base.md" --feature "$TEST_DIR/tmp/feature.md" \
+    --output "$TEST_DIR/tmp/merged.md"
+  [ "$(grep -c '### replace' "$TEST_DIR/tmp/merged.md")" -eq 2 ]
+
+  # Re-anchor against a source where 'b' changed to 'X': the search block no
+  # longer matches exactly, so the fuzzy path must rebuild the record.
+  printf 'a\nX\nc\n' > "$SRC"
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" reanchor \
+    --source "$SRC" --annotations "$TEST_DIR/tmp/merged.md" \
+    --output "$OUT" --threshold 0.5 \
+    --pattern-triple '^\s*///' --pattern-local '^\s*// @local'
+
+  # Both replace sections survive re-anchoring, each with its own marker.
+  [ "$(grep -c '### replace' "$OUT")" -eq 2 ]
+  grep -q '/// base note' "$OUT"
+  grep -q '/// feature note' "$OUT"
+}

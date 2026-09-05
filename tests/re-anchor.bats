@@ -140,6 +140,36 @@ EOF
   [[ "$body" == *"patches:"* ]]
 }
 
+@test "re-anchor removes sidecar when public source is deleted" {
+  # Create a sidecar on the local base.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Public base deletes the source file.
+  git checkout -q main
+  git rm -q file.txt
+  GIT_SHADOW=1 git commit -q -m "delete file"
+  git push -q origin main
+
+  # Local base mirrors the deletion.
+  git checkout -q main@local
+  git rm -q file.txt
+  git commit -q -m "delete file"
+
+  run git shadow re-anchor main@local
+  [ "$status" -eq 0 ]
+
+  [ ! -f file.txt ]
+  [ ! -f .git-shadow/annotations/file.txt ]
+}
+
 @test "re-anchor refuses to run while a sync is in progress" {
   # Force a sync state file.
   mkdir -p .git

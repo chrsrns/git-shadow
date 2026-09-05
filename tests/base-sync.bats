@@ -131,6 +131,42 @@ EOF
   git log --format='%s' -n 4 main@local | grep -q 're-anchor sidecars'
 }
 
+@test "base sync removes sidecar when public source is deleted" {
+  cat > file.txt <<-'EOF'
+A
+B
+C
+EOF
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "add ABC"
+
+  git checkout -q -b main@local
+  git shadow base sync
+
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  git checkout -q main
+  git rm -q file.txt
+  GIT_SHADOW=1 git commit -q -m "delete file"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+
+  [ ! -f file.txt ]
+  [ ! -f .git-shadow/annotations/file.txt ]
+
+  # A [MEMORY] re-anchor sidecar commit was created.
+  git log --format='%s' -n 4 main@local | grep -q 're-anchor sidecars'
+}
+
 @test "base sync --abort restores local branch" {
   git checkout -q -b main@local
   git shadow base sync

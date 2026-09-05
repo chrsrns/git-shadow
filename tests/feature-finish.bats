@@ -172,6 +172,67 @@ EOF
   [ "$(git show HEAD:.git-shadow/annotations/feature.txt | grep -c '### replace')" -eq 2 ]
 }
 
+@test "feature finish re-anchors merged sidecars to the final base source" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Public base gets a multi-line source.
+  git checkout -q main
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+line2
+EOF
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "expand feature.txt"
+
+  git checkout -q "main@local"
+  git shadow base sync
+
+  # Add a base marker on main@local.
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+/// base note
+line2
+EOF
+  git add feature.txt
+  git shadow commit -q -m "base note"
+
+  # Public base changes a line inside the hunk.
+  git checkout -q main
+  cat > feature.txt <<-'EOF'
+line1
+feature code 2
+line2
+EOF
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "change feature code"
+
+  # Feature has a marker on the same hunk.
+  git checkout -q "test-feature@local"
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+/// feature note
+line2
+EOF
+  git add feature.txt
+  git shadow commit -q -m "feature note"
+
+  # Finish the feature: base sync applies the public change and merges sidecars.
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+
+  git checkout -q "main@local"
+  [ "$(cat feature.txt)" = $'line1\nfeature code 2\nline2' ]
+
+  run git shadow show --with-annotations feature.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature code 2"* ]]
+  [[ "$output" == *"/// base note"* ]]
+  [[ "$output" == *"/// feature note"* ]]
+}
+
 @test "feature finish preserves branches on [MEMORY] conflict" {
   git checkout -q main
   git merge -q --no-edit test-feature

@@ -198,16 +198,87 @@ annotations_reanchor() {
 
 # Merge feature annotation records into base records.
 #
-# Usage: annotations_merge <base> <feature> <output> [mode]
+# Usage: annotations_merge <base> <feature> <output> [mode] [--warn-differing]
 #   mode is 'append' (default) or 'replace'.
+#   Pass --warn-differing as the 5th argument to emit warnings when a feature
+#   replace section differs from all base replace sections for the same hunk.
 annotations_merge() {
   local base="$1"
   local feature="$2"
   local output="$3"
   local mode="${4:-append}"
+  local warn_arg=""
+  if [[ "${5:-}" == "--warn-differing" ]]; then
+    warn_arg="--warn-differing"
+  fi
   if ! _annotations_python_available; then
     echo "python3 is required for annotation merge" >&2
     return 1
   fi
-  python3 "$ANNOTATIONS_PY" merge --base "$base" --feature "$feature" --output "$output" --mode "$mode"
+  python3 "$ANNOTATIONS_PY" merge --base "$base" --feature "$feature" --output "$output" --mode "$mode" ${warn_arg:+$warn_arg}
+}
+
+# Re-anchor every tracked .git-shadow/annotations sidecar against the current
+# HEAD source. Removes sidecars whose source file no longer exists. Stages
+# changed/deleted sidecars in the index.
+#
+# Usage: annotations_reanchor_all
+# Returns 0 after staging; the caller should check git diff --cached and
+# commit sidecar updates if any.
+annotations_reanchor_all() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local -a changed=()
+
+  local sidecar source_path source_tmp ann_tmp new_tmp
+  while IFS= read -r -d '' sidecar; do
+    source_path="${sidecar#.git-shadow/annotations/}"
+    [[ -z "$source_path" ]] && continue
+
+    source_tmp="$tmp_dir/source_${source_path////_}"
+    ann_tmp="$tmp_dir/ann_${sidecar////_}"
+    new_tmp="$tmp_dir/new_${sidecar////_}"
+
+    if git show "HEAD:$source_path" > "$source_tmp" 2>/dev/null; then
+      # Skip binary files; they never have sidecars.
+      if ! tr -d '\0' < "$source_tmp" | diff -q - "$source_tmp" >/dev/null 2>&1; then
+        continue
+      fi
+      if git show "HEAD:$sidecar" > "$ann_tmp" 2>/dev/null; then
+        : > "$new_tmp"
+        if annotations_reanchor "$source_tmp" "$ann_tmp" "$new_tmp" 2>/dev/null; then
+          if [[ ! -s "$new_tmp" ]]; then
+            # Re-anchored sidecar is empty: remove it.
+            if [[ -e "$sidecar" ]]; then
+              git rm -q -- "$sidecar" 2>/dev/null || rm -f "$sidecar"
+            fi
+            changed+=("$sidecar")
+          elif ! diff -q "$ann_tmp" "$new_tmp" >/dev/null 2>&1; then
+            cp "$new_tmp" "$sidecar"
+            git add -f -- "$sidecar"
+            changed+=("$sidecar")
+          fi
+        fi
+      fi
+    else
+      # Source file is gone: delete the orphaned sidecar.
+      if [[ -e "$sidecar" ]]; then
+        git rm -q -- "$sidecar" 2>/dev/null || rm -f "$sidecar"
+      fi
+      changed+=("$sidecar")
+    fi
+  done < <(git ls-tree -r -z --name-only HEAD -- .git-shadow/annotations/)
+
+  rm -rf "$tmp_dir"
+}
+
+# Re-anchor all tracked sidecars and, if any changed, commit the updates as a
+# local sidecar commit with the configured shadow commit prefix.
+#
+# Usage: annotations_reanchor_all_commit
+annotations_reanchor_all_commit() {
+  annotations_reanchor_all
+  if ! git diff --cached --quiet; then
+    env GIT_SHADOW=1 git commit -m "${SHADOW_COMMIT_PREFIX} re-anchor sidecars"
+  fi
 }

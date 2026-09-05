@@ -117,18 +117,20 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
     exit 1
   fi
 
-  git add -A
+  git add -A -- . ':(exclude).git-shadow.env'
   if sync_tree_changed; then
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH"
   fi
 fi
 
 # ---------------------------------------------------------------------------
-# Cherry-pick [MEMORY] commits from the feature's @local branch.
-# Use the merge-base with the local base so we do not re-apply base [MEMORY]
-# commits that are already on main@local.
+# Replay [MEMORY] commits from the feature's @local branch.
+# Apply non-sidecar changes with git apply, then merge .git-shadow/annotations
+# sidecars by hunk key and re-anchor them to the final base source. Use the
+# merge-base with the local base so we do not re-apply base [MEMORY] commits
+# that are already on main@local.
 # ---------------------------------------------------------------------------
-ui_shadow "Cherry-picking [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
+ui_shadow "Replaying [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
 MEMORY_SHAS=()
 MERGE_BASE="$(git merge-base "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE")"
 while IFS= read -r sha; do
@@ -139,24 +141,123 @@ while IFS= read -r sha; do
   fi
 done < <(git rev-list --reverse "${MERGE_BASE}..$FEATURE_LOCAL_BRANCH")
 
+# Collect [MEMORY] replay provenance already recorded on the local base so a
+# re-run can skip [MEMORY] commits that were previously applied.
+APPLIED_MEMORY_SHAS=()
+APPLIED_MEMORY_PIDS=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if [[ "$line" =~ ^git-shadow-source-memory:[[:space:]]*(.+)$ ]]; then
+    APPLIED_MEMORY_SHAS+=("${BASH_REMATCH[1]}")
+  elif [[ "$line" =~ ^git-shadow-source-pid:[[:space:]]*(.+)$ ]]; then
+    APPLIED_MEMORY_PIDS+=("${BASH_REMATCH[1]}")
+  fi
+done < <(git log --grep='^\[MEMORY\]' --format='%b' "$LOCAL_BASE")
+
+# Filter out [MEMORY] commits whose source SHA or patch-id is already on the
+# local base (e.g., from a previous feature finish).
+MEMORY_SHAS_UNIQUE=()
+for sha in "${MEMORY_SHAS[@]}"; do
+  skip=0
+  for applied_sha in "${APPLIED_MEMORY_SHAS[@]}"; do
+    if [[ "$applied_sha" == "$sha" ]]; then
+      skip=1
+      break
+    fi
+  done
+  if [[ "$skip" -eq 0 ]]; then
+    pid="$(patch_id_for "$sha")"
+    for applied_pid in "${APPLIED_MEMORY_PIDS[@]}"; do
+      if [[ "$applied_pid" == "$pid" ]]; then
+        skip=1
+        break
+      fi
+    done
+  fi
+  if [[ "$skip" -eq 0 ]]; then
+    MEMORY_SHAS_UNIQUE+=("$sha")
+  fi
+done
+MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
+
 if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
   LOCAL_BASE_HEAD_AFTER_SYNC="$(git rev-parse "$LOCAL_BASE")"
+  FINISH_TMP_DIR="$(mktemp -d)"
+  trap 'rm -rf "$FINISH_TMP_DIR"' 0
+
   for sha in "${MEMORY_SHAS[@]}"; do
-    if ! git cherry-pick --quiet "$sha" >/dev/null 2>&1; then
-      git cherry-pick --abort >/dev/null 2>&1 || true
+    subject="$(git log -1 --format='%s' "$sha")"
+
+    # Apply everything except .git-shadow/annotations/ sidecars.
+    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' | git apply --3way --allow-empty; then
       git reset --hard "$LOCAL_BASE_HEAD_AFTER_SYNC"
       KEEP_BRANCHES=1
-      ui_error "Conflict cherry-picking [MEMORY] commit $sha. Feature branches preserved. Resolve manually if needed."
+      ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'. Feature branches preserved."
       exit 1
+    fi
+
+    # Re-anchor and merge sidecars by hunk key.
+    while IFS=$'\t' read -r status ann_path; do
+      [[ -z "$status" ]] && continue
+      [[ "$ann_path" == .git-shadow/annotations/* ]] || continue
+      source_path="${ann_path#.git-shadow/annotations/}"
+
+      source_tmp="$FINISH_TMP_DIR/source_${source_path////_}"
+      base_ann_tmp="$FINISH_TMP_DIR/base_${source_path////_}"
+      feature_ann_tmp="$FINISH_TMP_DIR/feature_${source_path////_}"
+      new_base_ann="$FINISH_TMP_DIR/new_base_${source_path////_}"
+      new_feature_ann="$FINISH_TMP_DIR/new_feature_${source_path////_}"
+      merged_ann="$FINISH_TMP_DIR/merged_${source_path////_}"
+
+      if git show "HEAD:$source_path" > "$source_tmp" 2>/dev/null; then
+        # Re-anchor the current base sidecar (if any).
+        if git show "HEAD:$ann_path" > "$base_ann_tmp" 2>/dev/null; then
+          annotations_reanchor "$source_tmp" "$base_ann_tmp" "$new_base_ann" 2>/dev/null || true
+        else
+          : > "$new_base_ann"
+        fi
+
+        if [[ "$status" != "D" ]]; then
+          # Re-anchor the feature sidecar and merge with the base sidecar.
+          if git show "$sha:$ann_path" > "$feature_ann_tmp" 2>/dev/null; then
+            annotations_reanchor "$source_tmp" "$feature_ann_tmp" "$new_feature_ann" 2>/dev/null || true
+            annotations_merge "$new_base_ann" "$new_feature_ann" "$merged_ann" append --warn-differing
+            cp "$merged_ann" "$ann_path"
+          else
+            # Feature sidecar missing: keep the re-anchored base sidecar.
+            cp "$new_base_ann" "$ann_path"
+          fi
+        else
+          # Feature deleted its sidecar: keep the re-anchored base sidecar.
+          cp "$new_base_ann" "$ann_path"
+        fi
+      else
+        # Source file no longer exists on the base: the sidecar is stale.
+        rm -f "$ann_path"
+      fi
+    done < <(git diff --name-status "$sha^" "$sha" -- .git-shadow/annotations/)
+
+    # Stage and commit the merged [MEMORY] replay, recording the source
+    # [MEMORY] SHA and patch-id so future re-runs can detect it.
+    git add -A -- . ':(exclude).git-shadow.env'
+    git add -f .git-shadow/annotations/
+    if ! git diff --cached --quiet; then
+      memory_pid="$(patch_id_for "$sha")"
+      commit_args=(-m "$subject" -m "git-shadow-source-memory: $sha")
+      if [[ -n "$memory_pid" ]]; then
+        commit_args+=(-m "git-shadow-source-pid: $memory_pid")
+      fi
+      env GIT_SHADOW=1 git commit "${commit_args[@]}"
     fi
   done
 fi
 
-LOCAL_BASE_HEAD="$(git rev-parse "$LOCAL_BASE")"
+# ---------------------------------------------------------------------------
+# Re-anchor any base sidecars not touched by the feature, then checkpoint.
+# ---------------------------------------------------------------------------
+annotations_reanchor_all_commit
 
-# ---------------------------------------------------------------------------
-# Final checkpoint on the local base
-# ---------------------------------------------------------------------------
+LOCAL_BASE_HEAD="$(git rev-parse "$LOCAL_BASE")"
 _new_checkpoint="$(checkpoint_create "$PUBLIC_BASE_HEAD" "$LOCAL_BASE_HEAD" $PIDS_BASE)"
 
 # ---------------------------------------------------------------------------

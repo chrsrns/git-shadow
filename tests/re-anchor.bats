@@ -7,6 +7,10 @@ setup() {
   git config user.name "Test User"
   git config user.email "test@example.com"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Create a public base and a feature using git shadow
   git symbolic-ref HEAD refs/heads/main
   echo "initial" > file.txt
@@ -27,8 +31,8 @@ setup() {
   ORIGIN_DIR="$(mktemp -d)"
   git clone -q --bare . "$ORIGIN_DIR"
   git remote add origin "$ORIGIN_DIR"
-  git push -q origin main
-  git push -q origin feature-foo
+  GIT_SHADOW=1 git push -q origin main
+  GIT_SHADOW=1 git push -q origin feature-foo
 
   # Rewrite feature-foo on the remote: checkout, amend the last commit, force push
   REMOTE_WORK="$(mktemp -d)"
@@ -85,6 +89,96 @@ teardown() {
 
   run git shadow re-anchor feature-foo@local
   [ "$status" -ne 0 ]
+}
+
+@test "re-anchor re-anchors sidecars when public source changes" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Create a sidecar on the local base.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Public base gets an additional commit that changes a line in the hunk.
+  git checkout -q main
+  cat > file.txt <<-'EOF'
+A
+B2
+C
+EOF
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "change B"
+  GIT_SHADOW=1 git push -q origin main
+
+  # Update the local source to match the new public tree.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B2
+C
+EOF
+  git add file.txt
+  git commit -q -m "update source"
+
+  run git shadow re-anchor main@local
+  [ "$status" -eq 0 ]
+
+  [ "$(cat file.txt)" = $'A\nB2\nC' ]
+  run git shadow show --with-annotations file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"B2"* ]]
+  [[ "$output" == *"/// note"* ]]
+
+  # Checkpoint should record patch-ids for all public commits (M7).
+  body="$(git log -1 --format='%b' main@local)"
+  [[ "$body" == *"patches:"* ]]
+}
+
+@test "re-anchor removes sidecar when public source is deleted" {
+  # Create a sidecar on the local base.
+  git checkout -q main@local
+  cat > file.txt <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Public base deletes the source file.
+  git checkout -q main
+  git rm -q file.txt
+  GIT_SHADOW=1 git commit -q -m "delete file"
+  GIT_SHADOW=1 git push -q origin main
+
+  # Local base mirrors the deletion.
+  git checkout -q main@local
+  git rm -q file.txt
+  git commit -q -m "delete file"
+
+  run git shadow re-anchor main@local
+  [ "$status" -eq 0 ]
+
+  [ ! -f file.txt ]
+  [ ! -f .git-shadow/annotations/file.txt ]
+}
+
+@test "re-anchor refuses to run while a sync is in progress" {
+  # Force a sync state file.
+  mkdir -p .git
+  echo "base main@local" > .git/git-shadow-sync
+
+  git checkout -q "feature-foo@local"
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sync is in progress"* ]]
 }
 
 @test "re-anchor works when local tree only adds local-only files" {

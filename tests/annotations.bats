@@ -245,6 +245,37 @@ EOF
   grep -q '/// feature note' "$OUT"
 }
 
+@test "annotations merge: append mode warns when replace sections differ" {
+  cat > "$TEST_DIR/tmp/base.md" <<-'EOF'
+## hunk K1
+### search
+a
+b
+### replace
+a
+/// base note
+b
+EOF
+  cat > "$TEST_DIR/tmp/feature.md" <<-'EOF'
+## hunk K1
+### search
+a
+b
+### replace
+a
+/// feature note
+b
+EOF
+
+  run python3 "$TOOLKIT_ROOT/lib/annotations.py" merge \
+    --base "$TEST_DIR/tmp/base.md" --feature "$TEST_DIR/tmp/feature.md" \
+    --output "$OUT" --mode append --warn-differing
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature replace section differs from base"* ]]
+  [ "$(grep -c '### replace' "$OUT")" -eq 2 ]
+}
+
 @test "annotations merge: replace mode overwrites same-key records" {
   cat > "$TEST_DIR/tmp/base.md" <<-'EOF'
 ## hunk K1

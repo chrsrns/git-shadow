@@ -12,13 +12,17 @@ setup() {
   git add app.ts
   git commit -qm "initial"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Create feature pair using git shadow so an initial checkpoint exists.
   git shadow feature start feature-foo
 
-  # Add a local-only [MEMORY] commit.
+  # Add a local-only [MEMORY] commit (bypass the pre-commit marker guard).
   echo "/// local note" > notes.md
   git add notes.md
-  git commit -qm "[MEMORY] local notes"
+  GIT_SHADOW=1 git commit -qm "[MEMORY] local notes"
 
   # Add a public commit on the local branch.
   echo "v2" > app.ts
@@ -63,7 +67,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   run git shadow feature sync
@@ -75,7 +79,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   git shadow feature sync
@@ -86,7 +90,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   git shadow feature sync
@@ -103,7 +107,7 @@ teardown() {
   git checkout -q feature-foo
   echo "public version" > app.ts
   git add app.ts
-  git commit -qm "feat: public update"
+  GIT_SHADOW=1 git commit -qm "feat: public update"
 
   git checkout -q "feature-foo@local"
   run git shadow feature sync
@@ -128,7 +132,7 @@ teardown() {
   git checkout -q feature-foo
   echo "public version" > app.ts
   git add app.ts
-  git commit -qm "feat: public update"
+  GIT_SHADOW=1 git commit -qm "feat: public update"
 
   git checkout -q "feature-foo@local"
   before="$(git rev-parse HEAD)"
@@ -151,12 +155,49 @@ teardown() {
 
   # Amend the public feature commit with the same diff.
   git checkout -q feature-foo
-  git commit -q --amend -m "feat: app update (amended)"
+  GIT_SHADOW=1 git commit -q --amend -m "feat: app update (amended)"
 
   git checkout -q feature-foo@local
   run git shadow feature sync --recover
   [ "$status" -eq 0 ]
   [[ "$output" == *"already up to date"* ]]
+}
+
+@test "feature sync re-anchors annotation sidecars" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Add a marker on the local branch and publish the clean public commit.
+  git checkout -q "feature-foo@local"
+  cat > app.ts <<-'EOF'
+A
+B
+/// note
+C
+EOF
+  git add app.ts
+  git shadow commit -q -m "add note"
+  git shadow feature publish
+
+  # Colleague adds a public commit that changes a line in the hunk.
+  git checkout -q feature-foo
+  cat > app.ts <<-'EOF'
+A
+B2
+C
+EOF
+  git add app.ts
+  GIT_SHADOW=1 git commit -q -m "change B"
+
+  git checkout -q "feature-foo@local"
+  run git shadow feature sync
+  [ "$status" -eq 0 ]
+
+  # Source is clean but rendered view includes re-anchored marker.
+  [ "$(cat app.ts)" = $'A\nB2\nC' ]
+  run git shadow show --with-annotations app.ts
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"B2"* ]]
+  [[ "$output" == *"/// note"* ]]
 }
 
 @test "feature sync exits with warning when run on the local base branch" {

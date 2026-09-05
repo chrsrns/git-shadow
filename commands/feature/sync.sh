@@ -88,6 +88,9 @@ if [[ $CONTINUE -eq 1 ]]; then
 
   sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_CHECKPOINT_PUBLIC" "$SYNC_TARGET_PUBLIC"
 
+  # Re-anchor local annotation sidecars to the updated source.
+  annotations_reanchor_all_commit
+
   NEW_LOCAL_HEAD="$(git rev-parse "$SYNC_LOCAL_BRANCH")"
   _new_checkpoint="$(checkpoint_create "$SYNC_TARGET_PUBLIC" "$NEW_LOCAL_HEAD" $SYNC_PIDS)"
   sync_clear_state
@@ -189,11 +192,14 @@ if ! sync_apply_range "$DIFF_START" "$PUBLIC_HEAD"; then
   exit 1
 fi
 
-git add -A
+git add -A -- . ':(exclude).git-shadow.env'
 
 if sync_tree_changed; then
   sync_commit "$LOCAL_BRANCH" "$PUBLIC_BRANCH" "$DIFF_START" "$PUBLIC_HEAD"
 fi
+
+# Re-anchor local annotation sidecars to the updated source.
+annotations_reanchor_all_commit
 
 NEW_LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 _new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$NEW_LOCAL_HEAD" $PIDS)"

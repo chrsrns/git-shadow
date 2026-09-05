@@ -6,6 +6,11 @@ setup() {
   git init -q
   git config user.name "Test User"
   git config user.email "test@example.com"
+
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   git symbolic-ref HEAD refs/heads/develop
   echo "initial" > file.txt
   git add file.txt
@@ -89,4 +94,23 @@ teardown() {
   run git shadow feature start "name with spaces"
   [ "$status" -eq 1 ]
   [[ "$output" == *"Invalid branch name"* ]]
+}
+
+@test "feature start installs hooks" {
+  run git shadow feature start test-feature
+  [ "$status" -eq 0 ]
+  [ -f ".git/hooks/pre-commit" ]
+  [ -f ".git/hooks/pre-push" ]
+}
+
+@test "feature start is idempotent when hooks already installed" {
+  git shadow feature start test-feature
+  git checkout -q develop
+  git branch -D test-feature test-feature@local
+  rm -rf ".git/hooks"
+
+  run git shadow feature start test-feature
+  [ "$status" -eq 0 ]
+  [ -f ".git/hooks/pre-commit" ]
+  [ -f ".git/hooks/pre-push" ]
 }

@@ -233,6 +233,62 @@ EOF
   [[ "$output" == *"/// feature note"* ]]
 }
 
+@test "feature finish is safe to re-run" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Public base gets a multi-line source.
+  git checkout -q main
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+line2
+EOF
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "expand feature.txt"
+
+  git checkout -q "main@local"
+  git shadow base sync
+
+  # Add a base marker on main@local.
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+/// base note
+line2
+EOF
+  git add feature.txt
+  git shadow commit -q -m "base note"
+
+  # Add a feature marker on the local feature branch.
+  git checkout -q "test-feature@local"
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+/// feature note
+line2
+EOF
+  git add feature.txt
+  git shadow commit -q -m "feature note"
+
+  # Finish once, keeping branches for the re-run.
+  run git shadow feature finish --no-pull --keep-branches
+  [ "$status" -eq 0 ]
+
+  # Finish again from the same feature branch; should be idempotent.
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull --keep-branches
+  [ "$status" -eq 0 ]
+
+  git checkout -q "main@local"
+  [ "$(cat feature.txt)" = $'line1\nfeature code\nline2' ]
+
+  # The sidecar still has exactly two replace sections, not duplicated.
+  [ "$(git show HEAD:.git-shadow/annotations/feature.txt | grep -c '### replace')" -eq 2 ]
+
+  # Only one replayed [MEMORY] for the feature note plus the base [MEMORY].
+  [ "$(git log --grep='^\[MEMORY\]' main@local --format='%H' | wc -l)" -eq 2 ]
+}
+
 @test "feature finish preserves branches on [MEMORY] conflict" {
   git checkout -q main
   git merge -q --no-edit test-feature

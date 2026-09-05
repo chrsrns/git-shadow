@@ -88,9 +88,11 @@ while IFS= read -r file; do
     fi
   fi
 
-  # Find the most recent local commit after the checkpoint that touched this file.
-  last_subject="$(git log -1 --format='%s' "${CP_LOCAL}..${LOCAL_HEAD}" -- "$file" 2>/dev/null)" || true
-  if [[ -n "$last_subject" && "$last_subject" == "[MEMORY]"* ]]; then
+  # Find the first local commit after the checkpoint that created this file,
+  # not the most recent one, so a [MEMORY]-created file later modified by a
+  # public commit is still flagged.
+  creation_subject="$(git log --diff-filter=A -n 1 --format='%s' "${CP_LOCAL}..${LOCAL_HEAD}" -- "$file" 2>/dev/null)" || true
+  if [[ -n "$creation_subject" && "$creation_subject" == "[MEMORY]"* ]]; then
     UNPROMOTED+=("$file")
   fi
 done < <(git ls-tree -r --name-only "$PUBLIC_HEAD")

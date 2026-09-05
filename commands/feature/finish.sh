@@ -141,6 +141,45 @@ while IFS= read -r sha; do
   fi
 done < <(git rev-list --reverse "${MERGE_BASE}..$FEATURE_LOCAL_BRANCH")
 
+# Collect [MEMORY] replay provenance already recorded on the local base so a
+# re-run can skip [MEMORY] commits that were previously applied.
+APPLIED_MEMORY_SHAS=()
+APPLIED_MEMORY_PIDS=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  if [[ "$line" =~ ^git-shadow-source-memory:[[:space:]]*(.+)$ ]]; then
+    APPLIED_MEMORY_SHAS+=("${BASH_REMATCH[1]}")
+  elif [[ "$line" =~ ^git-shadow-source-pid:[[:space:]]*(.+)$ ]]; then
+    APPLIED_MEMORY_PIDS+=("${BASH_REMATCH[1]}")
+  fi
+done < <(git log --grep='^\[MEMORY\]' --format='%b' "$LOCAL_BASE")
+
+# Filter out [MEMORY] commits whose source SHA or patch-id is already on the
+# local base (e.g., from a previous feature finish).
+MEMORY_SHAS_UNIQUE=()
+for sha in "${MEMORY_SHAS[@]}"; do
+  skip=0
+  for applied_sha in "${APPLIED_MEMORY_SHAS[@]}"; do
+    if [[ "$applied_sha" == "$sha" ]]; then
+      skip=1
+      break
+    fi
+  done
+  if [[ "$skip" -eq 0 ]]; then
+    pid="$(patch_id_for "$sha")"
+    for applied_pid in "${APPLIED_MEMORY_PIDS[@]}"; do
+      if [[ "$applied_pid" == "$pid" ]]; then
+        skip=1
+        break
+      fi
+    done
+  fi
+  if [[ "$skip" -eq 0 ]]; then
+    MEMORY_SHAS_UNIQUE+=("$sha")
+  fi
+done
+MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
+
 if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
   LOCAL_BASE_HEAD_AFTER_SYNC="$(git rev-parse "$LOCAL_BASE")"
   FINISH_TMP_DIR="$(mktemp -d)"
@@ -198,11 +237,17 @@ if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
       fi
     done < <(git diff --name-status "$sha^" "$sha" -- .git-shadow/annotations/)
 
-    # Stage and commit the merged [MEMORY] replay.
+    # Stage and commit the merged [MEMORY] replay, recording the source
+    # [MEMORY] SHA and patch-id so future re-runs can detect it.
     git add -A -- . ':(exclude).git-shadow.env'
     git add -f .git-shadow/annotations/
     if ! git diff --cached --quiet; then
-      env GIT_SHADOW=1 git commit -m "$subject"
+      memory_pid="$(patch_id_for "$sha")"
+      commit_args=(-m "$subject" -m "git-shadow-source-memory: $sha")
+      if [[ -n "$memory_pid" ]]; then
+        commit_args+=(-m "git-shadow-source-pid: $memory_pid")
+      fi
+      env GIT_SHADOW=1 git commit "${commit_args[@]}"
     fi
   done
 fi

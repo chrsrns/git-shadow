@@ -31,8 +31,8 @@ setup() {
   ORIGIN_DIR="$(mktemp -d)"
   git clone -q --bare . "$ORIGIN_DIR"
   git remote add origin "$ORIGIN_DIR"
-  git push -q origin main
-  git push -q origin feature-foo
+  GIT_SHADOW=1 git push -q origin main
+  GIT_SHADOW=1 git push -q origin feature-foo
 
   # Rewrite feature-foo on the remote: checkout, amend the last commit, force push
   REMOTE_WORK="$(mktemp -d)"
@@ -114,7 +114,7 @@ C
 EOF
   git add file.txt
   GIT_SHADOW=1 git commit -q -m "change B"
-  git push -q origin main
+  GIT_SHADOW=1 git push -q origin main
 
   # Update the local source to match the new public tree.
   git checkout -q main@local
@@ -156,7 +156,7 @@ EOF
   git checkout -q main
   git rm -q file.txt
   GIT_SHADOW=1 git commit -q -m "delete file"
-  git push -q origin main
+  GIT_SHADOW=1 git push -q origin main
 
   # Local base mirrors the deletion.
   git checkout -q main@local

@@ -35,7 +35,7 @@ _get_sync_body() {
   git checkout -q main
   echo "public v2" > file.txt
   git add file.txt
-  git commit -q -m "feat: public v2"
+  GIT_SHADOW=1 git commit -q -m "feat: public v2"
   local public_head
   public_head="$(git rev-parse main)"
 
@@ -60,7 +60,7 @@ _get_sync_body() {
   git checkout -q feature-foo
   echo "feature code" > feature.txt
   git add feature.txt
-  git commit -q -m "feat: feature code"
+  GIT_SHADOW=1 git commit -q -m "feat: feature code"
   local public_head
   public_head="$(git rev-parse feature-foo)"
 

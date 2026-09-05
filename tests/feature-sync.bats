@@ -19,10 +19,10 @@ setup() {
   # Create feature pair using git shadow so an initial checkpoint exists.
   git shadow feature start feature-foo
 
-  # Add a local-only [MEMORY] commit.
+  # Add a local-only [MEMORY] commit (bypass the pre-commit marker guard).
   echo "/// local note" > notes.md
   git add notes.md
-  git commit -qm "[MEMORY] local notes"
+  GIT_SHADOW=1 git commit -qm "[MEMORY] local notes"
 
   # Add a public commit on the local branch.
   echo "v2" > app.ts
@@ -67,7 +67,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   run git shadow feature sync
@@ -79,7 +79,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   git shadow feature sync
@@ -90,7 +90,7 @@ teardown() {
   git checkout -q feature-foo
   echo "v3" > extra.ts
   git add extra.ts
-  git commit -qm "feat: add extra module"
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
 
   git checkout -q "feature-foo@local"
   git shadow feature sync
@@ -107,7 +107,7 @@ teardown() {
   git checkout -q feature-foo
   echo "public version" > app.ts
   git add app.ts
-  git commit -qm "feat: public update"
+  GIT_SHADOW=1 git commit -qm "feat: public update"
 
   git checkout -q "feature-foo@local"
   run git shadow feature sync
@@ -132,7 +132,7 @@ teardown() {
   git checkout -q feature-foo
   echo "public version" > app.ts
   git add app.ts
-  git commit -qm "feat: public update"
+  GIT_SHADOW=1 git commit -qm "feat: public update"
 
   git checkout -q "feature-foo@local"
   before="$(git rev-parse HEAD)"
@@ -155,7 +155,7 @@ teardown() {
 
   # Amend the public feature commit with the same diff.
   git checkout -q feature-foo
-  git commit -q --amend -m "feat: app update (amended)"
+  GIT_SHADOW=1 git commit -q --amend -m "feat: app update (amended)"
 
   git checkout -q feature-foo@local
   run git shadow feature sync --recover

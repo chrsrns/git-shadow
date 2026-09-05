@@ -123,6 +123,6 @@ git checkout "$LOCAL_FEATURE"
 ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
 _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
 
-ui_info "Install hooks with: git shadow install-hooks"
+"$TOOLKIT_ROOT/commands/install-hooks.sh"
 
 ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."

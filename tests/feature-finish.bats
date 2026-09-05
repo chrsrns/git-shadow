@@ -83,7 +83,7 @@ teardown() {
   git checkout -q main
   echo "conflicting main change" > feature.txt
   git add feature.txt
-  git commit -qm "chore: post-merge change on main"
+  GIT_SHADOW=1 git commit -qm "chore: post-merge change on main"
 
   # Also put the conflicting content on main@local
   git checkout -q "main@local"

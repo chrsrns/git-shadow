@@ -192,7 +192,7 @@ if ! sync_apply_range "$DIFF_START" "$PUBLIC_HEAD"; then
   exit 1
 fi
 
-git add -A
+git add -A -- . ':(exclude).git-shadow.env'
 
 if sync_tree_changed; then
   sync_commit "$LOCAL_BRANCH" "$PUBLIC_BRANCH" "$DIFF_START" "$PUBLIC_HEAD"

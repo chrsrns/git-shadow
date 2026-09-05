@@ -117,7 +117,7 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
     exit 1
   fi
 
-  git add -A
+  git add -A -- . ':(exclude).git-shadow.env'
   if sync_tree_changed; then
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH"
   fi
@@ -199,7 +199,7 @@ if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
     done < <(git diff --name-status "$sha^" "$sha" -- .git-shadow/annotations/)
 
     # Stage and commit the merged [MEMORY] replay.
-    git add -A
+    git add -A -- . ':(exclude).git-shadow.env'
     git add -f .git-shadow/annotations/
     if ! git diff --cached --quiet; then
       env GIT_SHADOW=1 git commit -m "$subject"

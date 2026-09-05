@@ -190,7 +190,7 @@ if ! sync_apply_range "$DIFF_START" "$PUBLIC_HEAD"; then
   exit 1
 fi
 
-git add -A
+git add -A -- . ':(exclude).git-shadow.env'
 
 # Create a sync commit only when the applied tree differs from the parent.
 if sync_tree_changed; then

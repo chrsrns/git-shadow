@@ -31,13 +31,10 @@ pre_commit_hook_template() {
   cat <<'HOOK'
 #!/usr/bin/env bash
 set -e
-# Keep glob patterns in $EXCLUDE_TRIPLE literal when iterating; enable extglob
-# so LOCAL_COMMENT_EXCLUDE patterns are matched with extended glob semantics.
+# Keep glob patterns in LOCAL_COMMENT_EXCLUDE literal when iterating; enable
+# extglob so the patterns are matched with extended glob semantics.
 set -f
 shopt -s extglob
-
-tmp_list="$(mktemp -t git-shadow-pre-commit.XXXXXX)"
-trap 'rm -f "$tmp_list"' EXIT
 
 # Reject commits on public branches unless GIT_SHADOW=1 is set.
 # Public = any branch whose name does not end with the configured local suffix.
@@ -53,60 +50,26 @@ fi
 # contain local-comment markers. Users should run 'git shadow commit'.
 [ -n "$branch" ] && [ "${branch%__LOCAL_SUFFIX__}" != "$branch" ] || exit 0
 
-TRIPLE_PATTERN='__TRIPLE_PATTERN__'
-LOCAL_PATTERN='__LOCAL_PATTERN__'
-EXCLUDE_TRIPLE='__EXCLUDE_TRIPLE__'
+LOCAL_COMMENT_PATTERN_TRIPLE='__TRIPLE_PATTERN__'
+LOCAL_COMMENT_PATTERN_LOCAL='__LOCAL_PATTERN__'
+LOCAL_COMMENT_EXCLUDE='__EXCLUDE_TRIPLE__'
 
-git diff --cached --name-only --diff-filter=ACMRT > "$tmp_list" 2>/dev/null || true
-while IFS= read -r path; do
-  [ -n "$path" ] || continue
+__GUARD_FUNCS__
 
-  # Sidecar paths are local-only and never contain source markers.
-  case "$path" in
-    .git-shadow/annotations/*) continue ;;
-  esac
-
-  # Binary files cannot be scanned for marker lines.
-  numstat="$(git diff --cached --numstat -- "$path" | head -1)"
-  set -- $numstat
-  [ "$1" = "-" ] && [ "$2" = "-" ] && continue
-
-  # Skip /// extraction for excluded file patterns and all other .git-shadow paths.
-  check_triple=1
-  case "$path" in
-    .git-shadow/*) check_triple=0 ;;
-  esac
-  if [ "$check_triple" = "1" ]; then
-    for pat in $EXCLUDE_TRIPLE; do
-      case "$path" in
-        $pat) check_triple=0; break ;;
-      esac
-    done
-  fi
-
-  if [ "$check_triple" = "1" ] && git show :"$path" | grep -qE "$TRIPLE_PATTERN"; then
-    echo "[git-shadow] Staged file $path contains local-only /// markers." >&2
-    echo "Run 'git shadow commit' to split them into a [MEMORY] sidecar." >&2
-    rm -f "$tmp_list"
-    exit 1
-  fi
-
-  if git show :"$path" | grep -qE "$LOCAL_PATTERN"; then
-    echo "[git-shadow] Staged file $path contains local-only // @local markers." >&2
-    echo "Run 'git shadow commit' to split them into a [MEMORY] sidecar." >&2
-    rm -f "$tmp_list"
-    exit 1
-  fi
-done < "$tmp_list"
-rm -f "$tmp_list"
+guard_staged_files
 HOOK
 }
 
+PRE_COMMIT_GUARD_FUNCS="$(declare -f annotations_triple_excluded guard_staged_files)"
+# Escape '&' in the function text so the placeholder substitution does not
+# interpret it as a back-reference to the matched placeholder.
+PRE_COMMIT_GUARD_FUNCS="${PRE_COMMIT_GUARD_FUNCS//&/\\&}"
 pre_commit_content="$(pre_commit_hook_template)"
 pre_commit_content="${pre_commit_content//__LOCAL_SUFFIX__/$LOCAL_SUFFIX}"
 pre_commit_content="${pre_commit_content//__TRIPLE_PATTERN__/$LOCAL_COMMENT_PATTERN_TRIPLE}"
 pre_commit_content="${pre_commit_content//__LOCAL_PATTERN__/$LOCAL_COMMENT_PATTERN_LOCAL}"
 pre_commit_content="${pre_commit_content//__EXCLUDE_TRIPLE__/$EXCLUDE_TRIPLE_LIST}"
+pre_commit_content="${pre_commit_content//__GUARD_FUNCS__/$PRE_COMMIT_GUARD_FUNCS}"
 
 if [[ -f "$pre_commit_file" ]] && grep -Fq "$HOOK_CHECK_MARKER" "$pre_commit_file"; then
   ui_info "pre-commit hook already installed in: $pre_commit_file"

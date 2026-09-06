@@ -19,60 +19,6 @@ _annotations_python_available() {
   command -v python3 >/dev/null 2>&1
 }
 
-# Normalize LOCAL_COMMENT_EXCLUDE patterns to an array.
-_annotations_exclude_patterns() {
-  local -a patterns=()
-  if [[ -n "${LOCAL_COMMENT_EXCLUDE:-}" ]]; then
-    # shellcheck disable=SC2206
-    patterns=($LOCAL_COMMENT_EXCLUDE)
-  fi
-  printf '%s\n' "${patterns[@]}"
-}
-
-# Check whether a repository-relative path matches the LOCAL_COMMENT_EXCLUDE
-# patterns. Uses Bash extglob semantics. Paths under .git-shadow/annotations/
-# are never excluded for LOCAL_COMMENT_PATTERN_TRIPLE.
-annotations_triple_excluded() {
-  local relpath="$1"
-
-  # Paths under .git-shadow/annotations/ are local sidecars, not source.
-  if [[ "$relpath" == .git-shadow/annotations/* ]]; then
-    return 1
-  fi
-
-  # No patterns means nothing is excluded.
-  if [[ -z "${LOCAL_COMMENT_EXCLUDE:-}" ]]; then
-    return 1
-  fi
-
-  # Patterns are Bash extended globs. Disable pathname expansion so patterns
-  # like .git-shadow/!(annotations) are not expanded to concrete files before
-  # case can match them; keep extglob on so the patterns work in case.
-  local pattern
-  local old_flags="$-"
-  local extglob_restore
-  extglob_restore="$(shopt -p extglob)"
-  set -f
-  shopt -s extglob
-  # shellcheck disable=SC2206
-  for pattern in $LOCAL_COMMENT_EXCLUDE; do
-    case "$relpath" in
-      $pattern) 
-        if [[ "$old_flags" != *f* ]]; then
-          set +f
-        fi
-        $extglob_restore
-        return 0 
-        ;;
-    esac
-  done
-  if [[ "$old_flags" != *f* ]]; then
-    set +f
-  fi
-  $extglob_restore
-  return 1
-}
-
 # Internal helper: check python availability and run a Python subcommand with
 # the configured pattern defaults. Only subcommands that need pattern defaults
 # get --pattern-triple and --pattern-local appended.

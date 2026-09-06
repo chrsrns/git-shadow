@@ -5,7 +5,7 @@ set -euo pipefail
 # git-shadow installer
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/filozofer/git-shadow/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/chrsrns/git-shadow/main/install.sh | bash
 #
 # Environment variables (optional overrides):
 #   GIT_SHADOW_HOME    — where to install the toolkit  (default: ~/.local/share/git-shadow)
@@ -13,8 +13,8 @@ set -euo pipefail
 #   GIT_SHADOW_VERSION — specific version to install    (default: latest release)
 # -------------------------------------------------------------------
 
-REPO_URL="https://github.com/filozofer/git-shadow.git"
-RELEASES_API="https://api.github.com/repos/filozofer/git-shadow/releases/latest"
+REPO_URL="https://github.com/chrsrns/git-shadow.git"
+RELEASES_API="https://api.github.com/repos/chrsrns/git-shadow/releases/latest"
 INSTALL_DIR="${GIT_SHADOW_HOME:-$HOME/.local/share/git-shadow}"
 BIN_DIR="${GIT_SHADOW_BIN:-$HOME/.local/bin}"
 
@@ -63,7 +63,7 @@ else
     [[ -n "$TAG" ]] || _error "Could not determine latest release tag."
   fi
 
-  TARBALL_URL="https://github.com/filozofer/git-shadow/archive/refs/tags/${TAG}.tar.gz"
+  TARBALL_URL="https://github.com/chrsrns/git-shadow/archive/refs/tags/${TAG}.tar.gz"
   _info "Downloading ${TAG} from ${TARBALL_URL} ..."
 
   mkdir -p "$INSTALL_DIR"

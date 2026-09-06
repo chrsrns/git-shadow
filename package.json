@@ -2,10 +2,10 @@
   "name": "git-shadow",
   "version": "1.2.0",
   "description": "Shadow branch pattern utilities for Git — keep local thinking artifacts without polluting the shared repository.",
-  "homepage": "https://github.com/filozofer/git-shadow",
+  "homepage": "https://github.com/chrsrns/git-shadow",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/filozofer/git-shadow.git"
+    "url": "git+https://github.com/chrsrns/git-shadow.git"
   },
   "license": "MIT",
   "bin": {

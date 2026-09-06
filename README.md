@@ -97,7 +97,7 @@ The toolkit:
 ### curl (Linux / macOS / WSL — recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/filozofer/git-shadow/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/chrsrns/git-shadow/main/install.sh | bash
 ```
 
 Clones the toolkit to `~/.local/share/git-shadow` and links the binary to `~/.local/bin`.
@@ -117,7 +117,7 @@ npm install -g git-shadow
 <summary>Manual installation</summary>
 
 ```bash
-git clone https://github.com/filozofer/git-shadow.git ~/.local/share/git-shadow
+git clone https://github.com/chrsrns/git-shadow.git ~/.local/share/git-shadow
 ln -s ~/.local/share/git-shadow/bin/git-shadow ~/.local/bin/git-shadow
 ```
 

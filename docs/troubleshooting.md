@@ -410,7 +410,7 @@ git shadow help
 If the binary exists but still fails with an error like `TOOLKIT_ROOT not found`, the symlink may be pointing to a deleted or moved installation directory. Re-run the installer:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/filozofer/git-shadow/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/chrsrns/git-shadow/main/install.sh | bash
 ```
 
 ---

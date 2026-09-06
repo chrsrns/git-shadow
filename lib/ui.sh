@@ -37,28 +37,54 @@ else
   _C_GREEN='' _C_PURPLE='' _C_RED='' _C_YELLOW='' _C_BOLD='' _C_RESET=''
 fi
 
+# Single color/prefix/stream dispatch for all semantic output.
+# Callers use the level wrappers below.
+ui_emit() {
+  local level="$1"
+  shift
+
+  local color='' prefix='' stream=1
+  case "$level" in
+    git)    color="$_C_GREEN";  prefix='🌿 ' ;;
+    shadow) color="$_C_PURPLE"; prefix='🧠 ' ;;
+    ok)     color="$_C_GREEN";  prefix='✅ ' ;;
+    info)   color='';           prefix='ℹ️  ' ;;
+    step)   color='';           prefix='   ' ;;
+    skip)   color='';           prefix='⏭️  ' ;;
+    warn)   color="$_C_YELLOW"; prefix='⚠️  '; stream=2 ;;
+    error)  color="$_C_RED";    prefix='❌ ';  stream=2 ;;
+    *)      echo "unknown ui level: $level" >&2; return 1 ;;
+  esac
+
+  if [[ "$stream" -eq 1 ]]; then
+    printf "${color}%s%s${_C_RESET}\n" "$prefix" "$*"
+  else
+    printf "${color}%s%s${_C_RESET}\n" "$prefix" "$*" >&$stream
+  fi
+}
+
 # ── Semantic output helpers ───────────────────────────────────────────────────
 
 # Public / git / collaboration operations  →  green 🌿
-ui_git()    { printf "${_C_GREEN}🌿 %s${_C_RESET}\n"   "$*"; }
+ui_git()    { ui_emit git    "$*"; }
 
 # Shadow / local / thinking operations    →  purple 🧠
-ui_shadow() { printf "${_C_PURPLE}🧠 %s${_C_RESET}\n"  "$*"; }
+ui_shadow() { ui_emit shadow "$*"; }
 
 # Completed action                        →  green ✅
-ui_ok()     { printf "${_C_GREEN}✅ %s${_C_RESET}\n"   "$*"; }
+ui_ok()     { ui_emit ok     "$*"; }
 
 # Neutral info                            →  plain ℹ️
-ui_info()   { printf "ℹ️  %s\n" "$*"; }
+ui_info()   { ui_emit info   "$*"; }
 
 # Indented sub-step / structural label    →  plain
-ui_step()   { printf "   %s\n" "$*"; }
+ui_step()   { ui_emit step   "$*"; }
 
 # Skipped item                            →  plain ⏭️
-ui_skip()   { printf "⏭️  %s\n" "$*"; }
+ui_skip()   { ui_emit skip   "$*"; }
 
 # Warning                                 →  yellow ⚠️  (stderr)
-ui_warn()   { printf "${_C_YELLOW}⚠️  %s${_C_RESET}\n" "$*" >&2; }
+ui_warn()   { ui_emit warn   "$*"; }
 
 # Error                                   →  red ❌  (stderr)
-ui_error()  { printf "${_C_RED}❌ %s${_C_RESET}\n"     "$*" >&2; }
+ui_error()  { ui_emit error  "$*"; }

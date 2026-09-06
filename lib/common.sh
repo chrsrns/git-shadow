@@ -23,6 +23,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checkpoint.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
 
+# Load feature/base sync command flow
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync-command.sh"
+
 # Load patch-id helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"

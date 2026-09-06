@@ -190,8 +190,12 @@ EOF
 }
 
 @test "re-anchor refuses to run while a finish is paused" {
+  # Dirty tree: if ensure_clean_repo ran first, the error would be about
+  # uncommitted changes instead of the in-progress finish.
+  echo "dirty" > file.txt
   echo "phase=base-diff" > .git/git-shadow-finish
   run git shadow re-anchor "test-feature@local"
   [ "$status" -ne 0 ]
   [[ "$output" == *"finish"* ]]
+  [[ "$output" != *"uncommitted changes"* ]]
 }

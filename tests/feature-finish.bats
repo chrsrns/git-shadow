@@ -657,3 +657,84 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"sync"* ]]
 }
+
+# --- T53 regression tests ------------------------------------------------------
+
+@test "feature finish --continue base-diff staging tolerates ignored .git-shadow.env" {
+  # `git add -A -- . ':(exclude).git-shadow.env'` exits 1 when the excluded
+  # path is ignored, killing the top-level --continue staging under set -e.
+  printf '.git-shadow.env\n' > .gitignore
+  printf 'LOCAL_SUFFIX="@local"\n' > .git-shadow.env
+
+  git checkout -q main
+  echo "public base change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: public base change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  git shadow feature finish --no-pull 2>/dev/null || true
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=base-diff" "$state_file"
+
+  echo "resolved" > file.txt
+  git add file.txt
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+}
+
+@test "feature finish --continue memory-replay staging tolerates ignored .git-shadow.env" {
+  printf '.git-shadow.env\n' > .gitignore
+  printf 'LOCAL_SUFFIX="@local"\n' > .git-shadow.env
+
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  git shadow feature finish --no-pull 2>/dev/null || true
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=memory-replay" "$state_file"
+
+  git checkout --ours -- file.txt
+  git add file.txt
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+}
+
+@test "feature finish [MEMORY] replay succeeds with ignored .git-shadow.env present" {
+  # An ignored project config file must not break staging during replay:
+  # `git add -A -- . ':(exclude).git-shadow.env'` exits 1 when the excluded
+  # path is ignored, which kills finish_commit_memory under set -e.
+  printf '.git-shadow.env\n' > .gitignore
+  printf 'LOCAL_SUFFIX="@local"\n' > .git-shadow.env
+
+  git checkout -q "test-feature@local"
+  echo "local note" > notes.md
+  git add notes.md
+  git commit -qm "[MEMORY] local note"
+
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+
+  # The replayed [MEMORY] carries provenance trailers.
+  body="$(git log -1 --format='%b' main@local~1)"
+  [[ "$body" == *"git-shadow-source-memory:"* ]]
+}

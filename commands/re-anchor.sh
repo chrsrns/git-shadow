@@ -20,6 +20,12 @@ if [[ -f "$(sync_state_file)" ]]; then
   exit 1
 fi
 
+# Guard: do not re-anchor while a feature finish is paused.
+if finish_state_active; then
+  ui_error "A feature finish is in progress. Resolve it before re-anchoring."
+  exit 1
+fi
+
 if [[ $# -gt 0 ]]; then
   LOCAL_BRANCH="$1"
   shift

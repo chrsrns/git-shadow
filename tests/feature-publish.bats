@@ -101,3 +101,10 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"Published to"* ]]
 }
+
+@test "feature publish refuses to run while a finish is paused" {
+  echo "phase=base-diff" > .git/git-shadow-finish
+  run git shadow feature publish
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"finish"* ]]
+}

@@ -188,3 +188,10 @@ EOF
   result="$(cat notes.md)"
   [ "$result" = "local note" ]
 }
+
+@test "re-anchor refuses to run while a finish is paused" {
+  echo "phase=base-diff" > .git/git-shadow-finish
+  run git shadow re-anchor "test-feature@local"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"finish"* ]]
+}

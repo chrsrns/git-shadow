@@ -474,3 +474,10 @@ EOF
   ! grep -q "conflicted_sha=$sha" "$state_file"
   ! grep -q "remaining_shas=$sha" "$state_file"
 }
+
+@test "feature finish refuses to run while a sync is paused" {
+  echo "mode=feature" > .git/git-shadow-sync
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sync"* ]]
+}

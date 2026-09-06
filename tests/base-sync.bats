@@ -189,3 +189,10 @@ EOF
   [ "$(cat file.txt)" = "local" ]
   [[ "$output" != *"conflict"* ]]
 }
+
+@test "base sync refuses to run while a finish is paused" {
+  echo "phase=base-diff" > .git/git-shadow-finish
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"finish"* ]]
+}

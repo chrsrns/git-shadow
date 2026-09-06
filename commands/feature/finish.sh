@@ -243,10 +243,9 @@ fi
 # ---------------------------------------------------------------------------
 # Re-anchor any base sidecars not touched by the feature, then checkpoint.
 # ---------------------------------------------------------------------------
-annotations_reanchor_all_commit
-
-LOCAL_BASE_HEAD="$(git rev-parse "$LOCAL_BASE")"
-_new_checkpoint="$(checkpoint_create "$PUBLIC_BASE_HEAD" "$LOCAL_BASE_HEAD" $PIDS_BASE)"
+if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Branch cleanup

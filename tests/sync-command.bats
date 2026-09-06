@@ -59,6 +59,17 @@ EOF
   [[ "$output" == *"initial checkpoint"* ]]
 }
 
+@test "sync_reanchor_and_checkpoint requires checkout on the local branch" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  git checkout -q main
+  source "$BATS_TEST_DIRNAME/../lib/common.sh"
+  run sync_reanchor_and_checkpoint main@local "$(git rev-parse main)"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"requires checkout on 'main@local'"* ]]
+}
+
 @test "sync conflict saves collected patch-ids to state for --continue" {
   git checkout -q -b main@local
   git shadow base sync

@@ -96,7 +96,7 @@ finish_commit_memory() {
   subject="$(git log -1 --format='%s' "$sha")"
   memory_pid="$(patch_id_for "$sha")"
 
-  git add -A -- . ':(exclude).git-shadow.env'
+  sync_stage_all
   if [[ -d .git-shadow/annotations ]]; then
     git add -f .git-shadow/annotations/
   fi
@@ -339,7 +339,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   PIDS_BASE="$FINISH_PIDS"
 
   if [[ "$FINISH_PHASE" == "base-diff" ]]; then
-    git add -A -- . ':(exclude).git-shadow.env'
+    sync_stage_all
     if sync_tree_changed; then
       sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
     fi

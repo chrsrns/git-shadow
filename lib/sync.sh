@@ -77,6 +77,17 @@ sync_patch_ids() {
   fi
 }
 
+# Stage every change, keeping the ignored project config out of the index.
+#
+# `git add -A -- . ':(exclude).git-shadow.env'` is not safe: git treats an
+# `:(exclude)` pathspec that names an ignored path as explicitly specified,
+# warns "The following paths are ignored", and exits 1 (observed on git
+# 2.55.0). Stage everything, then unstage the env file instead.
+sync_stage_all() {
+  git add -A -- .
+  git reset -q -- .git-shadow.env 2>/dev/null || true
+}
+
 # Apply the net diff from start..end to the current working tree using a
 # 3-way merge. Returns the same exit code as git apply.
 sync_apply_range() {
@@ -112,7 +123,7 @@ sync_apply_and_commit() {
     return 1
   fi
 
-  git add -A -- . ':(exclude).git-shadow.env'
+  sync_stage_all
 
   if sync_tree_changed; then
     sync_commit "$local_branch" "$public_branch" "$start_sha" "$end_sha" "$source_branch"

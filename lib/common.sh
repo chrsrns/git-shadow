@@ -39,6 +39,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/annotations.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/guard.sh"
 
+# Load git hook installer helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook-installer.sh"
+
 # Load diff-sync check pass helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"

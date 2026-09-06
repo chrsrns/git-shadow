@@ -24,12 +24,8 @@ EXCLUDE_TRIPLE_LIST="$LOCAL_COMMENT_EXCLUDE"
 # GIT_SHADOW=1.
 # ---------------------------------------------------------------------------
 
-pre_commit_file="$(detect_hook_file pre-commit)"
-mkdir -p "$(dirname "$pre_commit_file")"
-
 pre_commit_hook_template() {
   cat <<'HOOK'
-#!/usr/bin/env bash
 set -e
 # Keep glob patterns in LOCAL_COMMENT_EXCLUDE literal when iterating; enable
 # extglob so the patterns are matched with extended glob semantics.
@@ -71,38 +67,14 @@ pre_commit_content="${pre_commit_content//__LOCAL_PATTERN__/$LOCAL_COMMENT_PATTE
 pre_commit_content="${pre_commit_content//__EXCLUDE_TRIPLE__/$EXCLUDE_TRIPLE_LIST}"
 pre_commit_content="${pre_commit_content//__GUARD_FUNCS__/$PRE_COMMIT_GUARD_FUNCS}"
 
-if [[ -f "$pre_commit_file" ]] && grep -Fq "$HOOK_CHECK_MARKER" "$pre_commit_file"; then
-  ui_info "pre-commit hook already installed in: $pre_commit_file"
-else
-  if [[ -f "$pre_commit_file" ]]; then
-    {
-      printf '\n%s\n%s\n' "$HOOK_CHECK_MARKER" "$pre_commit_content"
-    } >> "$pre_commit_file"
-  else
-    {
-      printf '%s\n%s\n' "$HOOK_CHECK_MARKER" "$pre_commit_content"
-    } > "$pre_commit_file"
-    chmod +x "$pre_commit_file"
-  fi
-
-  ui_ok "pre-commit hook installed in: $pre_commit_file"
-fi
+install_hook_file pre-commit "$HOOK_CHECK_MARKER" "$pre_commit_content" bash
 
 # ---------------------------------------------------------------------------
 # pre-push hook — rejects pushes to public branches unless GIT_SHADOW=1
 # ---------------------------------------------------------------------------
 
 PRE_PUSH_MARKER="# git-shadow pre-push hook"
-pre_push_file="$(detect_hook_file pre-push)"
-mkdir -p "$(dirname "$pre_push_file")"
-
-if [[ -f "$pre_push_file" ]] && grep -Fq "$PRE_PUSH_MARKER" "$pre_push_file"; then
-  ui_info "pre-push hook already installed in: $pre_push_file"
-else
-  if [[ -f "$pre_push_file" ]]; then
-    {
-      printf '\n%s\n' "$PRE_PUSH_MARKER"
-      cat <<HOOK
+pre_push_content="$(cat <<HOOK
 # Reject pushes to public branches unless GIT_SHADOW=1 is set.
 [ "\${GIT_SHADOW:-0}" = "1" ] && exit 0
 while IFS=' ' read -r local_ref _local_sha _remote_ref _remote_sha; do
@@ -116,27 +88,6 @@ while IFS=' ' read -r local_ref _local_sha _remote_ref _remote_sha; do
   fi
 done
 HOOK
-    } >> "$pre_push_file"
-  else
-    {
-      printf '#!/usr/bin/env sh\n%s\n' "$PRE_PUSH_MARKER"
-      cat <<HOOK
-# Reject pushes to public branches unless GIT_SHADOW=1 is set.
-[ "\${GIT_SHADOW:-0}" = "1" ] && exit 0
-while IFS=' ' read -r local_ref _local_sha _remote_ref _remote_sha; do
-  [ "\$local_ref" = "(delete)" ] && continue
-  branch="\${local_ref#refs/heads/}"
-  [ "\$branch" = "\$local_ref" ] && continue
-  if [ "\${branch%${LOCAL_SUFFIX}}" = "\$branch" ]; then
-    echo "[git-shadow] Refusing to push public branch '\$branch'." >&2
-    echo "Use 'git shadow push \$branch' to push public branches." >&2
-    exit 1
-  fi
-done
-HOOK
-    } > "$pre_push_file"
-    chmod +x "$pre_push_file"
-  fi
+)"
 
-  ui_ok "pre-push hook installed in: $pre_push_file"
-fi
+install_hook_file pre-push "$PRE_PUSH_MARKER" "$pre_push_content" sh

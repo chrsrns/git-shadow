@@ -6,6 +6,7 @@ This page covers failure recovery for the most common situations where git shado
 > ```bash
 > git status          # what branch, what is staged
 > git shadow status   # shadow/public pair health
+> git shadow doctor   # diagnostics: version, paused state, checkpoints, hooks
 > git log --oneline -5
 > ```
 
@@ -71,16 +72,18 @@ git diff feature/login feature/login@local
 
 ## 2. Conflicts during `feature sync` / `base sync`
 
-**Symptom:** `git shadow feature sync` or `git shadow base sync` stops with:
+**Symptom:** `git shadow feature sync` or `git shadow base sync` exits 1 with a message that names the public branch, the actual diff range, the conflicting paths, and the exact resume commands:
 
 ```
-error: patch failed: src/auth.ts:12
-error: src/auth.ts: patch does not apply
+❌ Conflict applying feature net diff from 'feature/login' (<diff_start>..<target_public>) to 'feature/login@local'.
+❌ Conflicting paths: src/auth.ts
+ℹ️  Resolve the conflicts, then run: git shadow feature sync --continue
+ℹ️  Or run: git shadow feature sync --abort
 ```
 
-**What happened:** The command is applying the *net diff* from the checkpoint public SHA to the current public HEAD onto the `@local` branch. A hunk in that net diff overlaps with changes that are already on `@local`.
+**What happened:** The command is applying the *net diff* from `diff_start` to the current public HEAD onto the `@local` branch. `diff_start` is the checkpoint public SHA — or the recovered ancestor when you ran `--recover` after a rebase. A hunk in that net diff overlaps with changes that are already on `@local`.
 
-**Where you are:** You are on the `@local` branch with conflict markers in the working tree and a sync in progress.
+**Where you are:** You are on the `@local` branch with conflict markers in the working tree and a paused sync. The state file `.git/git-shadow-sync` records the mode, both branches, `diff_start`, `target_public`, the pre-sync local head, and the collected patch-ids; `git shadow doctor` reports the same paused state.
 
 **Recovery:**
 
@@ -98,6 +101,8 @@ git shadow feature sync --continue
 git shadow base sync --continue
 ```
 
+If you run `--continue` while conflict markers are still unresolved, the command re-lists the unresolved paths along with the branch and diff range so you can keep going or abort.
+
 **To abort and return to the last checkpoint:**
 
 ```bash
@@ -105,6 +110,8 @@ git shadow feature sync --abort
 # or
 git shadow base sync --abort
 ```
+
+`--abort` resets the `@local` branch to the recorded pre-sync head, names the conflicting paths it discarded, and clears `.git/git-shadow-sync`. To try again later, restart with `git shadow feature sync` (or `base sync`).
 
 **Prevention:** Sync regularly, especially before adding more local changes. Keep `[MEMORY]` commits limited to **new local-only files**; they must not modify files already tracked by the public branch.
 

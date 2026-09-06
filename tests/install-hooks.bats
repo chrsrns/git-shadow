@@ -41,6 +41,16 @@ teardown() {
   [[ "$output" == *"already installed"* ]]
 }
 
+@test "re-running install-hooks propagates LOCAL_COMMENT_EXCLUDE changes" {
+  git shadow install-hooks
+  ! grep -q 'custom-docs/\*\.md' .git/hooks/pre-commit
+
+  printf 'LOCAL_COMMENT_EXCLUDE="custom-docs/*.md"\n' > .git-shadow.env
+  run git shadow install-hooks
+  [ "$status" -eq 0 ]
+  grep -q 'custom-docs/\*\.md' .git/hooks/pre-commit
+}
+
 # ---------------------------------------------------------------------------
 # pre-push hook
 # ---------------------------------------------------------------------------

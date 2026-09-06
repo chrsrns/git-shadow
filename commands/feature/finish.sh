@@ -104,22 +104,10 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
     exit 1
   fi
 
-  for pid in $(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"); do
-    if [[ -n "$pid" ]]; then
-      PIDS_BASE="$PIDS_BASE $pid"
-    fi
-  done
-  PIDS_BASE="${PIDS_BASE# }"
-
-  if ! sync_apply_range "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"; then
+  if ! PIDS_BASE=$(sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH"); then
     git reset --hard "$LOCAL_BASE_BEFORE"
     ui_error "Conflict applying public base net diff to '$LOCAL_BASE'. Resolve and run base sync, then retry."
     exit 1
-  fi
-
-  git add -A -- . ':(exclude).git-shadow.env'
-  if sync_tree_changed; then
-    sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH"
   fi
 fi
 
@@ -255,10 +243,9 @@ fi
 # ---------------------------------------------------------------------------
 # Re-anchor any base sidecars not touched by the feature, then checkpoint.
 # ---------------------------------------------------------------------------
-annotations_reanchor_all_commit
-
-LOCAL_BASE_HEAD="$(git rev-parse "$LOCAL_BASE")"
-_new_checkpoint="$(checkpoint_create "$PUBLIC_BASE_HEAD" "$LOCAL_BASE_HEAD" $PIDS_BASE)"
+if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
+  exit 1
+fi
 
 # ---------------------------------------------------------------------------
 # Branch cleanup

@@ -92,34 +92,7 @@ fi
 NEW_PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
 
 # Guard: the replayed public tree must not contain local-only artifacts.
-guard_failed=0
-while IFS= read -r path; do
-  [[ -z "$path" ]] && continue
-
-  if [[ "$path" == .git-shadow/annotations/* || "$path" == .git-shadow/annotations ]]; then
-    ui_error "Refusing to publish: public tree contains local-only path '$path'."
-    guard_failed=1
-    break
-  fi
-
-  if annotations_triple_excluded "$path"; then
-    : # Skip /// scanning for excluded patterns.
-  else
-    if git grep -I -q -E "$LOCAL_COMMENT_PATTERN_TRIPLE" "$NEW_PUBLIC_HEAD" -- "$path"; then
-      ui_error "Refusing to publish: '$path' contains /// local-only markers."
-      guard_failed=1
-      break
-    fi
-  fi
-
-  if git grep -I -q -E "$LOCAL_COMMENT_PATTERN_LOCAL" "$NEW_PUBLIC_HEAD" -- "$path"; then
-    ui_error "Refusing to publish: '$path' contains // @local markers."
-    guard_failed=1
-    break
-  fi
-done < <(git ls-tree -r --name-only "$NEW_PUBLIC_HEAD")
-
-if [[ $guard_failed -eq 1 ]]; then
+if ! guard_tree "$NEW_PUBLIC_HEAD"; then
   git reset --hard "$CP_PUBLIC"
   git checkout -q "$CURRENT_BRANCH"
   ui_error "Publication aborted due to leaked local-only markers."

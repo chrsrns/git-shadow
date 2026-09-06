@@ -23,6 +23,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checkpoint.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
 
+# Load feature/base sync command flow
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync-command.sh"
+
 # Load patch-id helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"
@@ -30,6 +34,14 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"
 # Load local annotation helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/annotations.sh"
+
+# Load local marker guard helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/guard.sh"
+
+# Load git hook installer helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook-installer.sh"
 
 # Load diff-sync check pass helpers
 # shellcheck disable=SC1091
@@ -129,24 +141,37 @@ current_branch() {
   git branch --show-current
 }
 
+# Branch suffix transform: strip or ensure LOCAL_SUFFIX.
+_branch_transform() {
+  local branch="$1"
+  local mode="$2"
+
+  if [[ "$mode" == "strip" ]]; then
+    if [[ "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+      printf '%s\n' "${branch%"$LOCAL_SUFFIX"}"
+    else
+      printf '%s\n' "$branch"
+    fi
+  elif [[ "$mode" == "ensure" ]]; then
+    if [[ "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+      printf '%s\n' "$branch"
+    else
+      printf '%s\n' "${branch}${LOCAL_SUFFIX}"
+    fi
+  else
+    echo "_branch_transform: unknown mode '$mode'" >&2
+    return 1
+  fi
+}
+
 # Convert local branch name into public counterpart (strip suffix)
 public_branch_from_any() {
-  local branch="$1"
-  if [[ "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-    printf '%s\n' "${branch%"$LOCAL_SUFFIX"}"
-  else
-    printf '%s\n' "$branch"
-  fi
+  _branch_transform "$1" strip
 }
 
 # Convert any branch to its local shadow variant (add suffix if missing)
 local_branch_from_any() {
-  local branch="$1"
-  if [[ "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-    printf '%s\n' "$branch"
-  else
-    printf '%s\n' "${branch}${LOCAL_SUFFIX}"
-  fi
+  _branch_transform "$1" ensure
 }
 
 # Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)

@@ -37,14 +37,9 @@ config_is_known_key() {
   grep -qE "^${1}=" "$DEFAULTS_FILE"
 }
 
-# Return the default value for KEY (outer quotes stripped), or empty string.
-config_default_value() {
-  local key="$1"
-  local raw
-  raw="$(grep -E "^${key}=" "$DEFAULTS_FILE" | head -1)"
-  [[ -n "$raw" ]] || return 1
-  local val="${raw#*=}"
-  # Strip only the outermost matching pair of quotes.
+# Strip the outermost matching pair of quotes from a raw value.
+_config_unquote() {
+  local val="$1"
   if [[ "$val" == \"*\" ]]; then
     val="${val#\"}"
     val="${val%\"}"
@@ -53,6 +48,16 @@ config_default_value() {
     val="${val%\'}"
   fi
   printf '%s\n' "$val"
+}
+
+# Return the default value for KEY (outer quotes stripped), or empty string.
+config_default_value() {
+  local key="$1"
+  local raw
+  raw="$(grep -E "^${key}=" "$DEFAULTS_FILE" | head -1)"
+  [[ -n "$raw" ]] || return 1
+  local val="${raw#*=}"
+  _config_unquote "$val"
 }
 
 # Return the human-readable description for KEY.
@@ -87,14 +92,7 @@ config_value_in_file() {
   raw="$(grep -E "^${key}=" "$file" | tail -1)"
   [[ -n "$raw" ]] || return 1
   local val="${raw#*=}"
-  if [[ "$val" == \"*\" ]]; then
-    val="${val#\"}"
-    val="${val%\"}"
-  elif [[ "$val" == \'*\' ]]; then
-    val="${val#\'}"
-    val="${val%\'}"
-  fi
-  printf '%s\n' "$val"
+  _config_unquote "$val"
 }
 
 # Determine which tier holds the effective value for KEY:

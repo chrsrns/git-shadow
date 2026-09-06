@@ -100,9 +100,7 @@ PIDS="${PIDS# }"
 
 git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1
 
-# Re-anchor local annotation sidecars to the (possibly rewritten) public source.
-annotations_reanchor_all_commit
-
-NEW_LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
-_new_checkpoint="$(checkpoint_create "$PUBLIC_HEAD" "$NEW_LOCAL_HEAD" $PIDS)"
+if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BRANCH" "$PUBLIC_HEAD" $PIDS)"; then
+  exit 1
+fi
 ui_ok "Re-anchored '$LOCAL_BRANCH' to '$PUBLIC_BRANCH'."

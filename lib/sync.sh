@@ -85,6 +85,67 @@ sync_apply_range() {
   git diff "$start".."$end" | git apply --3way
 }
 
+# Apply the net diff from start..end, stage the changes (excluding
+# .git-shadow.env), and create a [SYNC] commit when the tree changed.
+#
+# Prints the collected patch-ids (space-separated) on stdout before attempting
+# the apply, so callers can save them to sync state when the apply conflicts.
+#
+# Returns 0 on success and 1 on conflict; the caller decides whether to save
+# sync state, reset, or abort.
+sync_apply_and_commit() {
+  local local_branch="$1"
+  local public_branch="$2"
+  local start_sha="$3"
+  local end_sha="$4"
+  local source_branch="${5:-}"
+
+  # Collect and print patch-ids first (V80).
+  local pids
+  pids="$(sync_patch_ids "$start_sha" "$end_sha" | tr '\n' ' ' | sed 's/ $//')"
+  if [[ -n "$pids" ]]; then
+    printf '%s\n' "$pids"
+  fi
+
+  # Apply net diff to the current working tree.
+  if ! sync_apply_range "$start_sha" "$end_sha"; then
+    return 1
+  fi
+
+  git add -A -- . ':(exclude).git-shadow.env'
+
+  if sync_tree_changed; then
+    sync_commit "$local_branch" "$public_branch" "$start_sha" "$end_sha" "$source_branch"
+  fi
+}
+
+# Re-anchor local annotation sidecars, commit any updates as a [MEMORY] commit,
+# and create a [CHECKPOINT].
+#
+# Usage: sync_reanchor_and_checkpoint <local_branch> <public_head> [pids...]
+#
+# The current checkout must be <local_branch> (V81). Prints the new checkpoint
+# SHA on stdout.
+sync_reanchor_and_checkpoint() {
+  local local_branch="$1"
+  local public_head="$2"
+  shift 2
+
+  local current_branch
+  current_branch="$(current_branch)"
+  if [[ "$current_branch" != "$local_branch" ]]; then
+    ui_error "sync_reanchor_and_checkpoint requires checkout on '$local_branch' (current: '$current_branch')."
+    return 1
+  fi
+
+  # Re-anchor local annotation sidecars to the updated source.
+  annotations_reanchor_all_commit
+
+  local new_local_head
+  new_local_head="$(git rev-parse "$local_branch")"
+  checkpoint_create "$public_head" "$new_local_head" "$@"
+}
+
 # Try to find a new ancestor in the rewritten public history.
 # Arguments: <end_public_sha> <pids_file>
 # Prints the matching commit SHA, or returns 1 if none found.

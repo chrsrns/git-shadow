@@ -71,10 +71,17 @@ EOF
       ui_error "A sync is in progress, but it is not a $mode sync (mode=$SYNC_MODE)."
       return 1
     fi
+    local conflicted
+    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
     git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
     git reset --hard "$SYNC_LOCAL_HEAD"
     sync_clear_state
     ui_ok "$label sync aborted."
+    ui_info "Aborted sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
+    if [[ -n "$conflicted" ]]; then
+      ui_info "Discarded conflicting paths: $conflicted"
+    fi
+    ui_info "Restart with 'git shadow $mode sync'; the paused state is cleared (--continue/--abort no longer apply)."
     return 0
   fi
 
@@ -91,7 +98,12 @@ EOF
       return 1
     fi
     if sync_has_conflicts; then
-      ui_error "Working tree still has unresolved conflicts. Resolve them and run --continue."
+      local conflicted
+      conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+      ui_error "Working tree still has unresolved conflicts: $conflicted"
+      ui_info "Sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
+      ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+      ui_info "Or run: git shadow $mode sync --abort"
       return 1
     fi
     if ! sync_tree_changed; then
@@ -212,8 +224,13 @@ EOF
   if pids=$(sync_apply_and_commit "$local_branch" "$public_branch" "$diff_start" "$public_head"); then
     :
   else
-    sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$public_head" "$local_head" "$pids"
-    ui_error "Conflict applying $mode net diff. Resolve and run 'git shadow $mode sync --continue', or '--abort'."
+    sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$diff_start" "$public_head" "$local_head" "$pids"
+    local conflicted
+    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
+    [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $conflicted"
+    ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+    ui_info "Or run: git shadow $mode sync --abort"
     return 1
   fi
 

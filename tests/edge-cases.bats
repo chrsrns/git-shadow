@@ -10,6 +10,10 @@ setup() {
   git init -q
   git config user.name "Test User"
   git config user.email "test@example.com"
+
+  # Ensure tests use the toolkit under test, not an installed copy.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
 }
 
 teardown() {
@@ -30,9 +34,10 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
-@test "edge: doctor exits 0 in empty repo" {
+@test "edge: doctor warns about missing hooks in empty repo" {
   run git shadow doctor
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"hooks"* ]]
 }
 
 @test "edge: install-hooks exits 0 in empty repo" {

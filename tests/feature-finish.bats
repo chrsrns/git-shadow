@@ -738,3 +738,24 @@ EOF
   body="$(git log -1 --format='%b' main@local~1)"
   [[ "$body" == *"git-shadow-source-memory:"* ]]
 }
+
+@test "feature finish --continue refuses while a sync is in progress" {
+  touch "$(git rev-parse --git-dir)/git-shadow-sync"
+  run git shadow feature finish --continue
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"git-shadow sync is in progress"* ]]
+}
+
+@test "feature finish --abort refuses while a sync is in progress" {
+  touch "$(git rev-parse --git-dir)/git-shadow-sync"
+  run git shadow feature finish --abort
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"git-shadow sync is in progress"* ]]
+}
+
+@test "feature finish --mark-applied refuses while a sync is in progress" {
+  touch "$(git rev-parse --git-dir)/git-shadow-sync"
+  run git shadow feature finish --mark-applied deadbeef
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"git-shadow sync is in progress"* ]]
+}

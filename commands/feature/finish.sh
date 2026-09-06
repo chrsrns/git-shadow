@@ -235,9 +235,14 @@ if [[ "$ABORT" -eq 1 ]]; then
       exit 1
     }
   fi
+  conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
   git reset --hard "$FINISH_PRE_FINISH_HEAD"
   finish_clear_state
   ui_ok "Feature finish aborted. Restored '$FINISH_LOCAL_BASE' to pre-finish state."
+  if [[ -n "$conflicted" ]]; then
+    ui_info "Discarded conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+  fi
+  ui_info "Restart with 'git shadow feature finish'; the paused state is cleared (--continue/--abort no longer apply)."
   exit 0
 fi
 

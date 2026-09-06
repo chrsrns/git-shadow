@@ -401,6 +401,8 @@ EOF
   [ "$status" -eq 0 ]
   [ ! -f "$state_file" ]
   [ "$(git rev-parse main@local)" = "$before" ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" == *"git shadow feature finish"* ]]
 
   git show-ref --verify --quiet "refs/heads/test-feature"
   git show-ref --verify --quiet "refs/heads/test-feature@local"

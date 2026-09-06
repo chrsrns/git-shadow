@@ -73,43 +73,32 @@ annotations_triple_excluded() {
   return 1
 }
 
-# Internal helper: run the Python extract subcommand.
-_annotations_run_extract() {
-  local source="$1"
-  local clean_out="$2"
-  local records_out="$3"
-  local meta_out="$4"
-  local existing_ann="$5"
+# Internal helper: check python availability and run a Python subcommand with
+# the configured pattern defaults. Only subcommands that need pattern defaults
+# get --pattern-triple and --pattern-local appended.
+_annotations_py() {
+  local subcommand="$1"
+  shift
 
-  local triple="${LOCAL_COMMENT_PATTERN_TRIPLE:-^\\s*///}"
-  local localpat="${LOCAL_COMMENT_PATTERN_LOCAL:-^\\s*// @local}"
-  local extract_triple=1
-  local extract_local=1
-
-  if [[ "${LOCAL_COMMENT_EXCLUDE_TRIPLE:-0}" == "1" ]]; then
-    extract_triple=0
+  if ! _annotations_python_available; then
+    echo "python3 is required for annotation $subcommand" >&2
+    return 1
   fi
 
-  local existing_arg=""
-  if [[ -n "$existing_ann" && -f "$existing_ann" ]]; then
-    existing_arg="--existing-annotations $existing_ann"
-  fi
+  local -a extra_args=()
+  case "$subcommand" in
+    extract|render|reapply|reanchor)
+      extra_args+=(--pattern-triple "${LOCAL_COMMENT_PATTERN_TRIPLE:-^\\s*///}")
+      extra_args+=(--pattern-local "${LOCAL_COMMENT_PATTERN_LOCAL:-^\\s*// @local}")
+      ;;
+  esac
 
-  python3 "$ANNOTATIONS_PY" extract \
-    --source "$source" \
-    --pattern-triple "$triple" \
-    --pattern-local "$localpat" \
-    --extract-triple "$extract_triple" \
-    --extract-local "$extract_local" \
-    --clean-out "$clean_out" \
-    --records-out "$records_out" \
-    --meta-out "$meta_out" \
-    $existing_arg
+  python3 "$ANNOTATIONS_PY" "$subcommand" "$@" "${extra_args[@]}"
 }
 
 # Extract local markers from a source file.
 #
-# Usage: annotations_extract <source> <clean_out> <records_out> <meta_out> [existing_ann]
+# Usage: annotations_extract <source> <clean_out> <records_out> <meta_out> [existing_ann] [skip_triple]
 #
 # Writes:
 #   <clean_out>     source with active marker lines removed
@@ -121,79 +110,53 @@ annotations_extract() {
   local records_out="$3"
   local meta_out="$4"
   local existing_ann="${5:-}"
+  local skip_triple="${6:-0}"
 
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation extraction" >&2
-    return 1
+  local -a existing_arg=()
+  if [[ -n "$existing_ann" && -f "$existing_ann" ]]; then
+    existing_arg=(--existing-annotations "$existing_ann")
   fi
 
-  _annotations_run_extract "$source" "$clean_out" "$records_out" "$meta_out" "$existing_ann"
+  _annotations_py extract \
+    --source "$source" \
+    --clean-out "$clean_out" \
+    --records-out "$records_out" \
+    --meta-out "$meta_out" \
+    --extract-triple "$((skip_triple ? 0 : 1))" \
+    --extract-local "1" \
+    "${existing_arg[@]}"
 }
 
 # Print the stable hunk key for a search block.
 #
 # Usage: annotations_key <search_file>
 annotations_key() {
-  local search_file="$1"
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation keying" >&2
-    return 1
-  fi
-  python3 "$ANNOTATIONS_PY" key --search "$search_file"
+  _annotations_py key --search "$1"
 }
 
 # Render an annotated view of a source file to stdout.
 #
 # Usage: annotations_render <source> <annotations>
 annotations_render() {
-  local source="$1"
-  local annotations="$2"
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation rendering" >&2
-    return 1
-  fi
-  local triple="${LOCAL_COMMENT_PATTERN_TRIPLE:-^\\s*///}"
-  local localpat="${LOCAL_COMMENT_PATTERN_LOCAL:-^\\s*// @local}"
-  python3 "$ANNOTATIONS_PY" render \
-    --source "$source" --annotations "$annotations" --output /dev/stdout \
-    --pattern-triple "$triple" --pattern-local "$localpat"
+  _annotations_py render \
+    --source "$1" --annotations "$2" --output /dev/stdout
 }
 
 # Re-apply annotations to a source file.
 #
 # Usage: annotations_reapply <source> <annotations> <output>
 annotations_reapply() {
-  local source="$1"
-  local annotations="$2"
-  local output="$3"
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation reapply" >&2
-    return 1
-  fi
-  local triple="${LOCAL_COMMENT_PATTERN_TRIPLE:-^\\s*///}"
-  local localpat="${LOCAL_COMMENT_PATTERN_LOCAL:-^\\s*// @local}"
-  python3 "$ANNOTATIONS_PY" reapply \
-    --source "$source" --annotations "$annotations" --output "$output" \
-    --pattern-triple "$triple" --pattern-local "$localpat"
+  _annotations_py reapply \
+    --source "$1" --annotations "$2" --output "$3"
 }
 
 # Re-anchor annotations against a changed source file.
 #
 # Usage: annotations_reanchor <source> <annotations> <output>
 annotations_reanchor() {
-  local source="$1"
-  local annotations="$2"
-  local output="$3"
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation re-anchoring" >&2
-    return 1
-  fi
-  local triple="${LOCAL_COMMENT_PATTERN_TRIPLE:-^\\s*///}"
-  local localpat="${LOCAL_COMMENT_PATTERN_LOCAL:-^\\s*// @local}"
-  python3 "$ANNOTATIONS_PY" reanchor \
-    --source "$source" --annotations "$annotations" --output "$output" \
-    --threshold "${ANNOTATION_FUZZY_THRESHOLD:-0.80}" \
-    --pattern-triple "$triple" --pattern-local "$localpat"
+  _annotations_py reanchor \
+    --source "$1" --annotations "$2" --output "$3" \
+    --threshold "${ANNOTATION_FUZZY_THRESHOLD:-0.80}"
 }
 
 # Merge feature annotation records into base records.
@@ -207,15 +170,11 @@ annotations_merge() {
   local feature="$2"
   local output="$3"
   local mode="${4:-append}"
-  local warn_arg=""
+  local -a args=(--base "$base" --feature "$feature" --output "$output" --mode "$mode")
   if [[ "${5:-}" == "--warn-differing" ]]; then
-    warn_arg="--warn-differing"
+    args+=(--warn-differing)
   fi
-  if ! _annotations_python_available; then
-    echo "python3 is required for annotation merge" >&2
-    return 1
-  fi
-  python3 "$ANNOTATIONS_PY" merge --base "$base" --feature "$feature" --output "$output" --mode "$mode" ${warn_arg:+$warn_arg}
+  _annotations_py merge "${args[@]}"
 }
 
 # Re-anchor every tracked .git-shadow/annotations sidecar against the current

@@ -155,12 +155,13 @@ for path in "${STAGED[@]}"; do
   fi
 
   # Decide whether to skip /// extraction.
+  skip_triple=0
   if $binary; then
-    export LOCAL_COMMENT_EXCLUDE_TRIPLE=0
+    skip_triple=0
   elif annotations_triple_excluded "$relpath"; then
-    export LOCAL_COMMENT_EXCLUDE_TRIPLE=1
+    skip_triple=1
   else
-    export LOCAL_COMMENT_EXCLUDE_TRIPLE=0
+    skip_triple=0
   fi
 
   clean_tmp="$TMP_DIR/clean_${relpath////_}"
@@ -189,7 +190,7 @@ for path in "${STAGED[@]}"; do
     continue
   fi
 
-  if ! annotations_extract "$staged_tmp" "$clean_tmp" "$records_tmp" "$meta_tmp" "$existing_ann" 2>&1; then
+  if ! annotations_extract "$staged_tmp" "$clean_tmp" "$records_tmp" "$meta_tmp" "$existing_ann" "$skip_triple" 2>&1; then
     ui_error "Failed to extract annotations from $relpath."
     exit 1
   fi

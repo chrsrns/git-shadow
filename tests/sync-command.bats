@@ -58,3 +58,36 @@ EOF
   [ "$status" -eq 0 ]
   [[ "$output" == *"initial checkpoint"* ]]
 }
+
+@test "sync conflict saves collected patch-ids to state for --continue" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  # Public side makes an unrelated change.
+  git checkout -q main
+  echo "public change" > other.txt
+  git add other.txt
+  GIT_SHADOW=1 git commit -qm "feat: public change"
+
+  # Local side changes the same file in an incompatible way.
+  git checkout -q main@local
+  echo "local conflict" > other.txt
+  git add other.txt
+  git commit -qm "feat: local change"
+
+  # Another public change that will conflict when applied.
+  git checkout -q main
+  echo "public conflict" > other.txt
+  git add other.txt
+  GIT_SHADOW=1 git commit -qm "feat: public conflict"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -eq 1 ]
+
+  # The state file must contain the patch-ids collected before the apply.
+  state_file="$(git rev-parse --git-dir)/git-shadow-sync"
+  [ -f "$state_file" ]
+  state_pids="$(grep '^pids=' "$state_file" | cut -d= -f2)"
+  [ -n "$state_pids" ]
+}

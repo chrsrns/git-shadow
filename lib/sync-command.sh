@@ -205,27 +205,14 @@ EOF
     diff_start="$new_ancestor"
   fi
 
-  # Collect patch-ids of the public commits in the sync range.
-  local pids=""
-  local pid
-  for pid in $(sync_patch_ids "$diff_start" "$public_head"); do
-    if [[ -n "$pid" ]]; then
-      pids="$pids $pid"
-    fi
-  done
-  pids="${pids# }"
-
-  # Apply net diff to the local branch.
-  if ! sync_apply_range "$diff_start" "$public_head"; then
+  # Apply net diff and create a [SYNC] commit when the tree changed.
+  local pids
+  if pids=$(sync_apply_and_commit "$local_branch" "$public_branch" "$diff_start" "$public_head"); then
+    :
+  else
     sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$public_head" "$local_head" "$pids"
     ui_error "Conflict applying $mode net diff. Resolve and run 'git shadow $mode sync --continue', or '--abort'."
     return 1
-  fi
-
-  git add -A -- . ':(exclude).git-shadow.env'
-
-  if sync_tree_changed; then
-    sync_commit "$local_branch" "$public_branch" "$diff_start" "$public_head"
   fi
 
   # Re-anchor local annotation sidecars to the updated source.

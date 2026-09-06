@@ -129,11 +129,12 @@ annotations_merge() {
 #
 # Usage: annotations_reanchor_all
 # Returns 0 after staging; the caller should check git diff --cached and
-# commit sidecar updates if any.
+# commit sidecar updates if any. Returns 1 if any re-anchor step fails.
 annotations_reanchor_all() {
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   local -a changed=()
+  local failed=0
 
   local sidecar source_path source_tmp ann_tmp new_tmp
   while IFS= read -r -d '' sidecar; do
@@ -144,45 +145,77 @@ annotations_reanchor_all() {
     ann_tmp="$tmp_dir/ann_${sidecar////_}"
     new_tmp="$tmp_dir/new_${sidecar////_}"
 
-    if git show "HEAD:$source_path" > "$source_tmp" 2>/dev/null; then
+    if git cat-file -e "HEAD:$source_path" 2>/dev/null; then
+      if ! git show "HEAD:$source_path" > "$source_tmp" 2>/dev/null; then
+        ui_error "annotations_reanchor_all: cannot read source '$source_path' at HEAD"
+        failed=1
+        break
+      fi
       # Skip binary files; they never have sidecars.
       if ! tr -d '\0' < "$source_tmp" | diff -q - "$source_tmp" >/dev/null 2>&1; then
         continue
       fi
-      if git show "HEAD:$sidecar" > "$ann_tmp" 2>/dev/null; then
-        : > "$new_tmp"
-        if annotations_reanchor "$source_tmp" "$ann_tmp" "$new_tmp" 2>/dev/null; then
-          if [[ ! -s "$new_tmp" ]]; then
-            # Re-anchored sidecar is empty: remove it.
-            if [[ -e "$sidecar" ]]; then
-              git rm -q -- "$sidecar" 2>/dev/null || rm -f "$sidecar"
-            fi
-            changed+=("$sidecar")
-          elif ! diff -q "$ann_tmp" "$new_tmp" >/dev/null 2>&1; then
-            cp "$new_tmp" "$sidecar"
-            git add -f -- "$sidecar"
-            changed+=("$sidecar")
-          fi
+      if git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
+        if ! git show "HEAD:$sidecar" > "$ann_tmp" 2>/dev/null; then
+          ui_error "annotations_reanchor_all: cannot read sidecar '$sidecar' at HEAD"
+          failed=1
+          break
         fi
+        : > "$new_tmp"
+        if ! annotations_reanchor "$source_tmp" "$ann_tmp" "$new_tmp"; then
+          ui_error "annotations_reanchor_all: cannot re-anchor sidecar '$sidecar' against '$source_path'"
+          failed=1
+          break
+        fi
+        if [[ ! -s "$new_tmp" ]]; then
+          # Re-anchored sidecar is empty: remove it.
+          if [[ -e "$sidecar" ]]; then
+            if ! git rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$sidecar"; then
+              ui_error "annotations_reanchor_all: cannot remove empty sidecar '$sidecar'"
+              failed=1
+              break
+            fi
+          fi
+          changed+=("$sidecar")
+        elif ! diff -q "$ann_tmp" "$new_tmp" >/dev/null 2>&1; then
+          cp "$new_tmp" "$sidecar"
+          git add -f -- "$sidecar"
+          changed+=("$sidecar")
+        fi
+      else
+        # The sidecar exists in the index/working tree but not at HEAD.
+        # Re-anchoring is impossible; treat it as an error.
+        ui_error "annotations_reanchor_all: sidecar '$sidecar' is not in HEAD"
+        failed=1
+        break
       fi
     else
       # Source file is gone: delete the orphaned sidecar.
       if [[ -e "$sidecar" ]]; then
-        git rm -q -- "$sidecar" 2>/dev/null || rm -f "$sidecar"
+        if ! git rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$sidecar"; then
+          ui_error "annotations_reanchor_all: cannot remove orphaned sidecar '$sidecar'"
+          failed=1
+          break
+        fi
       fi
       changed+=("$sidecar")
     fi
   done < <(git ls-tree -r -z --name-only HEAD -- .git-shadow/annotations/)
 
   rm -rf "$tmp_dir"
+  return $failed
 }
 
 # Re-anchor all tracked sidecars and, if any changed, commit the updates as a
 # local sidecar commit with the configured shadow commit prefix.
 #
 # Usage: annotations_reanchor_all_commit
+# Returns 1 if re-anchoring failed; otherwise creates a commit only when staged
+# sidecars changed.
 annotations_reanchor_all_commit() {
-  annotations_reanchor_all
+  if ! annotations_reanchor_all; then
+    return 1
+  fi
   if ! git diff --cached --quiet; then
     env GIT_SHADOW=1 git commit -m "${SHADOW_COMMIT_PREFIX} re-anchor sidecars"
   fi

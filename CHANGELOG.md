@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## [1.2.0] — 2026-09-06
 
 ### Added
 
@@ -9,6 +9,15 @@
 - **`git shadow annotations reapply [path]`** — write markers from `.git-shadow/annotations/` back into the working tree as unstaged changes, refusing to overwrite non-marker changes.
 - **Local-comment guards** — the pre-commit hook on `@local` branches, `git shadow feature publish`, and `git shadow check public` now reject `///`, `// @local`, and `.git-shadow/annotations/` paths in public-tracked content.
 - **Updated docs and completions** — help, shell completions, and AGENTS.md reflect the in-source marker workflow.
+
+### Changed
+
+- Consolidated shared helpers in `lib/`: single `sync_command_run` for feature/base sync, `sync_apply_and_commit`, `sync_reanchor_and_checkpoint`, `guard_staged_files`/`guard_tree`, `install_hook_file`, `_config_unquote`, `_load_config_file`, `ui_emit`, and `_branch_transform`.
+- Updated AGENTS.md and added workflow templates.
+
+### Fixed
+
+- `git shadow feature publish` now aborts with an error naming the offending commit and path when the check pass fails, instead of reporting "No publishable commits". Added a `check_missing_paths` pre-flight that flags public commits modifying or deleting paths absent from the public tree being replayed.
 
 ## [1.1.1] — 2026-03-23
 

@@ -15,7 +15,7 @@ This page covers failure recovery for the most common situations where git shado
 
 1. [`feature publish` check pass failed](#1-feature-publish-check-pass-failed)
 2. [Conflicts during `feature sync` / `base sync`](#2-conflicts-during-feature-sync--base-sync)
-3. [`[MEMORY]` cherry-pick conflict during `feature finish`](#3-memory-cherry-pick-conflict-during-feature-finish)
+3. [`feature finish` pauses on conflict](#3-feature-finish-pauses-on-conflict)
 4. [Public branch is not an ancestor of the checkpoint](#4-public-branch-is-not-an-ancestor-of-the-checkpoint)
 5. [`git shadow status` reports `diverged`](#5-git-shadow-status-reports-diverged)
 6. [`git shadow check public` finds unpromoted files](#6-git-shadow-check-public-finds-unpromoted-files)
@@ -110,46 +110,77 @@ git shadow base sync --abort
 
 ---
 
-## 3. `[MEMORY]` cherry-pick conflict during `feature finish`
+## 3. `feature finish` pauses on conflict
 
-**Symptom:** `git shadow feature finish` aborts with:
-
-```
-CONFLICT (content): Merge conflict in notes/feature-x.md
-error: could not apply <sha>... [MEMORY] feature x notes
-```
-
-or a base net-diff conflict message.
+**Symptom:** `git shadow feature finish` exits 1 with a conflict message naming the conflicting paths and the exact `--continue` / `--abort` commands.
 
 **What happened:** `feature finish` does the following:
 
 1. Pulls / fast-forwards the public base.
-2. Applies the base net diff onto the `@local` base (without creating an intermediate checkpoint).
-3. Cherry-picks each `[MEMORY]` commit from the feature's `@local` branch onto the `@local` base.
+2. Applies the base net diff onto the `@local` base.
+3. Replays each unapplied `[MEMORY]` commit from the feature's `@local` branch onto the `@local` base.
 4. Creates one final `[CHECKPOINT]` and deletes the feature branches.
 
-A conflict can happen in the base net diff or in any of the `[MEMORY]` cherry-picks.
+A conflict can happen in the base net diff or in a `[MEMORY]` apply. Instead of hard-resetting, `feature finish` pauses: it leaves conflict markers in the working tree, writes the state file `.git/git-shadow-finish`, and exits.
 
-**Where you are:** You are on the local base branch (e.g. `main@local`) with conflict markers or a cherry-pick in progress.
+**Where you are:** You are on the local base branch (e.g. `main@local`) with conflict markers and a paused finish.
 
 **Recovery:**
 
 ```bash
-# 1. Check which files are in conflict
+# 1. Check which files are conflicted
 git status
 
-# 2. Resolve each conflicting file
-# 3. Stage and commit the resolved files
-git add notes/feature-x.md
-git commit -m "[MEMORY] resolved finish conflict"
+# 2. Inspect the paused state (optional)
+cat "$(git rev-parse --git-dir)/git-shadow-finish"
 
-# 4. Re-run finish — it skips already-applied base net diff and [MEMORY] commits
-git shadow feature finish
+# 3. Resolve each conflicting file, then stage it
+git add <path>
+
+# 4. Resume the finish
+git shadow feature finish --continue
 ```
 
-If the conflict is in a `[MEMORY]` file that accidentally touched a public-tracked file, move the local-only content to a new file and re-run.
+To abort and restore the pre-finish state:
 
-**Note:** `feature finish` aborts and **preserves both feature branches** on conflict, so no work is lost.
+```bash
+git shadow feature finish --abort
+```
+
+`--abort` resets the local base to the recorded `pre_finish_head` and preserves both feature branches.
+
+**`--mark-applied`:** If a `[MEMORY]` commit has already been applied or resolved manually, record its provenance without replaying it:
+
+```bash
+git shadow feature finish --mark-applied <sha>
+```
+
+This creates an empty record commit on the local base carrying `git-shadow-source-memory:` and `git-shadow-source-pid:` trailers. When a finish is paused, it also updates `remaining_shas` and `pre_finish_head` so `--abort` does not discard the marker.
+
+### Provenance trailer format
+
+Every `[MEMORY]` replay and `--mark-applied` record commit carries these trailers in its body:
+
+```
+git-shadow-source-memory: <original-sha>
+git-shadow-source-pid: <stable-patch-id>
+```
+
+These trailers let `feature finish` skip `[MEMORY]` commits that have already been applied or recorded, so re-running `feature finish` after `--continue` is idempotent.
+
+**Example — recover a manually resolved [MEMORY]:**
+
+```bash
+# A [MEMORY] conflicts during finish; you resolve it by hand and commit.
+git add notes/feature-x.md
+git commit -m "[MEMORY] resolved notes"
+
+# Record provenance so finish knows it was applied.
+git shadow feature finish --mark-applied <original-sha>
+
+# Continue or abort; finish will not try to replay it again.
+git shadow feature finish --continue
+```
 
 ---
 

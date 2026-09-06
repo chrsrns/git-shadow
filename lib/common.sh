@@ -27,6 +27,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync-command.sh"
 
+# Load finish-state helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/finish-state.sh"
+
 # Load patch-id helpers
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"

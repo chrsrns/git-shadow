@@ -54,6 +54,11 @@ EOF
 
   enter_project '.'
 
+  if finish_state_active; then
+    ui_error "A feature finish is in progress. Resolve it before running '$mode sync'."
+    return 1
+  fi
+
   # ---------------------------------------------------------------------------
   # --abort
   # ---------------------------------------------------------------------------

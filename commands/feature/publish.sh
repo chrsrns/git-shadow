@@ -13,6 +13,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 enter_project '.'
 ensure_clean_repo
 
+if finish_state_active; then
+  ui_error "A feature finish is in progress. Resolve it before running 'feature publish'."
+  exit 1
+fi
+
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."

@@ -309,3 +309,177 @@ EOF
   git show-ref --verify --quiet "refs/heads/test-feature"
   git show-ref --verify --quiet "refs/heads/test-feature@local"
 }
+
+# --- Resumable finish tests (T43) ---------------------------------------------
+
+@test "feature finish pauses on base-diff conflict and supports --continue" {
+  # Public base and local base both change the same file after the feature merge.
+  git checkout -q main
+  echo "public base change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: public base change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--continue"* ]]
+  [[ "$output" == *"--abort"* ]]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=base-diff" "$state_file"
+
+  # Resolve the conflict and continue.
+  echo "resolved" > file.txt
+  git add file.txt
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature finish pauses on [MEMORY] conflict and supports --continue" {
+  # The base diff applies cleanly; only the [MEMORY] conflicts.
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--continue"* ]]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=memory-replay" "$state_file"
+  grep -q "conflicted_sha=" "$state_file"
+
+  # Resolve and continue.
+  echo "resolved" > file.txt
+  git add file.txt
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature finish --abort restores pre-finish head and preserves branches" {
+  git checkout -q main
+  echo "public base change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: public base change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+  before="$(git rev-parse HEAD)"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+
+  run git shadow feature finish --abort
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+  [ "$(git rev-parse main@local)" = "$before" ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" == *"git shadow feature finish"* ]]
+
+  git show-ref --verify --quiet "refs/heads/test-feature"
+  git show-ref --verify --quiet "refs/heads/test-feature@local"
+}
+
+@test "feature finish pause message names conflicting paths and commands" {
+  git checkout -q main
+  echo "public base change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: public base change"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" == *"git shadow feature finish --continue"* ]]
+  [[ "$output" == *"git shadow feature finish --abort"* ]]
+}
+
+# --- --mark-applied tests (T44) ------------------------------------------------
+
+@test "feature finish --mark-applied creates provenance-only commit" {
+  git checkout -q "test-feature@local"
+  echo "local note" > notes.md
+  git add notes.md
+  git commit -qm "[MEMORY] local note"
+  sha="$(git rev-parse HEAD)"
+
+  run git shadow feature finish --mark-applied "$sha"
+  [ "$status" -eq 0 ]
+
+  body="$(git log -1 --format='%b' main@local)"
+  [[ "$body" == *"git-shadow-source-memory: $sha"* ]]
+  [[ "$body" == *"git-shadow-source-pid:"* ]]
+
+  # The commit is empty: no tree changes relative to its parent.
+  diff="$(git diff-tree --no-commit-id -r HEAD main@local | wc -l)"
+  [ "$diff" -eq 0 ]
+}
+
+@test "feature finish --mark-applied updates paused state" {
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+  sha="$(git rev-parse HEAD)"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  git shadow feature finish --no-pull 2>/dev/null || true
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "conflicted_sha=$sha" "$state_file"
+
+  run git shadow feature finish --mark-applied "$sha"
+  [ "$status" -eq 0 ]
+
+  # The marker commit is the new pre-finish head and the sha is removed.
+  new_head="$(git rev-parse main@local)"
+  grep -q "pre_finish_head=$new_head" "$state_file"
+  ! grep -q "conflicted_sha=$sha" "$state_file"
+  ! grep -q "remaining_shas=$sha" "$state_file"
+}
+
+@test "feature finish refuses to run while a sync is paused" {
+  echo "mode=feature" > .git/git-shadow-sync
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"sync"* ]]
+}

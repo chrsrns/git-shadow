@@ -10,6 +10,7 @@ setup() {
 
   export LOCAL_COMMENT_PATTERN_TRIPLE='^///'
   export LOCAL_COMMENT_PATTERN_LOCAL='^// @local'
+  LOCAL_MARKER='// @local'
 
   mkdir -p out
 }
@@ -19,10 +20,10 @@ teardown() {
 }
 
 @test "annotations_extract extracts both triple and local markers by default" {
-  cat > source.txt <<'EOF'
+  cat > source.txt <<EOF
 public before
 /// triple note
-// @local note
+${LOCAL_MARKER} note
 public after
 EOF
 
@@ -41,10 +42,10 @@ EOF
 }
 
 @test "annotations_extract skip_triple=1 leaves triple markers and extracts local markers" {
-  cat > source.txt <<'EOF'
+  cat > source.txt <<EOF
 public before
 /// triple note
-// @local note
+${LOCAL_MARKER} note
 public after
 EOF
 
@@ -60,10 +61,10 @@ EOF
 }
 
 @test "annotations_extract ignores LOCAL_COMMENT_EXCLUDE_TRIPLE env flag" {
-  cat > source.txt <<'EOF'
+  cat > source.txt <<EOF
 public before
 /// triple note
-// @local note
+${LOCAL_MARKER} note
 public after
 EOF
 

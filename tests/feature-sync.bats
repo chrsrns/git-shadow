@@ -207,3 +207,10 @@ EOF
   [ "$status" -eq 1 ]
   [[ "$output" == *"base"* ]]
 }
+
+@test "feature sync refuses to run while a finish is paused" {
+  echo "phase=base-diff" > .git/git-shadow-finish
+  run git shadow feature sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"finish"* ]]
+}

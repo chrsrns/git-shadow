@@ -43,9 +43,11 @@ teardown() {
   [ -z "$pid" ]
 }
 
-@test "patch_id_for invalid sha returns nothing" {
-  pid="$(patch_id_for "0000000000000000000000000000000000000000")"
-  [ -z "$pid" ]
+@test "patch_id_for invalid sha returns 1 with an error" {
+  run patch_id_for "0000000000000000000000000000000000000000"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot show commit"* ]]
+  [ -z "$output" ] || [[ "$output" != *^[0-9a-f]\{40\}$* ]]
 }
 
 @test "patch_ids_for returns one patch-id per commit" {
@@ -58,4 +60,10 @@ teardown() {
   output="$(patch_ids_for "" "$FIRST_SHA" "" "$SECOND_SHA" "")"
   count="$(printf '%s\n' "$output" | grep -c '^[a-f0-9]\{40\}$')"
   [ "$count" -eq 2 ]
+}
+
+@test "patch_ids_for fails when any commit is invalid" {
+  run patch_ids_for "$FIRST_SHA" "0000000000000000000000000000000000000000" "$SECOND_SHA"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot show commit"* ]]
 }

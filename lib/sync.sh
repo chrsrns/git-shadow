@@ -164,6 +164,11 @@ sync_recover_ancestor() {
 }
 
 # Write the sync state file.
+#
+# Arguments: <mode> <public_branch> <local_branch> <checkpoint_public>
+#            <checkpoint_local> <diff_start> <target_public> <local_head> <pids>
+# <diff_start> is the actual start of the applied net diff; it equals
+# <checkpoint_public> unless --recover found a new-ancestor.
 sync_save_state() {
   local file
   file="$(sync_state_file)"
@@ -173,9 +178,10 @@ sync_save_state() {
     echo "local_branch=$3"
     echo "checkpoint_public=$4"
     echo "checkpoint_local=$5"
-    echo "target_public=$6"
-    echo "local_head=$7"
-    echo "pids=$8"
+    echo "diff_start=$6"
+    echo "target_public=$7"
+    echo "local_head=$8"
+    echo "pids=$9"
   } > "$file"
 }
 
@@ -194,6 +200,7 @@ sync_load_state() {
       local_branch)       SYNC_LOCAL_BRANCH="$value" ;;
       checkpoint_public)  SYNC_CHECKPOINT_PUBLIC="$value" ;;
       checkpoint_local)   SYNC_CHECKPOINT_LOCAL="$value" ;;
+      diff_start)         SYNC_DIFF_START="$value" ;;
       target_public)      SYNC_TARGET_PUBLIC="$value" ;;
       local_head)         SYNC_LOCAL_HEAD="$value" ;;
       pids)               SYNC_PIDS="$value" ;;

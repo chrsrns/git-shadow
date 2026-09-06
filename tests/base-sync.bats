@@ -187,7 +187,8 @@ EOF
   run git shadow base sync --abort
   [ "$status" -eq 0 ]
   [ "$(cat file.txt)" = "local" ]
-  [[ "$output" != *"conflict"* ]]
+  # The abort message names the discarded conflicting paths.
+  [[ "$output" == *"file.txt"* ]]
 }
 
 @test "base sync refuses to run while a finish is paused" {

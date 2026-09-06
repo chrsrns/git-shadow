@@ -16,8 +16,14 @@ check_public_commits() {
   local local_branch="$1"
   local checkpoint_local="$2"
 
-  git rev-list --reverse "${checkpoint_local}..${local_branch}" 2>/dev/null | while IFS= read -r sha; do
-    local subject
+  local revlist
+  if ! revlist="$(git rev-list --reverse "${checkpoint_local}..${local_branch}" 2>/dev/null)"; then
+    ui_error "check_public_commits: cannot list commits from $checkpoint_local to $local_branch"
+    return 1
+  fi
+
+  local sha subject
+  for sha in $revlist; do
     subject="$(git log -1 --format='%s' "$sha")"
     if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* ]]; then
       printf '%s\n' "$sha"

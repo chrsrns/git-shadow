@@ -62,7 +62,7 @@ Commands:
   feature start <name>
   feature publish
   feature sync [--recover] [--continue|--abort]
-  feature finish
+  feature finish [--no-pull] [--keep-branches] [--continue|--abort] [--mark-applied <sha>]
   base sync [--recover] [--continue|--abort]
   re-anchor <branch@local>
   push <branch>

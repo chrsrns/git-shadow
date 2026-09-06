@@ -13,6 +13,7 @@ setup() {
 
   # Ensure tests use the toolkit under test.
   TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export TOOLKIT_ROOT
   export PATH="$TOOLKIT_ROOT/bin:$PATH"
 
   git shadow feature start test-feature
@@ -475,6 +476,179 @@ EOF
   grep -q "pre_finish_head=$new_head" "$state_file"
   ! grep -q "conflicted_sha=$sha" "$state_file"
   ! grep -q "remaining_shas=$sha" "$state_file"
+}
+
+# --- T51 regression tests ------------------------------------------------------
+
+@test "feature finish --mark-applied on conflicted [MEMORY] then --continue finishes" {
+  # Base diff applies cleanly; the [MEMORY] replay conflicts.
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+  sha="$(git rev-parse HEAD)"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"--continue"* ]]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=memory-replay" "$state_file"
+  grep -q "conflicted_sha=$sha" "$state_file"
+
+  # Resolve the conflict by keeping the local base (HEAD) version.
+  git checkout --ours -- file.txt
+  git add file.txt
+
+  run git shadow feature finish --mark-applied "$sha"
+  [ "$status" -eq 0 ]
+
+  # The record commit is empty and carries the provenance trailers.
+  new_head="$(git rev-parse main@local)"
+  body="$(git log -1 --format='%b' main@local)"
+  [[ "$body" == *"git-shadow-source-memory: $sha"* ]]
+  [[ "$body" == *"git-shadow-source-pid:"* ]]
+  diff_count="$(git diff-tree --no-commit-id -r "$new_head^" "$new_head" | wc -l)"
+  [ "$diff_count" -eq 0 ]
+
+  # State file was updated.
+  grep -q "pre_finish_head=$new_head" "$state_file"
+  ! grep -q "conflicted_sha=$sha" "$state_file"
+  ! grep -q "remaining_shas=$sha" "$state_file"
+
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature finish re-run after --continue is idempotent" {
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+  sha="$(git rev-parse HEAD)"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  git shadow feature finish --no-pull 2>/dev/null || true
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+
+  git checkout --ours -- file.txt
+  git add file.txt
+
+  git shadow feature finish --mark-applied "$sha"
+  git shadow feature finish --continue --keep-branches
+
+  # Re-run finish from the local feature branch.
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull --keep-branches
+  [ "$status" -eq 0 ]
+
+  # Only one [MEMORY] record commit exists on the local base.
+  [ "$(git log --grep='^\[MEMORY\]' main@local --format='%H' | wc -l)" -eq 1 ]
+}
+
+@test "feature finish --continue re-anchors sidecars from resolved working tree" {
+  git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null
+
+  # Public base gets a multi-line source.
+  git checkout -q main
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+line2
+EOF
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "expand feature.txt"
+
+  # Local base adds a base marker via sidecar.
+  git checkout -q "main@local"
+  git shadow base sync
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+/// base note
+line2
+EOF
+  git add feature.txt
+  git shadow commit -q -m "base note"
+
+  # Public base changes a line inside the hunk.
+  git checkout -q main
+  cat > feature.txt <<-'EOF'
+line1
+feature code 2
+line2
+EOF
+  git add feature.txt
+  GIT_SHADOW=1 git commit -q -m "change feature code"
+
+  # Local base syncs the public change and re-anchors the base sidecar.
+  git checkout -q "main@local"
+  git shadow base sync
+
+  # Feature [MEMORY] with both a source change and a sidecar.
+  git checkout -q "test-feature@local"
+  cat > feature.txt <<-'EOF'
+line1
+feature code
+line2
+EOF
+  git add feature.txt
+  git commit -q -m "local: prep"
+
+  mkdir -p .git-shadow/annotations
+  cat > feature.txt <<-'EOF'
+line1
+feature content
+/// feature note
+line2
+EOF
+  python3 "$TOOLKIT_ROOT/lib/annotations.py" extract \
+    --source feature.txt \
+    --pattern-triple '^\s*///' \
+    --extract-triple 1 --extract-local 0 \
+    --clean-out /tmp/clean_feature.txt \
+    --records-out .git-shadow/annotations/feature.txt \
+    --meta-out /tmp/feature_meta.txt
+  git add -f feature.txt .git-shadow/annotations/feature.txt
+  GIT_SHADOW=1 git commit -qm "[MEMORY] feature note"
+
+  # Finish pauses on the [MEMORY] source conflict.
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+
+  # Resolve the conflict by keeping the local base (HEAD) version.
+  git checkout --ours -- feature.txt
+  git add feature.txt
+
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+
+  git checkout -q "main@local"
+  [ "$(cat feature.txt)" = $'line1\nfeature code 2\nline2' ]
+
+  # The feature note is rendered in the resolved source.
+  run git shadow show --with-annotations feature.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"feature code 2"* ]]
+  [[ "$output" == *"/// feature note"* ]]
 }
 
 @test "feature finish refuses to run while a sync is paused" {

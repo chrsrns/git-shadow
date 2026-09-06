@@ -12,7 +12,6 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
 
 enter_project '.'
-ensure_clean_repo
 
 # Guard: do not re-anchor while a git-shadow sync is in progress.
 if [[ -f "$(sync_state_file)" ]]; then
@@ -25,6 +24,8 @@ if finish_state_active; then
   ui_error "A feature finish is in progress. Resolve it before re-anchoring."
   exit 1
 fi
+
+ensure_clean_repo
 
 if [[ $# -gt 0 ]]; then
   LOCAL_BRANCH="$1"

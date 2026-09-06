@@ -347,16 +347,19 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     MEMORY_SHAS=($FINISH_REMAINING_SHAS)
   elif [[ "$FINISH_PHASE" == "memory-replay" ]]; then
     # The conflicted [MEMORY] non-sidecar is already resolved in the working
-    # tree. Re-run the sidecar merge from the resolved source and commit it.
+    # tree. Re-run the sidecar merge from the resolved source and commit it,
+    # unless --mark-applied has already recorded it (V102).
     finish_collect_applied
-    FINISH_TMP_DIR="$(mktemp -d)"
-    trap 'rm -rf "$FINISH_TMP_DIR"' 0
-    finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
-    finish_commit_memory "$FINISH_CONFLICTED_SHA"
+    if [[ -n "$FINISH_CONFLICTED_SHA" ]]; then
+      FINISH_TMP_DIR="$(mktemp -d)"
+      trap 'rm -rf "$FINISH_TMP_DIR"' 0
+      finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
+      finish_commit_memory "$FINISH_CONFLICTED_SHA"
+      APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
+      pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"
+      [[ -n "$pid" ]] && APPLIED_MEMORY_PIDS+=("$pid")
+    fi
     finish_clear_state
-    APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
-    pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"
-    [[ -n "$pid" ]] && APPLIED_MEMORY_PIDS+=("$pid")
     MEMORY_SHAS=($FINISH_REMAINING_SHAS)
   else
     ui_error "Unknown finish phase: $FINISH_PHASE"

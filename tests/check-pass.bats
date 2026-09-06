@@ -61,6 +61,74 @@ teardown() {
 
   run check_pass "main" "main@local" "$cp_public" "$cp_local"
   [ "$status" -ne 0 ]
+  # The error names the differing path.
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "check pass names commit and path when a public commit deletes a local-only file" {
+  git checkout -q main@local
+  mkdir -p notes
+  echo "local note" > notes/local.md
+  git add notes/local.md
+  git commit -q -m "[MEMORY] local note"
+  git rm -q notes/local.md
+  git commit -q -m "public: delete local note"
+  bad_sha="$(git rev-parse HEAD)"
+
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  run check_pass "main" "main@local" "$cp_public" "$cp_local"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"notes/local.md"* ]]
+  [[ "$output" == *"$bad_sha"* || "$output" == *"delete local note"* ]]
+}
+
+@test "check_missing_paths flags modify/delete of paths absent from the base tree" {
+  git checkout -q main@local
+  mkdir -p notes
+  echo "local note" > notes/local.md
+  git add notes/local.md
+  git commit -q -m "[MEMORY] local note"
+  git rm -q notes/local.md
+  git commit -q -m "public: delete local note"
+  bad_sha="$(git rev-parse HEAD)"
+
+  base="$(git rev-parse main)"
+  run check_missing_paths "$base" "$bad_sha"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"$bad_sha"* ]]
+  [[ "$output" == *"notes/local.md"* ]]
+}
+
+@test "check_missing_paths accepts add-then-delete within the same range" {
+  git checkout -q main@local
+  echo "tmp" > tmp.txt
+  git add tmp.txt
+  git commit -q -m "public: add tmp"
+  add_sha="$(git rev-parse HEAD)"
+  git rm -q tmp.txt
+  git commit -q -m "public: delete tmp"
+  del_sha="$(git rev-parse HEAD)"
+
+  base="$(git rev-parse main)"
+  run check_missing_paths "$base" "$add_sha" "$del_sha"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "check_missing_paths ignores pure additions" {
+  git checkout -q main@local
+  echo "new" > brand-new.txt
+  git add brand-new.txt
+  git commit -q -m "public: add file"
+  add_sha="$(git rev-parse HEAD)"
+
+  base="$(git rev-parse main)"
+  run check_missing_paths "$base" "$add_sha"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 @test "check pass returns nothing when there are no public commits" {

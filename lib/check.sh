@@ -133,12 +133,13 @@ check_tree_matches() {
   return $result
 }
 
-# Run the full check pass for a public/@local branch pair.
-# Arguments: <public_branch> <local_branch> <checkpoint_public> <checkpoint_local>
-# Prints the public commit SHAs (one per line) to stdout and returns 0 on pass.
-# Returns 1 if the replayed public tree does not match the local tree or if a
-# cherry-pick conflict occurs.
-check_pass() {
+# Replay public commits from <local_branch> onto a temporary branch rooted at
+# <checkpoint_public>, verify the replayed tree matches <local_branch>, and on
+# success print the temp branch name on the first line followed by the public
+# commit SHAs (one per line).  Returns 1 on pre-flight, replay, or tree mismatch
+# failure and cleans up the temp branch.  The temp branch is left in place for
+# the caller on success.
+publish_replay_and_head() {
   local public_branch="$1"
   local local_branch="$2"
   local checkpoint_public="$3"
@@ -183,18 +184,41 @@ check_pass() {
   tmp_head="$(git rev-parse "$tmp_branch")"
   local_head="$(git rev-parse "$local_branch")"
 
-  local result=0
   if ! check_tree_matches "$tmp_head" "$local_head"; then
-    result=1
+    git checkout -q "${original_branch}" >/dev/null 2>&1 || true
+    git branch -D "$tmp_branch" >/dev/null 2>&1 || true
+    return 1
   fi
+
+  # Return to the original branch but leave the temp branch for the caller.
+  git checkout -q "${original_branch}" >/dev/null 2>&1 || true
+
+  printf '%s\n' "$tmp_branch"
+  printf '%s\n' $public_commits | tr ' ' '\n' | grep -v '^$'
+}
+
+# Run the full check pass for a public/@local branch pair.
+# Arguments: <public_branch> <local_branch> <checkpoint_public> <checkpoint_local>
+# Prints the public commit SHAs (one per line) to stdout and returns 0 on pass.
+# Returns 1 if the replayed public tree does not match the local tree or if a
+# cherry-pick conflict occurs.
+check_pass() {
+  local replay_output
+  if ! replay_output="$(publish_replay_and_head "$@")"; then
+    return 1
+  fi
+  if [[ -z "$replay_output" ]]; then
+    return 0
+  fi
+
+  local tmp_branch
+  tmp_branch="$(head -n1 <<< "$replay_output")"
+  local public_commits
+  public_commits="$(tail -n +2 <<< "$replay_output")"
 
   # Cleanup temp branch.
-  git checkout -q "${original_branch}" >/dev/null 2>&1 || true
   git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 
-  if [[ $result -eq 0 ]]; then
-    printf '%s\n' $public_commits | tr ' ' '\n' | grep -v '^$'
-  fi
-
-  return $result
+  printf '%s\n' "$public_commits"
+  return 0
 }

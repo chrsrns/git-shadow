@@ -54,3 +54,38 @@ teardown() {
   install_hook_file pre-commit "# my marker" "echo 'hello'" bash
   [ "$(grep -c 'my marker' .git/hooks/pre-commit)" -eq 1 ]
 }
+
+@test "install_hook_file refreshes the block when content differs" {
+  source "$TOOLKIT_ROOT/lib/common.sh"
+  install_hook_file pre-commit "# my marker" "echo 'v1'" bash
+  install_hook_file pre-commit "# my marker" "echo 'v2'" bash
+  grep -q "echo 'v2'" .git/hooks/pre-commit
+  ! grep -q "echo 'v1'" .git/hooks/pre-commit
+  [ "$(grep -c 'my marker' .git/hooks/pre-commit)" -eq 1 ]
+}
+
+@test "install_hook_file refresh preserves content before the marker" {
+  printf '#!/usr/bin/env bash\necho user-hook\n# my marker\necho stale\n' > .git/hooks/pre-commit
+  chmod +x .git/hooks/pre-commit
+
+  source "$TOOLKIT_ROOT/lib/common.sh"
+  install_hook_file pre-commit "# my marker" "echo 'fresh'" bash
+
+  grep -q "echo user-hook" .git/hooks/pre-commit
+  grep -q "echo 'fresh'" .git/hooks/pre-commit
+  ! grep -q "echo stale" .git/hooks/pre-commit
+  [ "$(head -1 .git/hooks/pre-commit)" = "#!/usr/bin/env bash" ]
+}
+
+@test "install_hook_file refresh normalizes a marker-first layout" {
+  printf '# my marker\n#!/usr/bin/env bash\necho stale\n' > .git/hooks/pre-commit
+  chmod +x .git/hooks/pre-commit
+
+  source "$TOOLKIT_ROOT/lib/common.sh"
+  install_hook_file pre-commit "# my marker" "echo 'fresh'" bash
+
+  [ "$(head -1 .git/hooks/pre-commit)" = "#!/usr/bin/env bash" ]
+  [ "$(grep -c 'my marker' .git/hooks/pre-commit)" -eq 1 ]
+  grep -q "echo 'fresh'" .git/hooks/pre-commit
+  ! grep -q "echo stale" .git/hooks/pre-commit
+}

@@ -260,8 +260,8 @@ if [[ -n "$MARK_APPLIED" ]]; then
       exit 1
     fi
     public_base="$(public_branch_from_any "$current")"
-    local_base="${public_base}${LOCAL_SUFFIX}"
-    if [[ "$current" == "$local_base" ]]; then
+    local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+    if [[ "$public_base" == "$PUBLIC_BASE_BRANCH" ]]; then
       ui_error "feature finish --mark-applied cannot be run on the local base."
       exit 1
     fi

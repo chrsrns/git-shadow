@@ -424,3 +424,53 @@ EOF
   [[ "$output" == *"git shadow feature finish --continue"* ]]
   [[ "$output" == *"git shadow feature finish --abort"* ]]
 }
+
+# --- --mark-applied tests (T44) ------------------------------------------------
+
+@test "feature finish --mark-applied creates provenance-only commit" {
+  git checkout -q "test-feature@local"
+  echo "local note" > notes.md
+  git add notes.md
+  git commit -qm "[MEMORY] local note"
+  sha="$(git rev-parse HEAD)"
+
+  run git shadow feature finish --mark-applied "$sha"
+  [ "$status" -eq 0 ]
+
+  body="$(git log -1 --format='%b' main@local)"
+  [[ "$body" == *"git-shadow-source-memory: $sha"* ]]
+  [[ "$body" == *"git-shadow-source-pid:"* ]]
+
+  # The commit is empty: no tree changes relative to its parent.
+  diff="$(git diff-tree --no-commit-id -r HEAD main@local | wc -l)"
+  [ "$diff" -eq 0 ]
+}
+
+@test "feature finish --mark-applied updates paused state" {
+  git checkout -q "test-feature@local"
+  echo "memory change" > file.txt
+  git add file.txt
+  git commit -qm "[MEMORY] memory change"
+  sha="$(git rev-parse HEAD)"
+
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  git shadow feature finish --no-pull 2>/dev/null || true
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "conflicted_sha=$sha" "$state_file"
+
+  run git shadow feature finish --mark-applied "$sha"
+  [ "$status" -eq 0 ]
+
+  # The marker commit is the new pre-finish head and the sha is removed.
+  new_head="$(git rev-parse main@local)"
+  grep -q "pre_finish_head=$new_head" "$state_file"
+  ! grep -q "conflicted_sha=$sha" "$state_file"
+  ! grep -q "remaining_shas=$sha" "$state_file"
+}

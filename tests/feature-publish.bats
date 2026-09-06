@@ -72,6 +72,21 @@ teardown() {
   [[ "$subject" == "[CHECKPOINT]"* ]]
 }
 
+@test "feature publish aborts with a named error when the check pass fails" {
+  mkdir -p notes
+  echo "local note" > notes/local.md
+  git add notes/local.md
+  git commit -qm "[MEMORY] local note"
+  git rm -q notes/local.md
+  git commit -qm "fix: drop local note"
+
+  run git shadow feature publish
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"No publishable commits"* ]]
+  [[ "$output" == *"notes/local.md"* ]]
+  [[ "$output" == *"Check pass"* || "$output" == *"check pass"* ]]
+}
+
 @test "feature publish allows excluded docs with marker examples" {
   mkdir -p docs
   cat > docs/git-shadow-as-ia-memory-layer.md <<'EOF'

@@ -50,6 +50,11 @@ fi
 # Run the diff-based check pass and collect public commits.
 PIDS=""
 PUBLIC_COMMITS=""
+check_output=""
+if ! check_output="$(check_pass "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
+  ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
+  exit 1
+fi
 while IFS= read -r sha; do
   if [[ -z "$sha" ]]; then
     continue
@@ -59,7 +64,7 @@ while IFS= read -r sha; do
   if [[ -n "$pid" ]]; then
     PIDS="$PIDS $pid"
   fi
-done < <(check_pass "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")
+done <<< "$check_output"
 
 PUBLIC_COMMITS="${PUBLIC_COMMITS# }"
 PIDS="${PIDS# }"

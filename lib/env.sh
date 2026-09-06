@@ -26,32 +26,31 @@ _check_unknown_keys() {
   done < "$file"
 }
 
-load_env() {
+# Source a single config file and optionally warn on unknown keys.
+_load_config_file() {
+  local file="$1"
+  local check_unknown="${2:-0}"
 
-  # 1. Built-in defaults (always present, shipped with the tool)
+  [[ -f "$file" ]] || return 0
+
   set -a
-  # shellcheck disable=SC1091
-  source "$TOOLKIT_ROOT/config/defaults.env"
+  # shellcheck disable=SC1090,SC1091
+  source "$file"
   set +a
+
+  if [[ "$check_unknown" == "1" ]]; then
+    _check_unknown_keys "$file"
+  fi
+}
+
+load_env() {
+  # 1. Built-in defaults (always present, shipped with the tool)
+  _load_config_file "$TOOLKIT_ROOT/config/defaults.env" 0
 
   # 2. User-level config (XDG-aware, optional)
   local user_config="${XDG_CONFIG_HOME:-$HOME/.config}/git-shadow/config.env"
-  if [[ -f "$user_config" ]]; then
-    set -a
-    # shellcheck disable=SC1090,SC1091
-    source "$user_config"
-    set +a
-    _check_unknown_keys "$user_config"
-  fi
+  _load_config_file "$user_config" 1
 
   # 3. Project-level config (optional, from current working directory)
-  local project_config="$PWD/.git-shadow.env"
-  if [[ -f "$project_config" ]]; then
-    set -a
-    # shellcheck disable=SC1090,SC1091
-    source "$project_config"
-    set +a
-    _check_unknown_keys "$project_config"
-  fi
-
+  _load_config_file "$PWD/.git-shadow.env" 1
 }

@@ -146,6 +146,19 @@ git shadow feature finish
 git shadow push <public-base-branch>
 ```
 
+### Direct commits on public branches
+
+For release chores or hotfixes that should not go through a feature pair, commit directly on the public branch and let `base sync` absorb it:
+
+```bash
+git checkout main
+GIT_SHADOW=1 git commit -m "chore(release): ..."
+git shadow push main
+git shadow base sync
+```
+
+The pre-commit hook requires `GIT_SHADOW=1` on public branches. Do not commit on `<base>@local` first — there is no base publish path; publishing exists only for feature branches.
+
 If you are asked to finalize work, prefer publication through git shadow rather than manually copying noisy changes to the public branch.
 
 ## Safety checks

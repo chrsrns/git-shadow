@@ -49,6 +49,7 @@ git shadow push feature/x
 - Sync conflict: resolve, then `git shadow feature sync --continue`.
 - Abort: `git shadow feature sync --abort`.
 - Public base force-pushed/rewritten, patch-ids differ: `git shadow re-anchor feature/x@local`.
+- Release/hotfix directly on public branch: `GIT_SHADOW=1 git commit` on `main`, `git shadow push main`, then `git shadow base sync`.
 
 ### After merge
 

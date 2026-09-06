@@ -23,6 +23,8 @@ This page covers failure recovery for the most common situations where git shado
 8. [Removing git shadow hooks from a project](#8-removing-git-shadow-hooks-from-a-project)
 9. [Adopting git shadow on an existing repo](#9-adopting-git-shadow-on-an-existing-repo)
 10. [Binary not found after installation](#10-binary-not-found-after-installation)
+11. [Local comment markers leaked into a public commit](#11-local-comment-markers-leaked-into-a-public-commit)
+12. [Committing directly on a public branch](#12-committing-directly-on-a-public-branch)
 
 ---
 
@@ -433,3 +435,26 @@ curl -fsSL https://raw.githubusercontent.com/filozofer/git-shadow/main/install.s
 - Use `git shadow commit -m "..."` on `@local` branches to split public work from `///` and `// @local` markers.
 - Never run `git add .git-shadow/annotations/ ; git commit` on a public branch.
 - Install the pre-commit hook with `git shadow install-hooks` to catch staged markers before they are committed.
+
+---
+
+## 12. Committing directly on a public branch
+
+**Scenario:** You need to land a commit on `main` (or another public branch) without a feature pair — for example a release version bump or a hotfix.
+
+**Steps:**
+
+```bash
+git checkout main
+# make the change
+GIT_SHADOW=1 git commit -m "chore(release): bump version to x.y.z"
+git shadow push main
+git checkout main@local
+git shadow base sync
+```
+
+- The pre-commit hook rejects commits on public branches unless `GIT_SHADOW=1` is set.
+- `git shadow push` sets `GIT_SHADOW=1` for the push.
+- `git shadow base sync` applies the net diff to `main@local` and creates a fresh `[CHECKPOINT]`, so `git shadow status` stays accurate and future `feature start` calls branch from the latest checkpoint pair.
+
+**Do not** commit on `main@local` first and try to publish it to `main`: there is no base publish path — publishing exists only for feature branches. A local-first commit would sit on `main@local` forever as `publishable`, and when the change later lands on `main` by other means you get a duplicate patch.

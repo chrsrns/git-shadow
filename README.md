@@ -324,6 +324,22 @@ git shadow base sync --recover
 git shadow re-anchor main@local
 ```
 
+## Land a commit directly on a public branch
+
+For release chores, hotfixes, or other changes that should not go through a feature pair, commit straight on the public base and let `base sync` absorb it:
+
+```bash
+git checkout main
+# make the change (e.g. bump VERSION)
+GIT_SHADOW=1 git commit -m "chore(release): bump version to x.y.z"
+git shadow push main
+git shadow base sync
+```
+
+The pre-commit hook requires `GIT_SHADOW=1` on public branches, and `git shadow push` sets it for the push. `base sync` then applies the net diff to `main@local` and records a `[CHECKPOINT]`, exactly as if the commit had landed on the remote.
+
+Use this sparingly — normal work should still flow through `feature/*` pairs so the check pass can verify it.
+
 ---
 
 # Workflow overview

@@ -99,6 +99,8 @@ main@local
 
 This applies the base net diff and cherry-picks each `[MEMORY]` commit from the feature's shadow branch onto the shadow base branch, then creates a final `[CHECKPOINT]`. This preserves the local reasoning structures for future work.
 
+Public commits can also land directly on the public base branch — for example release chores or hotfixes that do not need a feature pair. `base sync` absorbs them onto the shadow base as a net diff and records a new checkpoint, so the shadow stays consistent. There is no base publish path; publishing exists only for feature branches.
+
 ---
 
 ## Benefits

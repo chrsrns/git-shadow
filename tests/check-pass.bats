@@ -143,3 +143,29 @@ teardown() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "check_missing_paths fails on an invalid base tree" {
+  NULL_SHA="0000000000000000000000000000000000000000"
+  run check_missing_paths "$NULL_SHA" "$(git rev-parse main)"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot list base tree"* ]]
+}
+
+@test "check_tree_matches fails on an invalid expected tree" {
+  NULL_SHA="0000000000000000000000000000000000000000"
+  run check_tree_matches "$NULL_SHA" "$(git rev-parse main)"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot compare trees"* ]]
+}
+
+@test "check_pass fails on an invalid checkpoint public sha" {
+  NULL_SHA="0000000000000000000000000000000000000000"
+  git checkout -q main@local
+  cp_local="$(git rev-parse main@local)"
+  echo "extra" >> file.txt
+  git add file.txt
+  git commit -q -m "public: extra"
+  run check_pass "main" "main@local" "$NULL_SHA" "$cp_local"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot list base tree"* ]]
+}

@@ -35,20 +35,35 @@ check_public_commits() {
 # absent from the evolving path set seeded from <base_tree>.  Commits are
 # applied in order: additions insert into the set, deletions remove from it.
 # Returns 1 when at least one missing path is found, 0 otherwise.
+# Returns 1 if `git ls-tree` or `git diff-tree` fails.
 # Merge commits yield no diff entries and are skipped.
 check_missing_paths() {
   local base_tree="$1"
   shift
 
+  local base_paths base_status
+  base_paths="$(git ls-tree -r --name-only "$base_tree" 2>/dev/null)"
+  base_status=$?
+  if [[ $base_status -ne 0 ]]; then
+    ui_error "check_missing_paths: cannot list base tree $base_tree"
+    return 1
+  fi
+
   local -A present=()
   local path
   while IFS= read -r path; do
     [[ -n "$path" ]] && present["$path"]=1
-  done < <(git ls-tree -r --name-only "$base_tree" 2>/dev/null)
+  done < <(printf '%s\n' "$base_paths")
 
   local missing=0
-  local sha status
+  local sha status diff_output diff_status
   for sha in "$@"; do
+    diff_output="$(git diff-tree --no-renames -r --name-status --no-commit-id "$sha" 2>/dev/null)"
+    diff_status=$?
+    if [[ $diff_status -ne 0 ]]; then
+      ui_error "check_missing_paths: cannot diff commit $sha"
+      return 1
+    fi
     while IFS=$'\t' read -r status path; do
       [[ -z "$status" || -z "$path" ]] && continue
       case "$status" in
@@ -70,7 +85,7 @@ check_missing_paths() {
           fi
           ;;
       esac
-    done < <(git diff-tree --no-renames -r --name-status --no-commit-id "$sha" 2>/dev/null)
+    done < <(printf '%s\n' "$diff_output")
   done
 
   return $missing
@@ -95,7 +110,12 @@ check_replay_public() {
       # fall back to the paths the offending commit itself touches.
       conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
       if [[ -z "$conflicted" ]]; then
-        conflicted="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
+        local conflicted_out conflicted_status
+        conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
+        conflicted_status=$?
+        if [[ $conflicted_status -eq 0 ]]; then
+          conflicted="$conflicted_out"
+        fi
       fi
       [[ -n "$conflicted" ]] && ui_error "Check pass: path(s) involved: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       git cherry-pick --abort >/dev/null 2>&1 || true
@@ -111,13 +131,22 @@ check_replay_public() {
 # Compare two tree-ishs.  For every file in <expected_tree>, the same file must
 # exist in <actual_tree> with the same blob.  Local-only additions are ignored.
 # Returns 0 if the public-tracked files match, 1 otherwise.
+# Returns 1 if `git diff-tree` fails.
 check_tree_matches() {
   local expected_tree="$1"
   local actual_tree="$2"
 
+  local diff_output diff_status
+  diff_output="$(git diff-tree --no-renames -r "$expected_tree" "$actual_tree" 2>/dev/null)"
+  diff_status=$?
+  if [[ $diff_status -ne 0 ]]; then
+    ui_error "check_tree_matches: cannot compare trees $expected_tree and $actual_tree"
+    return 1
+  fi
   local result=0
   local line status path
   while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
     # diff-tree --no-renames -r output format:
     # :<old-mode> <new-mode> <old-sha> <new-sha> <status>\t<path>
     # We only care about status (5th awk field) and whether any non-A status
@@ -128,7 +157,7 @@ check_tree_matches() {
       ui_error "Check pass: public tree differs at '$path' (status $status)."
       result=1
     fi
-  done < <(git diff-tree --no-renames -r "$expected_tree" "$actual_tree" 2>/dev/null)
+  done < <(printf '%s\n' "$diff_output")
 
   return $result
 }

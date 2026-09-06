@@ -11,6 +11,10 @@ setup() {
   git add file.txt
   git commit -qm "initial"
 
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export TOOLKIT_ROOT
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   git shadow feature start test-feature
   # Add a publishable public commit and a [MEMORY] commit
   echo "feature code" > feature.txt
@@ -130,4 +134,34 @@ teardown() {
 @test "status --json reports 0 public-ahead" {
   run git shadow status --json
   [[ "$output" == *'"public_ahead":0'* ]]
+}
+
+@test "status does not leak check diagnostics when diverged" {
+  git shadow feature publish
+  git checkout -q test-feature
+  echo "extra" > extra.txt
+  git add extra.txt
+  GIT_SHADOW=1 git commit -q -m "fix: extra on public"
+  git checkout -q test-feature@local
+  echo "shadow extra" > shadow.txt
+  git add shadow.txt
+  git commit -q -m "feat: shadow extra"
+  run git shadow status
+  [[ "$output" == *"diverged     : true"* ]]
+  [[ "$output" != *"Check pass:"* ]]
+}
+
+@test "status --json does not leak check diagnostics when diverged" {
+  git shadow feature publish
+  git checkout -q test-feature
+  echo "extra" > extra.txt
+  git add extra.txt
+  GIT_SHADOW=1 git commit -q -m "fix: extra on public"
+  git checkout -q test-feature@local
+  echo "shadow extra" > shadow.txt
+  git add shadow.txt
+  git commit -q -m "feat: shadow extra"
+  run git shadow status --json
+  [[ "$output" == *'"diverged":true'* ]]
+  [[ "$output" != *"Check pass:"* ]]
 }

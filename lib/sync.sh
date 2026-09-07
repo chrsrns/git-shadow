@@ -63,6 +63,12 @@ sync_commit() {
     body_args+=(-m "Patch-ids: $pids")
   fi
 
+  local synced
+  synced="$(git log --format='- %h %s — %an' --no-color "${start_sha}..${end_sha}" 2>/dev/null || true)"
+  if [[ -n "$synced" ]]; then
+    body_args+=(-m "$(printf 'Synced commits:\n%s' "$synced")")
+  fi
+
   env GIT_SHADOW=1 git commit --quiet -m "$subject" "${body_args[@]}"
 }
 

@@ -114,3 +114,32 @@ _get_sync_body() {
   [[ "$body" == *"Patch-ids:"* ]]
   [[ "$body" == *"Finished feature: feature-foo"* ]]
 }
+
+@test "[SYNC] body lists synced public commits newest first" {
+  git checkout -q main
+  echo "alpha" > a.txt
+  git add a.txt
+  GIT_SHADOW=1 git commit -q -m "feat: alpha"
+  local alpha_sha
+  alpha_sha="$(git rev-parse --short HEAD)"
+  echo "beta" > b.txt
+  git add b.txt
+  GIT_SHADOW=1 git commit -q -m "fix: beta"
+  local beta_sha
+  beta_sha="$(git rev-parse --short HEAD)"
+
+  git checkout -q main@local
+  git shadow base sync
+
+  local body
+  body="$(_get_sync_body main@local)"
+  [[ "$body" == *"Synced commits:"* ]]
+  [[ "$body" == *"- $beta_sha fix: beta — Test User"* ]]
+  [[ "$body" == *"- $alpha_sha feat: alpha — Test User"* ]]
+
+  # Newest first: beta line precedes alpha line.
+  local beta_line alpha_line
+  beta_line="$(printf '%s\n' "$body" | grep -n 'fix: beta' | cut -d: -f1)"
+  alpha_line="$(printf '%s\n' "$body" | grep -n 'feat: alpha' | cut -d: -f1)"
+  [ "$beta_line" -lt "$alpha_line" ]
+}

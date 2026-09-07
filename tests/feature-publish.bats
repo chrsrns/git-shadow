@@ -112,3 +112,14 @@ EOF
   [[ "$output" == *"finish"* ]]
   [[ "$output" != *"uncommitted changes"* ]]
 }
+
+@test "feature publish empty public commit names the failing sha" {
+  # Create an empty public commit. The replay on a temp branch fails with
+  # "nothing to commit", and the error must name the offending commit.
+  git commit --allow-empty -q -m "chore: empty note"
+
+  run git shadow feature publish
+  [ "$status" -ne 0 ]
+  [[ "$output" != *"No publishable commits"* ]]
+  [[ "$output" == *"chore: empty note"* ]]
+}

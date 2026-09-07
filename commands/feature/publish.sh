@@ -53,65 +53,59 @@ if [[ "$PUBLIC_HEAD" != "$CP_PUBLIC" ]]; then
   exit 1
 fi
 
-# Run the diff-based check pass and collect public commits.
+# Run the diff-based check pass, replay public commits onto a temp branch, and
+# compare the replayed tree to the local tree.  On success, the first line of
+# output is the temp branch name; the remaining lines are the public commits.
 PIDS=""
-PUBLIC_COMMITS=""
-check_output=""
-if ! check_output="$(check_pass "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
+LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
+
+replay_output=""
+if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
   ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
   exit 1
 fi
-while IFS= read -r sha; do
-  if [[ -z "$sha" ]]; then
-    continue
-  fi
-  PUBLIC_COMMITS="$PUBLIC_COMMITS $sha"
-  pid="$(patch_id_for "$sha")"
-  if [[ -n "$pid" ]]; then
-    PIDS="$PIDS $pid"
-  fi
-done <<< "$check_output"
 
-PUBLIC_COMMITS="${PUBLIC_COMMITS# }"
-PIDS="${PIDS# }"
-
-if [[ -z "$PUBLIC_COMMITS" ]]; then
+if [[ -z "$replay_output" ]]; then
   ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
   exit 0
 fi
 
-# Replay public commits onto the public branch.
-LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
-git checkout -q "$PUBLIC_BRANCH"
-
-publish_failed=0
-for sha in $PUBLIC_COMMITS; do
-  if ! git cherry-pick --quiet "$sha"; then
-    publish_failed=1
-    break
-  fi
-done
-
-if [[ $publish_failed -eq 1 ]]; then
-  git cherry-pick --abort 2>/dev/null || true
-  git reset --hard "$CP_PUBLIC"
-  git checkout -q "$CURRENT_BRANCH"
-  ui_error "Replay failed while publishing to '$PUBLIC_BRANCH'. Public branch has been reset."
-  exit 1
-fi
-
-NEW_PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
+PUBLISH_TMP_BRANCH="$(head -n1 <<< "$replay_output")"
+PUBLIC_COMMITS="$(tail -n +2 <<< "$replay_output")"
+NEW_PUBLIC_HEAD="$(git rev-parse "$PUBLISH_TMP_BRANCH")"
 
 # Guard: the replayed public tree must not contain local-only artifacts.
 if ! guard_tree "$NEW_PUBLIC_HEAD"; then
-  git reset --hard "$CP_PUBLIC"
-  git checkout -q "$CURRENT_BRANCH"
+  git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
   ui_error "Publication aborted due to leaked local-only markers."
   exit 1
 fi
 
-# Return to the local branch and create a checkpoint.
-git checkout -q "$CURRENT_BRANCH"
+# Fast-forward the public branch to the already-replayed head.
+if ! git update-ref "refs/heads/$PUBLIC_BRANCH" "$NEW_PUBLIC_HEAD" "$CP_PUBLIC"; then
+  git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
+  ui_error "Could not update public branch '$PUBLIC_BRANCH' (it may have moved)."
+  exit 1
+fi
+
+git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
+
+while IFS= read -r sha; do
+  if [[ -z "$sha" ]]; then
+    continue
+  fi
+  pid=""
+  if ! pid="$(patch_id_for "$sha")"; then
+    ui_error "Could not compute patch-id for commit $sha during publish."
+    exit 1
+  fi
+  if [[ -n "$pid" ]]; then
+    PIDS="$PIDS $pid"
+  fi
+done <<< "$PUBLIC_COMMITS"
+
+PIDS="${PIDS# }"
+
 _new_checkpoint="$(checkpoint_create "$NEW_PUBLIC_HEAD" "$LOCAL_HEAD_BEFORE" $PIDS)"
 
 ui_ok "Published to '$PUBLIC_BRANCH'."

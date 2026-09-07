@@ -141,7 +141,7 @@ fi
 
 # Diverged if the local tree does not contain the public tree.
 DIVERGED="false"
-if ! check_tree_matches "$PUBLIC_HEAD" "$LOCAL_HEAD"; then
+if ! check_tree_matches "$PUBLIC_HEAD" "$LOCAL_HEAD" 2>/dev/null; then
   DIVERGED="true"
 fi
 

@@ -70,10 +70,13 @@ sync_commit() {
 sync_patch_ids() {
   local start="$1"
   local end="$2"
-  local shas
-  shas="$(git rev-list --reverse "${start}..${end}" 2>/dev/null | tr '\n' ' ')"
-  if [[ -n "$shas" ]]; then
-    patch_ids_for $shas
+  local revlist
+  if ! revlist="$(git rev-list --reverse "${start}..${end}" 2>/dev/null)"; then
+    ui_error "sync_patch_ids: cannot list commits from $start to $end"
+    return 1
+  fi
+  if [[ -n "$revlist" ]]; then
+    patch_ids_for $revlist
   fi
 }
 

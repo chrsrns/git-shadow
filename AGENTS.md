@@ -166,6 +166,7 @@ If you are asked to finalize work, prefer publication through git shadow rather 
 - Run `git shadow check public <branch>` to audit a public branch for unpromoted files or leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` paths.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, and `SPEC.md merge=union` in `.gitattributes`. It exits 1 on any warning.
 
 ## Git shadow configuration
 

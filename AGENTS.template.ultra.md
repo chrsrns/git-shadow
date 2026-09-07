@@ -65,6 +65,7 @@ git shadow push main
 - Run `git shadow check public feature/x` before push to audit local-only leaks.
 - Pre-commit hook rejects public-tracked files with `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs diff-based check pass + scans replayed tree for local markers and `.git-shadow/annotations/` paths.
+- `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks, unpromoted files, `SPEC.md merge=union`. Exits 1 on warning.
 
 ### Decision rule
 

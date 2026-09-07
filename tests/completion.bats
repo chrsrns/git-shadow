@@ -5,6 +5,12 @@ COMPLETION_BASH="$REPO_ROOT/completions/git-shadow.bash"
 COMPLETION_ZSH="$REPO_ROOT/completions/git-shadow.zsh"
 COMPLETION_INSTALL="$REPO_ROOT/commands/completion/install.sh"
 
+setup() {
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+}
+
 # ---------------------------------------------------------------------------
 # Bash completion
 # ---------------------------------------------------------------------------

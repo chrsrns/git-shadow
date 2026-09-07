@@ -13,7 +13,9 @@ setup() {
   echo "initial" > file.txt
   git add file.txt
   git commit -qm "initial"
-  PATH="/run/media/flavolite/30524ad5-1cdc-4501-a036-1312a6bfad76/Development/git-shadow/bin:$PATH"
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
 }
 
 teardown() {

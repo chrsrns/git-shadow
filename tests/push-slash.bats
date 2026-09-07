@@ -20,6 +20,10 @@ setup() {
   git clone -q --bare . "$ORIGIN_DIR"
   git remote add origin "$ORIGIN_DIR"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Create a namespaced feature branch
   git shadow feature start feature/slash
   echo "feature code" > feature.txt

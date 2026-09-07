@@ -14,6 +14,10 @@ setup() {
   git add file.txt
   git commit -q -m "initial"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # Bootstrap main@local
   git checkout -q -b main@local
   git shadow base sync

@@ -12,6 +12,10 @@ setup() {
   git config user.email "test@example.com"
   git symbolic-ref HEAD refs/heads/main
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   # 1. Create an initial public commit on main (v1 state)
   echo "v1" > file.txt
   git add file.txt

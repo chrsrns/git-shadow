@@ -17,6 +17,10 @@ setup() {
   git clone -q --bare . "$ORIGIN_DIR"
   git remote add origin "$ORIGIN_DIR"
 
+  # Ensure tests use the toolkit under test.
+  TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"
+  export PATH="$TOOLKIT_ROOT/bin:$PATH"
+
   git shadow feature start test-feature
   echo "feature code" > feature.txt
   git add feature.txt
@@ -50,12 +54,49 @@ teardown() {
   [[ "$output" == *"does not exist"* ]]
 }
 
-@test "push exits 1 when no upstream is configured" {
+@test "push auto-sets upstream via sole remote when none configured" {
+  git checkout -q main
+  git checkout -q -b orphan-feature
+  echo "orphan" > orphan.txt
+  git add orphan.txt
+  GIT_SHADOW=1 git commit -q -m "feat: orphan"
+
+  run git shadow push orphan-feature
+  [ "$status" -eq 0 ]
+
+  upstream="$(git for-each-ref --format='%(upstream:short)' refs/heads/orphan-feature)"
+  [ "$upstream" = "origin/orphan-feature" ]
+
+  local_sha="$(git rev-parse orphan-feature)"
+  remote_sha="$(git -C "$ORIGIN_DIR" rev-parse refs/heads/orphan-feature)"
+  [ "$local_sha" = "$remote_sha" ]
+}
+
+@test "push aborts when no upstream and multiple remotes exist" {
+  SECOND_DIR="$(mktemp -d)"
+  git clone -q --bare . "$SECOND_DIR"
+  git remote add upstream "$SECOND_DIR"
+
   git checkout -q main
   git checkout -q -b orphan-feature
   run git shadow push orphan-feature
   [ "$status" -eq 1 ]
-  [[ "$output" == *"No upstream"* ]]
+  [[ "$output" == *"multiple remotes"* ]]
+  # upstream must not be set implicitly
+  [ -z "$(git for-each-ref --format='%(upstream:short)' refs/heads/orphan-feature)" ]
+
+  git remote remove upstream
+  rm -rf "$SECOND_DIR"
+}
+
+@test "push aborts when no upstream and no remotes exist" {
+  git remote remove origin
+
+  git checkout -q main
+  git checkout -q -b orphan-feature
+  run git shadow push orphan-feature
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"No remotes"* ]]
 }
 
 @test "push pushes a public branch to its upstream" {

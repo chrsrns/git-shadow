@@ -34,8 +34,20 @@ ensure_clean_repo
 
 UPSTREAM="$(git for-each-ref --format='%(upstream:short)' "refs/heads/$BRANCH")"
 if [[ -z "$UPSTREAM" ]]; then
-  ui_error "No upstream configured for '$BRANCH'. Set one with 'git branch --set-upstream-to=<remote>/$BRANCH $BRANCH'."
-  exit 1
+  mapfile -t REMOTES < <(git remote)
+  if [[ "${#REMOTES[@]}" -eq 0 ]]; then
+    ui_error "No remotes configured; cannot auto-set upstream for '$BRANCH'."
+    exit 1
+  fi
+  if [[ "${#REMOTES[@]}" -gt 1 ]]; then
+    ui_error "No upstream configured for '$BRANCH' and multiple remotes exist: ${REMOTES[*]}. Pick one with 'GIT_SHADOW=1 git push -u <remote> $BRANCH'."
+    exit 1
+  fi
+  REMOTE="${REMOTES[0]}"
+  ui_git "No upstream for '$BRANCH'; pushing to sole remote '$REMOTE'"
+  GIT_SHADOW=1 git push -u "$REMOTE" "$BRANCH"
+  ui_ok "Pushed '$BRANCH' to $REMOTE."
+  exit 0
 fi
 
 REMOTE="${UPSTREAM%%/*}"

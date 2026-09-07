@@ -19,7 +19,7 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
   Extracts markers to `.git-shadow/annotations/<relpath>`, writes clean public commit + `[MEMORY]` sidecar.
 - Public code without markers: `git commit`.
 - Local notes, scratch files, debug logs: `git commit -m "[MEMORY] <subject>"`.
-  `[MEMORY]` commits must not modify files tracked by public branch.
+  `[MEMORY]` commits must not modify files already tracked by the public branch.
 
 ### Typical workflow
 
@@ -51,6 +51,8 @@ git shadow push feature/x
 - Public base force-pushed or rewritten, patch-ids do not match: `git shadow re-anchor feature/x@local`.
 - Release/hotfix directly on a public branch: `GIT_SHADOW=1 git commit` on `main`, `git shadow push main`, then `git shadow base sync` absorbs it onto `main@local`.
 
+Do not commit on `<base>@local` first — there is no base publish path; publishing exists only for feature branches.
+
 ### After merge
 
 ```bash
@@ -61,8 +63,8 @@ git shadow push main
 ### Safety and verification
 
 - Run `git shadow check public feature/x` before push to audit leaked local-only content.
-- Pre-commit hook blocks public-tracked files with `///` or `// @local` unless `GIT_SHADOW=1`.
-- `git shadow feature publish` aborts if any `.git-shadow/annotations/` path or local marker would enter public branch.
+- The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
+- `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` paths.
 
 ### Agent decision rule
 

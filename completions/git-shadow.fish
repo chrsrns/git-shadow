@@ -46,6 +46,16 @@ complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l continue -d "resume after manual conflict resolution"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l abort    -d "abort the sync"
 
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree     -d "create a worktree under WORKTREE_ROOT for <name>@local"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree-dir -d "create the feature worktree at the given path" -r
+
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l no-pull        -d "skip git pull of the public base"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l keep-branches -d "keep both feature branches"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l keep-worktree -d "keep the feature worktree and <name>@local"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l continue      -d "resume after manual conflict resolution"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l abort         -d "abort the finish"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from finish" -l mark-applied  -d "record a [MEMORY] sha as already applied" -r
+
 # ---------------------------------------------------------------------------
 # base subcommands and flags
 # ---------------------------------------------------------------------------

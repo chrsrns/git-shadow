@@ -71,6 +71,20 @@ _git_shadow_feature() {
             '--continue[resume after manual conflict resolution]' \
             '--abort[abort the sync]'
           ;;
+        start)
+          _arguments \
+            '--worktree[create a worktree under WORKTREE_ROOT for <name>@local]' \
+            '--worktree-dir[create the feature worktree at the given path]:path:_files -/'
+          ;;
+        finish)
+          _arguments \
+            '--no-pull[skip git pull of the public base]' \
+            '--keep-branches[keep both feature branches]' \
+            '--keep-worktree[keep the feature worktree and <name>@local]' \
+            '--continue[resume after manual conflict resolution]' \
+            '--abort[abort the finish]' \
+            '--mark-applied[record a [MEMORY] sha as already applied]:sha'
+          ;;
       esac
       ;;
   esac

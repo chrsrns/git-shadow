@@ -36,7 +36,9 @@ _git_shadow() {
         COMPREPLY=($(compgen -W "start publish finish sync" -- "$cur"))
       else
         case "$subcmd" in
-          sync) COMPREPLY=($(compgen -W "--recover --continue --abort" -- "$cur")) ;;
+          sync)   COMPREPLY=($(compgen -W "--recover --continue --abort" -- "$cur")) ;;
+          start)  COMPREPLY=($(compgen -W "--worktree --worktree-dir" -- "$cur")) ;;
+          finish) COMPREPLY=($(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied" -- "$cur")) ;;
         esac
       fi
       ;;

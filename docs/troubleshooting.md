@@ -26,6 +26,7 @@ This page covers failure recovery for the most common situations where git shado
 10. [Binary not found after installation](#10-binary-not-found-after-installation)
 11. [Local comment markers leaked into a public commit](#11-local-comment-markers-leaked-into-a-public-commit)
 12. [Committing directly on a public branch](#12-committing-directly-on-a-public-branch)
+13. [Worktree issues](#13-worktree-issues)
 
 ---
 
@@ -139,7 +140,7 @@ A conflict can happen in the base net diff or in a `[MEMORY]` apply. Instead of 
 git status
 
 # 2. Inspect the paused state (optional)
-cat "$(git rev-parse --git-dir)/git-shadow-finish"
+cat "$(git rev-parse --git-common-dir)/git-shadow-finish"
 
 # 3. Resolve each conflicting file, then stage it
 git add <path>
@@ -496,3 +497,36 @@ git shadow base sync
 - `git shadow base sync` applies the net diff to `main@local` and creates a fresh `[CHECKPOINT]`, so `git shadow status` stays accurate and future `feature start` calls branch from the latest checkpoint pair.
 
 **Do not** commit on `main@local` first and try to publish it to `main`: there is no base publish path — publishing exists only for feature branches. A local-first commit would sit on `main@local` forever as `publishable`, and when the change later lands on `main` by other means you get a duplicate patch.
+---
+
+## 13. Worktree issues
+
+**Scenario:** You use `git shadow feature start <name> --worktree` or `--worktree-dir` and run into trouble around `feature finish`, stale registrations, or shared state.
+
+**`feature finish` refuses to run inside the worktree.** Bare `feature finish` only works from the main checkout on the feature's `@local` branch. Inside a linked worktree it exits with cleanup instructions. Run it from a base checkout instead:
+
+```bash
+# from a checkout of main or main@local
+git shadow feature finish <name>
+```
+
+**`feature finish` aborts: dirty worktree.** The feature worktree is removed before its branches are deleted, so finish refuses when it contains uncommitted or untracked paths and names them. Commit or stash the work, then retry — or keep the worktree and `<name>@local` with `git shadow feature finish <name> --keep-worktree`.
+
+**A base branch is held by another worktree.** A worktree can only check out a branch in one place. If a linked worktree holds `main` or `main@local`, finish cannot switch to the base and aborts before changing anything. Run `git shadow feature finish <name>` from that worktree, or free the branch.
+
+**Stale registrations.** If the worktree directory was deleted by hand (`rm -rf`) while git still lists it, `git shadow doctor` reports the stale registration; finish prunes it automatically before deleting the feature branch. To clean up manually:
+
+```bash
+git worktree prune
+git worktree list --porcelain
+```
+
+**`feature finish` seems to ignore a paused sync.** Sync and finish state files live in the shared `.git` directory (resolved via `git rev-parse --git-common-dir`), so a paused `feature sync` inside a worktree blocks `feature finish` in the main checkout and vice versa. Check `git shadow doctor` — it reports the paused state regardless of which checkout you are in.
+
+**`--worktree` fails: WORKTREE_ROOT is not set.** The flag is opt-in; configure the parent directory once:
+
+```bash
+git shadow config set WORKTREE_ROOT <absolute-path> --project-config
+```
+
+The value must be absolute after `~` expansion. To place a single worktree without configuring a root, use `--worktree-dir <path>` instead.

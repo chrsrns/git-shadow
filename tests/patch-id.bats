@@ -67,3 +67,23 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot show commit"* ]]
 }
+
+@test "patch_ids_for returns 0 when the range ends in a merge commit" {
+  # Merge commits have no diff, so patch_id_for yields an empty pid; the
+  # helper must still report success so pipefail callers do not die.
+  git checkout -q -b side "$SECOND_SHA"
+  echo "side" > side.txt
+  git add side.txt
+  git commit -qm "side"
+  git checkout -q -
+  echo "third" >> file.txt
+  git add file.txt
+  git commit -qm "third"
+  git merge -q --no-edit -m "merge side" side
+  MERGE_SHA="$(git rev-parse HEAD)"
+
+  run patch_ids_for "$SECOND_SHA" "$MERGE_SHA"
+  [ "$status" -eq 0 ]
+  # One pid per non-merge commit; the merge contributes nothing.
+  [ "$(echo "$output" | grep -c .)" -eq 1 ]
+}

@@ -48,4 +48,7 @@ patch_ids_for() {
       [[ -n "$pid" ]] && printf '%s\n' "$pid"
     fi
   done
+  # An empty patch-id (merge or empty-diff commit) is skipped, not an
+  # error — return 0 so pipefail callers do not treat it as failure.
+  return 0
 }

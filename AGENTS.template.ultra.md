@@ -27,8 +27,10 @@ Copy below section into `AGENTS.md` of project that uses git shadow.
 # keep local base current
 git shadow base sync
 
-# start
+# start (or in a worktree)
 git shadow feature start feature/x
+# git shadow feature start feature/x --worktree          # under WORKTREE_ROOT
+# git shadow feature start feature/x --worktree-dir <dir>
 
 # work on feature/x@local
 #   - `git shadow commit -m "..."` if files contain `///` or `// @local`
@@ -60,12 +62,19 @@ git shadow feature finish
 git shadow push main
 ```
 
+If the feature is in a worktree, `git shadow feature finish` removes it before deleting branches.
+Use `--keep-worktree` to keep both the worktree and `feature/x@local`.
+A dirty worktree or `cwd` inside the worktree aborts `finish` before any change.
+
+`WORKTREE_ROOT` is the parent directory for `--worktree` worktrees and is empty by default.
+Configure it with `git shadow config set WORKTREE_ROOT <absolute-path> --project-config`.
+
 ### Safety
 
 - Run `git shadow check public feature/x` before push to audit local-only leaks.
 - Pre-commit hook rejects public-tracked files with `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs diff-based check pass + scans replayed tree for local markers and `.git-shadow/annotations/` paths.
-- `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks, unpromoted files, `SPEC.md merge=union`. Exits 1 on warning.
+- `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks, unpromoted files, `SPEC.md merge=union`, worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on warning.
 
 ### Decision rule
 

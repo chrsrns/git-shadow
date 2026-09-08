@@ -209,3 +209,70 @@ EOF
   run git shadow doctor
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# Worktree checks
+# ---------------------------------------------------------------------------
+
+@test "doctor warns when WORKTREE_ROOT is not absolute" {
+  printf 'WORKTREE_ROOT="relative/dir"\n' > .git-shadow.env
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"worktree"* ]]
+  [[ "$output" == *"absolute"* ]]
+}
+
+@test "doctor warns when WORKTREE_ROOT has no writable parent" {
+  [[ $EUID -eq 0 ]] && skip "permission checks do not apply to root"
+  mkdir "$TEST_DIR/noperm"
+  chmod 555 "$TEST_DIR/noperm"
+  printf 'WORKTREE_ROOT="%s/noperm/wts"\n' "$TEST_DIR" > .git-shadow.env
+  run git shadow doctor
+  chmod 755 "$TEST_DIR/noperm"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"worktree"* ]]
+}
+
+@test "doctor accepts an existing WORKTREE_ROOT" {
+  mkdir -p "$TEST_DIR/wts"
+  printf 'WORKTREE_ROOT="%s"\n' "$TEST_DIR/wts" > .git-shadow.env
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+}
+
+@test "doctor warns on a stale worktree registration" {
+  git branch "stale-br@local"
+  git worktree add -q "$TEST_DIR/wt-stale" "stale-br@local"
+  rm -rf "$TEST_DIR/wt-stale"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"stale"* ]]
+  [[ "$output" == *"$TEST_DIR/wt-stale"* ]]
+}
+
+@test "doctor warns on an orphaned @local worktree" {
+  git branch "orphan-feat@local"
+  git worktree add -q "$TEST_DIR/wt-orphan" "orphan-feat@local"
+  git update-ref -d "refs/heads/orphan-feat@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"orphan"* ]]
+  [[ "$output" == *"$TEST_DIR/wt-orphan"* ]]
+}
+
+@test "doctor warns when a linked worktree holds a base branch" {
+  git worktree add -q "$TEST_DIR/wt-base" "main@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"main@local"* ]]
+  [[ "$output" == *"$TEST_DIR/wt-base"* ]]
+}
+
+@test "doctor does not auto-clean stale worktree registrations" {
+  git branch "stale-br@local"
+  git worktree add -q "$TEST_DIR/wt-stale" "stale-br@local"
+  rm -rf "$TEST_DIR/wt-stale"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-stale"
+}

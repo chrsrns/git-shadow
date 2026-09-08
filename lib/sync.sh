@@ -7,9 +7,12 @@
 
 SYNC_STATE_FILE_NAME="git-shadow-sync"
 
+# The sync state file lives in the common .git dir so a paused sync is
+# visible from every worktree. --git-path would resolve unknown names to
+# the per-worktree admin dir; --git-common-dir is required.
 sync_state_file() {
   local git_dir
-  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || true
+  git_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || true
   if [[ -z "$git_dir" ]]; then
     printf '%s\n' ".git/$SYNC_STATE_FILE_NAME"
   else

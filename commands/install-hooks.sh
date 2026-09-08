@@ -27,14 +27,19 @@ EXCLUDE_TRIPLE_LIST="$LOCAL_COMMENT_EXCLUDE"
 pre_commit_hook_template() {
   cat <<'HOOK'
 # If the hook runner is not bash (e.g. husky runs .husky/pre-commit via sh),
-# re-exec the whole hook under bash so the bash-only guard below is safe.
+# re-exec only this git-shadow block (marker line through EOF) under bash.
+# Re-running the whole file would also re-run hook content above the marker
+# that the user added before installing git-shadow.
 if [ -z "${BASH_VERSION:-}" ]; then
-  if command -v bash >/dev/null 2>&1; then
-    exec bash "$0" "$@"
-  else
-    echo "[git-shadow] pre-commit hook requires bash" >&2
-    exit 1
+  _gs_block=""
+  if command -v bash >/dev/null 2>&1 && [ -f "$0" ]; then
+    _gs_block="$(sed -n '/^# git-shadow pre-commit hook$/,$p' "$0" 2>/dev/null)"
   fi
+  if [ -n "$_gs_block" ]; then
+    exec bash -c "$_gs_block" "$0" "$@"
+  fi
+  echo "[git-shadow] pre-commit hook requires bash" >&2
+  exit 1
 fi
 
 set -e

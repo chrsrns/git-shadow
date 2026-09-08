@@ -329,6 +329,10 @@ fi
 
 enter_project '.'
 
+# Restore local patch overlays at the end of every non-paused exit.
+PAUSED=0
+trap 'if [[ "$PAUSED" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi' EXIT
+
 # V88: all feature finish modes refuse while a git-shadow sync is in progress.
 if [[ -f "$(sync_state_file)" ]]; then
   ui_error "A git-shadow sync is in progress. Resolve it before running 'git shadow feature finish'."
@@ -392,6 +396,7 @@ if [[ -n "$MARK_APPLIED" ]]; then
   if [[ "$(current_branch)" != "$local_base" ]]; then
     finish_check_base_exclusivity \
       "$(public_branch_from_any "$local_base")" "$local_base" || exit 1
+    patches_strip >/dev/null
     git checkout -q "$local_base" >/dev/null 2>&1 || {
       ui_error "Cannot checkout '$local_base'."
       exit 1
@@ -443,6 +448,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   if sync_has_conflicts; then
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
     ui_error "Working tree still has unresolved conflicts: $conflicted"
+    PAUSED=1
     exit 1
   fi
 
@@ -457,6 +463,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   PIDS_BASE="$FINISH_PIDS"
 
   if [[ "$FINISH_PHASE" == "base-diff" ]]; then
+    patches_strip >/dev/null
     sync_stage_all
     if sync_tree_changed; then
       sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
@@ -481,12 +488,14 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     MEMORY_SHAS=($FINISH_REMAINING_SHAS)
   else
     ui_error "Unknown finish phase: $FINISH_PHASE"
+    PAUSED=1
     exit 1
   fi
 
   finish_collect_applied
   if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
     if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+      PAUSED=1
       exit 1
     fi
   fi
@@ -582,6 +591,7 @@ ui_shadow "   Local base    : $LOCAL_BASE"
 # ---------------------------------------------------------------------------
 if [[ "$NO_PULL" -eq 0 ]]; then
   ui_git "Pulling latest changes for '$PUBLIC_BASE'"
+  patches_strip >/dev/null
   git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
   if ! git pull >/dev/null 2>&1; then
     ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
@@ -643,6 +653,7 @@ MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
 # Apply the public base net diff to the local base.
 # ---------------------------------------------------------------------------
 ui_shadow "Checkout '$LOCAL_BASE'"
+patches_strip >/dev/null
 git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
 
 LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
@@ -681,6 +692,7 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
       ui_info "Or run: git shadow feature finish --abort"
+      PAUSED=1
       exit 1
     fi
     finish_clear_state
@@ -693,6 +705,7 @@ fi
 ui_shadow "Replaying [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
 if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
   if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+    PAUSED=1
     exit 1
   fi
 fi

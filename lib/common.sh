@@ -223,14 +223,15 @@ ensure_clean_repo() {
     exit 1
   fi
 
-  if ! git diff --quiet; then
-    echo "❌ Working tree contains uncommitted changes." >&2
-    git diff --name-only >&2
+  if ! patches_overlay_clean; then
+    ui_error "Working tree contains uncommitted, unpromoted, or stale local changes."
+    ui_info  "Refresh local patches with 'git shadow local add' or resolve the changes below."
+    git status --short >&2
     exit 1
   fi
 
   if ! git diff --cached --quiet; then
-    echo "❌ Index still contains staged changes." >&2
+    ui_error "Index still contains staged changes." >&2
     git diff --cached --name-only >&2
     exit 1
   fi

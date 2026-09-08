@@ -54,6 +54,10 @@ EOF
 
   enter_project '.'
 
+  # Ensure sidecars are restored at the end of every non-paused exit.
+  PAUSED=0
+  trap 'if [[ "${PAUSED:-0}" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi' EXIT
+
   if finish_state_active; then
     ui_error "A feature finish is in progress. Resolve it before running '$mode sync'."
     return 1
@@ -220,10 +224,14 @@ EOF
   fi
 
   # Apply net diff and create a [SYNC] commit when the tree changed.
+  # Strip local patch overlays first so the net diff applies to public content.
+  patches_strip >/dev/null
+
   local pids
   if pids=$(sync_apply_and_commit "$local_branch" "$public_branch" "$diff_start" "$public_head"); then
     :
   else
+    PAUSED=1
     sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$diff_start" "$public_head" "$local_head" "$pids"
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"

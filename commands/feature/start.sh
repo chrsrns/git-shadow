@@ -44,6 +44,7 @@ if [[ $# -eq 0 ]]; then
     git branch "$LOCAL_BASE" "$PUBLIC_BASE"
   fi
 
+  patches_strip >/dev/null
   git checkout "$LOCAL_BASE"
   "$TOOLKIT_ROOT/commands/base/sync.sh"
   ui_ok "Switched to local base '$LOCAL_BASE'."
@@ -163,6 +164,7 @@ fi
 
 # Run base sync from the local base.
 if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+  patches_strip >/dev/null
   git checkout "$LOCAL_BASE"
 fi
 "$TOOLKIT_ROOT/commands/base/sync.sh"
@@ -212,10 +214,12 @@ if [[ "$USE_WORKTREE" -eq 1 ]]; then
   _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
 else
   ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
+  patches_strip >/dev/null
   git checkout "$LOCAL_FEATURE"
 
   ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
   _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
+  patches_reapply >/dev/null || true
 fi
 
 "$TOOLKIT_ROOT/commands/install-hooks.sh"
@@ -223,6 +227,8 @@ fi
 if [[ "$USE_WORKTREE" -eq 1 ]]; then
   ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE' with worktree at '$_wt_abs'."
   ui_info "Work in: cd '$_wt_abs'"
+  # Apply any local patch sidecars that were inherited from the base.
+  git -C "$_wt_abs" shadow local apply >/dev/null 2>&1 || true
 else
   ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
 fi

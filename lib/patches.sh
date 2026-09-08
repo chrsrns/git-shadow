@@ -152,6 +152,19 @@ patches_overlay_clean() {
 
     # Untracked non-ignored file.
     if [[ "$status" == "??" ]]; then
+      # Local-only config/setup files that are normally gitignored may be
+      # present while the repo is being configured; treat them as clean.
+      if [[ "$path" == .git-shadow.env || "$path" == */.git-shadow.env ||
+           "$path" == .gitignore || "$path" == */.gitignore ]]; then
+        continue
+      fi
+      # A registered worktree directory looks like an untracked path in the
+      # main checkout; it is not worktree dirt we care about here.
+      local abs_path
+      abs_path="$(_worktree_abs "$path")"
+      if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
+        continue
+      fi
       return 1
     fi
 

@@ -149,8 +149,18 @@ worktree_add() {
 }
 
 # Return 0 when the worktree at <path> has uncommitted or untracked files.
+# A worktree with only applied local patch overlays is treated as clean.
 worktree_is_dirty() {
-  [[ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]]
+  (
+    cd "$1" || return 1
+    if ! patches_overlay_clean; then
+      return 0
+    fi
+    if ! git diff --cached --quiet; then
+      return 0
+    fi
+    return 1
+  )
 }
 
 # Print the registered worktree path for <local_branch>, or return 1.

@@ -111,7 +111,7 @@ doctor_checkpoint_summary() {
     while IFS= read -r sha; do
       [[ -z "$sha" ]] && continue
       subject="$(git log -1 --format='%s' "$sha")"
-      if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* ]]; then
+      if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
         publishable=$((publishable + 1))
       fi
     done < <(git rev-list "${cp_local}..${local_head}")

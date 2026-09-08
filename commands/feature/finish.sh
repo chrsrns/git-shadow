@@ -5,8 +5,8 @@ set -euo pipefail
 # Script: feature/finish.sh
 # Purpose: finalize a feature in the diff-sync model.
 #
-# Usage: git shadow feature finish [--no-pull] [--keep-branches]
-#          [--continue|--abort] [--mark-applied <sha>]
+# Usage: git shadow feature finish [<name>] [--no-pull] [--keep-branches]
+#          [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
 # -------------------------------------------------------------------
 
 # shellcheck disable=SC1091
@@ -14,13 +14,111 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: git shadow feature finish [--no-pull] [--keep-branches] [--continue|--abort] [--mark-applied <sha>]
+Usage: git shadow feature finish [<name>] [--no-pull] [--keep-branches] [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
 EOF
 }
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Return 0 when the current checkout is a linked worktree (its .git dir has
+# a commondir file pointing at the shared admin dir).
+_in_linked_worktree() {
+  local git_dir
+  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 1
+  [[ -f "$git_dir/commondir" ]]
+}
+
+# Abort when the public or local base branch is checked out in another
+# worktree — a base checkout here would fail halfway through finish.
+finish_check_base_exclusivity() {
+  local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
+  local current_top
+  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel)")"
+  local path="" line
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) path="${line#worktree }" ;;
+      branch\ refs/heads/*)
+        local held="${line#branch refs/heads/}"
+        if [[ "$path" != "$current_top" \
+           && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
+          ui_error "Base branch '$held' is checked out in another worktree: $path"
+          ui_info  "Run 'git shadow feature finish $feature_name' from that checkout, or free the branch first."
+          return 1
+        fi
+        ;;
+      "") path="" ;;
+    esac
+  done < <(git worktree list --porcelain)
+  return 0
+}
+
+# Resolve the worktree hosting the feature's @local branch into
+# FINISH_WORKTREE. The current toplevel is never the feature worktree in
+# the removal sense: bare finish stands on <name>@local itself.
+finish_resolve_worktree() {
+  FINISH_WORKTREE=""
+  local wt current_top
+  wt="$(worktree_find_for_branch "$FEATURE_LOCAL_BRANCH")" || return 0
+  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel)")"
+  if [[ "$wt" != "$current_top" ]]; then
+    FINISH_WORKTREE="$wt"
+  fi
+}
+
+# Pre-mutation worktree guards. A registered worktree whose directory is
+# missing is stale, not dirty; removal handles it later. A dirty worktree
+# or a cwd inside the target worktree aborts before any change.
+finish_check_feature_worktree() {
+  finish_resolve_worktree
+  [[ -z "$FINISH_WORKTREE" ]] && return 0
+  [[ "$KEEP_WORKTREE" -eq 1 ]] && return 0
+  [[ ! -d "$FINISH_WORKTREE" ]] && return 0   # stale registration
+
+  local cwd
+  cwd="$(pwd -P)"
+  if [[ "$cwd" == "$FINISH_WORKTREE" || "$cwd" == "$FINISH_WORKTREE/"* ]]; then
+    ui_error "Cannot remove worktree '$FINISH_WORKTREE': the current directory is inside it."
+    ui_info  "Run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH' from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
+    return 1
+  fi
+
+  if worktree_is_dirty "$FINISH_WORKTREE"; then
+    ui_error "Feature worktree '$FINISH_WORKTREE' is dirty."
+    git -C "$FINISH_WORKTREE" status --porcelain >&2
+    ui_info  "Commit or stash the work, then retry; or keep it with --keep-worktree."
+    ui_info  "Or run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH' from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
+    return 1
+  fi
+  return 0
+}
+
+# Success-path cleanup: remove the feature worktree (unless kept) before
+# deleting the feature branches. --keep-worktree preserves the worktree
+# and <name>@local; --keep-branches preserves both branches.
+finish_cleanup_feature() {
+  if [[ -n "$FINISH_WORKTREE" && "$KEEP_WORKTREE" -eq 0 ]]; then
+    if [[ -d "$FINISH_WORKTREE" ]] && worktree_is_dirty "$FINISH_WORKTREE"; then
+      ui_error "Feature worktree '$FINISH_WORKTREE' is dirty; refusing to remove it."
+      git -C "$FINISH_WORKTREE" status --porcelain >&2
+      ui_info  "Commit or stash the work, then run: git worktree remove '$FINISH_WORKTREE'"
+      return 1
+    fi
+    ui_shadow "Removing feature worktree '$FINISH_WORKTREE'"
+    worktree_remove "$FINISH_WORKTREE" || return 1
+  fi
+  if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
+    git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1 || true
+    if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
+      git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1 || true
+      ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
+    else
+      ui_info "Deleted public feature branch '$FEATURE_PUBLIC_BRANCH' (kept '$FEATURE_LOCAL_BRANCH')."
+    fi
+  fi
+}
 
 # Collect [MEMORY] provenance already recorded on the local base.
 finish_collect_applied() {
@@ -176,14 +274,17 @@ finish_memory_replay() {
 # ---------------------------------------------------------------------------
 NO_PULL=0
 KEEP_BRANCHES=0
+KEEP_WORKTREE=0
 CONTINUE=0
 ABORT=0
 MARK_APPLIED=""
+FEATURE_NAME_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-pull)       NO_PULL=1 ;;
     --keep-branches) KEEP_BRANCHES=1 ;;
+    --keep-worktree) KEEP_WORKTREE=1 ;;
     --continue)      CONTINUE=1 ;;
     --abort)         ABORT=1 ;;
     --mark-applied)
@@ -199,10 +300,18 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
-    *)
+    --*)
       ui_error "Unknown argument: $1"
       usage
       exit 1
+      ;;
+    *)
+      if [[ -n "$FEATURE_NAME_ARG" ]]; then
+        ui_error "Unexpected argument: $1"
+        usage
+        exit 1
+      fi
+      FEATURE_NAME_ARG="$1"
       ;;
   esac
   shift
@@ -210,6 +319,11 @@ done
 
 if [[ $((CONTINUE + ABORT)) -gt 1 || ( -n "$MARK_APPLIED" && $((CONTINUE + ABORT)) -gt 0 ) ]]; then
   ui_error "--continue, --abort, and --mark-applied are mutually exclusive."
+  exit 1
+fi
+
+if [[ -n "$FEATURE_NAME_ARG" && ( "$CONTINUE" -eq 1 || "$ABORT" -eq 1 || -n "$MARK_APPLIED" ) ]]; then
+  ui_error "A feature name cannot be combined with --continue, --abort, or --mark-applied."
   exit 1
 fi
 
@@ -230,6 +344,8 @@ if [[ "$ABORT" -eq 1 ]]; then
     exit 1
   fi
   if [[ "$(current_branch)" != "$FINISH_LOCAL_BASE" ]]; then
+    finish_check_base_exclusivity \
+      "$(public_branch_from_any "$FINISH_LOCAL_BASE")" "$FINISH_LOCAL_BASE" || exit 1
     git checkout -q "$FINISH_LOCAL_BASE" >/dev/null 2>&1 || {
       ui_error "Cannot checkout '$FINISH_LOCAL_BASE'."
       exit 1
@@ -274,6 +390,8 @@ if [[ -n "$MARK_APPLIED" ]]; then
   fi
 
   if [[ "$(current_branch)" != "$local_base" ]]; then
+    finish_check_base_exclusivity \
+      "$(public_branch_from_any "$local_base")" "$local_base" || exit 1
     git checkout -q "$local_base" >/dev/null 2>&1 || {
       ui_error "Cannot checkout '$local_base'."
       exit 1
@@ -377,10 +495,9 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     exit 1
   fi
 
-  if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
-    git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1 || true
-    git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1 || true
-    ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
+  finish_resolve_worktree
+  if ! finish_cleanup_feature; then
+    exit 1
   fi
   ui_ok "Feature finished successfully."
   exit 0
@@ -402,19 +519,45 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "feature finish must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
-
-FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
-FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
 PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
 LOCAL_BASE="${PUBLIC_BASE}${LOCAL_SUFFIX}"
 
-if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then
-  ui_error "This command must be run from a feature branch, not from the base."
-  exit 1
+if [[ -n "$FEATURE_NAME_ARG" ]]; then
+  # Named mode: run from a checkout of the public or local base branch.
+  if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE" && "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+    ui_error "feature finish <name> must be run from '$PUBLIC_BASE' or '$LOCAL_BASE' (recommended: '$LOCAL_BASE')."
+    ui_info  "On a feature branch, run bare: git shadow feature finish"
+    exit 1
+  fi
+  if [[ "$CURRENT_BRANCH" == "$PUBLIC_BASE" ]]; then
+    ui_info "Running from the public base; '$LOCAL_BASE' is the recommended checkout."
+  fi
+  FEATURE_PUBLIC_BRANCH="$FEATURE_NAME_ARG"
+  FEATURE_LOCAL_BRANCH="${FEATURE_NAME_ARG}${LOCAL_SUFFIX}"
+  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" ]]; then
+    ui_error "Cannot finish the base branch."
+    exit 1
+  fi
+else
+  # Bare mode: derive the feature from the current @local branch.
+  if _in_linked_worktree; then
+    ui_error "Bare 'feature finish' cannot run inside a linked worktree."
+    ui_info  "Commit or stash your work in '$(git rev-parse --show-toplevel)', then run:"
+    ui_info  "  git shadow feature finish $(public_branch_from_any "$CURRENT_BRANCH")"
+    ui_info  "from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
+    ui_info  "Or remove the worktree manually: git worktree remove '$(git rev-parse --show-toplevel)'"
+    exit 1
+  fi
+  if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
+    ui_error "feature finish must be run from a branch ending with '${LOCAL_SUFFIX}'."
+    exit 1
+  fi
+  FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
+  FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
+  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then
+    ui_error "This command must be run from a feature branch, not from the base."
+    exit 1
+  fi
 fi
 
 for branch in "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$PUBLIC_BASE" "$LOCAL_BASE"; do
@@ -423,6 +566,12 @@ for branch in "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$PUBLIC_BASE" "$
     exit 1
   fi
 done
+
+# Worktree guards before any mutation: a needed base checkout must not be
+# blocked by another worktree, and a feature worktree slated for removal
+# must be clean and not contain the cwd.
+finish_check_base_exclusivity "$PUBLIC_BASE" "$LOCAL_BASE" "$FEATURE_PUBLIC_BRANCH" || exit 1
+finish_check_feature_worktree || exit 1
 
 ui_shadow "Finalizing feature '$FEATURE_PUBLIC_BRANCH'"
 ui_git    "   Public base   : $PUBLIC_BASE"
@@ -551,12 +700,10 @@ if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE
 fi
 
 # ---------------------------------------------------------------------------
-# Branch cleanup
+# Worktree + branch cleanup
 # ---------------------------------------------------------------------------
-if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
-  git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1 || true
-  git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1 || true
-  ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
+if ! finish_cleanup_feature; then
+  exit 1
 fi
 
 ui_ok "Feature finished successfully."

@@ -446,3 +446,108 @@ _start_setup_env() {
   current="$(git -C "$TEST_DIR/wts/feat-wt" branch --show-current)"
   [ "$current" = "feat-wt@local" ]
 }
+
+# ---------------------------------------------------------------------------
+# feature finish worktree cleanup
+# ---------------------------------------------------------------------------
+
+# Build a merge-ready feature whose @local branch lives in a worktree:
+# creates the pair, publishes a public commit, merges the public branch
+# into main, and registers the worktree at $1. Leaves cwd on main@local.
+_setup_finished_worktree_feature() {
+  local wt_path="$1"
+  git shadow feature start wt-feat >/dev/null
+  echo "wf" > wf.txt
+  git add wf.txt
+  git commit -qm "feat: wf"
+  git shadow feature publish >/dev/null
+  git checkout -q main
+  git merge -q --no-edit wt-feat
+  git checkout -q "main@local"
+  git worktree add -q "$wt_path" "wt-feat@local"
+}
+
+@test "feature finish <name> removes the feature worktree before deleting branches" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 0 ]
+  [ ! -d "$TEST_DIR/wt-feat" ]
+  ! git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature finish --keep-worktree keeps worktree and @local, deletes public" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  run git shadow feature finish wt-feat --no-pull --keep-worktree
+  [ "$status" -eq 0 ]
+  [ -d "$TEST_DIR/wt-feat" ]
+  current="$(git -C "$TEST_DIR/wt-feat" branch --show-current)"
+  [ "$current" = "wt-feat@local" ]
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat"
+}
+
+@test "feature finish aborts on a dirty feature worktree and names recovery" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  echo "dirty" > "$TEST_DIR/wt-feat/dirty.txt"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$TEST_DIR/wt-feat"* ]]
+  [[ "$output" == *"dirty.txt"* ]]
+  [[ "$output" == *"--keep-worktree"* ]]
+  # Nothing mutated: worktree still registered, branches still exist.
+  git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "bare feature finish inside a linked worktree refuses with cleanup steps" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  cd "$TEST_DIR/wt-feat"
+  run git shadow feature finish
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"worktree"* ]]
+  [[ "$output" == *"git shadow feature finish wt-feat"* ]]
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature finish prunes a stale registration before branch deletion" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  rm -rf "$TEST_DIR/wt-feat"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 0 ]
+  ! git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "paused feature finish leaves the feature worktree in place" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+
+  # A [MEMORY] on the feature that collides with an independent change on
+  # main@local triggers the memory-replay pause.
+  echo "feature memory" > "$TEST_DIR/wt-feat/file.txt"
+  git -C "$TEST_DIR/wt-feat" add file.txt
+  git -C "$TEST_DIR/wt-feat" commit -qm "[MEMORY] collide"
+  echo "base memory" > file.txt
+  git add file.txt
+  git commit -qm "chore: independent base change"
+
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [ -d "$TEST_DIR/wt-feat" ]
+  git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature finish aborts when a base branch is held by another worktree" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  # Hold main@local in a second worktree; run finish from main.
+  git checkout -q main
+  git worktree add -q "$TEST_DIR/wt-base" "main@local"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$TEST_DIR/wt-base"* ]]
+  [[ "$output" == *"git shadow feature finish wt-feat"* ]]
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}

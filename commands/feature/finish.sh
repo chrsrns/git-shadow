@@ -198,6 +198,9 @@ finish_commit_memory() {
   if [[ -d .git-shadow/annotations ]]; then
     git add -f .git-shadow/annotations/
   fi
+  if [[ -d .git-shadow/patches ]]; then
+    git add -f .git-shadow/patches/
+  fi
 
   local -a commit_args=(-m "$subject" -m "git-shadow-source-memory: $sha")
   if [[ -n "$memory_pid" ]]; then
@@ -247,13 +250,20 @@ finish_memory_replay() {
       "$PRE_FINISH_HEAD" "memory-replay" "$sha" \
       "${remaining[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
 
-    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' | git apply --3way --allow-empty; then
+    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git apply --3way --allow-empty; then
       local conflicted
       conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
       ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'."
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
       ui_info "Or run: git shadow feature finish --abort"
+      return 1
+    fi
+
+    # Patch sidecars are local-only whole-file sidecars: apply them separately
+    # so they do not participate in the generic 3-way merge of source files.
+    if ! git diff "$sha^" "$sha" -- .git-shadow/patches/ | git apply --allow-empty; then
+      ui_error "Failed to apply patch sidecars from [MEMORY] commit $sha."
       return 1
     fi
 
@@ -479,6 +489,9 @@ if [[ "$CONTINUE" -eq 1 ]]; then
       FINISH_TMP_DIR="$(mktemp -d)"
       trap 'rm -rf "$FINISH_TMP_DIR"' 0
       finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
+      # Apply only the patch sidecars from the conflicted commit; the source
+      # diff is already resolved in the working tree.
+      git diff "$FINISH_CONFLICTED_SHA^" "$FINISH_CONFLICTED_SHA" -- .git-shadow/patches/ | git apply --allow-empty
       finish_commit_memory "$FINISH_CONFLICTED_SHA"
       APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
       pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"

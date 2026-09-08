@@ -208,6 +208,32 @@ doctor_annotations_check() {
   return 0
 }
 
+# Warn when .git-shadow/patches/ sidecars cannot be applied to HEAD.
+# This flags orphan or stale local patches before a reapply tries to use them.
+doctor_patches_check() {
+  local dir=".git-shadow/patches"
+  if [[ ! -d "$dir" ]]; then
+    ui_info "patches: no sidecars"
+    return 0
+  fi
+
+  local issues=0 sidecar relpath
+  while IFS= read -r -d '' sidecar; do
+    relpath="${sidecar#$dir/}"
+    relpath="${relpath%.patch}"
+    if ! git apply --check < "$sidecar" >/dev/null 2>&1; then
+      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
+      issues=1
+    fi
+  done < <(find "$dir" -type f -name '*.patch' -print0 2>/dev/null)
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "patches: no orphan sidecars"
+    return 0
+  fi
+  return 1
+}
+
 # Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and
 # either an existing directory or a path under a writable parent. Also
 # warns when git is too old for 'git worktree remove' (< 2.17).
@@ -324,6 +350,7 @@ doctor_run() {
 
   _doctor_tally doctor_gitattributes_check
   _doctor_tally doctor_annotations_check
+  _doctor_tally doctor_patches_check
   _doctor_tally doctor_worktree_root_check
   _doctor_tally doctor_worktree_check
 

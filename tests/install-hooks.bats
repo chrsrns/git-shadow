@@ -94,6 +94,34 @@ teardown() {
   sh -n ".git/hooks/pre-commit"
 }
 
+@test "pre-commit hook runs when invoked by a non-bash shell (zsh)" {
+  git commit --allow-empty -q -m "initial"
+  git shadow install-hooks
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  GIT_SHADOW=1 run zsh ".git/hooks/pre-commit"
+  [ "$status" -eq 0 ]
+}
+
+@test "pre-commit hook rejects a public branch when invoked by a non-bash shell (zsh)" {
+  git commit --allow-empty -q -m "initial"
+  git shadow install-hooks
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  echo "change" > file.txt
+  git add file.txt
+  run zsh ".git/hooks/pre-commit"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"Refusing to commit"* ]]
+}
+
+@test "pre-commit hook installed in husky .husky/ path runs under a non-bash shell" {
+  git commit --allow-empty -q -m "initial"
+  git config core.hooksPath ".husky/_"
+  git shadow install-hooks
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  GIT_SHADOW=1 run zsh ".husky/pre-commit"
+  [ "$status" -eq 0 ]
+}
+
 @test "pre-commit rejects a commit on a public branch without GIT_SHADOW" {
   git commit --allow-empty -q -m "initial"
   git shadow install-hooks

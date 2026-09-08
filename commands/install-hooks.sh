@@ -26,6 +26,17 @@ EXCLUDE_TRIPLE_LIST="$LOCAL_COMMENT_EXCLUDE"
 
 pre_commit_hook_template() {
   cat <<'HOOK'
+# If the hook runner is not bash (e.g. husky runs .husky/pre-commit via sh),
+# re-exec the whole hook under bash so the bash-only guard below is safe.
+if [ -z "${BASH_VERSION:-}" ]; then
+  if command -v bash >/dev/null 2>&1; then
+    exec bash "$0" "$@"
+  else
+    echo "[git-shadow] pre-commit hook requires bash" >&2
+    exit 1
+  fi
+fi
+
 set -e
 # Keep glob patterns in LOCAL_COMMENT_EXCLUDE literal when iterating; enable
 # extglob so the patterns are matched with extended glob semantics.

@@ -185,6 +185,29 @@ doctor_gitattributes_check() {
   return 1
 }
 
+# Warn when .git-shadow/annotations/ sidecars contain records marked
+# '### orphan' — their ### search block could not be re-anchored, so the
+# annotation is no longer applied to the source.
+doctor_annotations_check() {
+  local dir=".git-shadow/annotations"
+  if [[ ! -d "$dir" ]]; then
+    ui_info "annotations: no sidecars"
+    return 0
+  fi
+
+  local orphans
+  orphans="$(grep -rl '^### orphan$' "$dir" 2>/dev/null || true)"
+  if [[ -n "$orphans" ]]; then
+    local f
+    while IFS= read -r f; do
+      [[ -n "$f" ]] && ui_warn "annotations: orphan record(s) in '$f'"
+    done <<< "$orphans"
+    return 1
+  fi
+  ui_ok "annotations: no orphan records"
+  return 0
+}
+
 # Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and
 # either an existing directory or a path under a writable parent. Also
 # warns when git is too old for 'git worktree remove' (< 2.17).
@@ -300,6 +323,7 @@ doctor_run() {
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
   _doctor_tally doctor_gitattributes_check
+  _doctor_tally doctor_annotations_check
   _doctor_tally doctor_worktree_root_check
   _doctor_tally doctor_worktree_check
 

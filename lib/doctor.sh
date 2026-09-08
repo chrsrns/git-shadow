@@ -185,6 +185,91 @@ doctor_gitattributes_check() {
   return 1
 }
 
+# Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and
+# either an existing directory or a path under a writable parent. Also
+# warns when git is too old for 'git worktree remove' (< 2.17).
+doctor_worktree_root_check() {
+  local issues=0
+
+  if ! worktree_supported; then
+    ui_warn "worktree: git < 2.17 lacks 'git worktree remove'"
+    issues=1
+  fi
+
+  local root="${WORKTREE_ROOT:-}"
+  if [[ -z "$root" ]]; then
+    ui_info "worktree-root: not configured"
+  else
+    root="$(_worktree_expand_tilde "$root")"
+    if [[ "$root" != /* ]]; then
+      ui_warn "worktree-root: WORKTREE_ROOT must be absolute (got: '${WORKTREE_ROOT}')"
+      issues=1
+    elif [[ -d "$root" ]]; then
+      ui_ok "worktree-root: $root"
+    else
+      # Read-only probe: find the nearest existing ancestor and check that
+      # it is writable, without creating anything.
+      local probe="$root"
+      while [[ ! -d "$probe" && "$probe" != "/" ]]; do
+        probe="$(dirname "$probe")"
+      done
+      if [[ -d "$probe" && -w "$probe" ]]; then
+        ui_ok "worktree-root: $root (will be created on use)"
+      else
+        ui_warn "worktree-root: '$root' does not exist and has no writable parent"
+        issues=1
+      fi
+    fi
+  fi
+  return $issues
+}
+
+# Warn on stale or orphaned worktree registrations, and on linked
+# worktrees that hold the public or local base branch (a base checkout by
+# feature finish is blocked there). Read-only: reports, never prunes.
+doctor_worktree_check() {
+  local issues=0
+  local public_base="${PUBLIC_BASE_BRANCH:-main}"
+  local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
+  local current_top
+  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")")"
+
+  local orphans wt_path wt_branch
+  orphans="$(worktree_orphans)"
+  if [[ -n "$orphans" ]]; then
+    while IFS=$'\t' read -r wt_path wt_branch; do
+      [[ -z "$wt_path" ]] && continue
+      if [[ ! -d "$wt_path" ]]; then
+        ui_warn "worktree: stale registration '$wt_path' (branch '$wt_branch') — run 'git worktree prune'"
+      else
+        ui_warn "worktree: '$wt_path' holds missing branch '$wt_branch' (orphaned)"
+      fi
+      issues=1
+    done <<< "$orphans"
+  fi
+
+  local path="" line
+  while IFS= read -r line; do
+    case "$line" in
+      worktree\ *) path="${line#worktree }" ;;
+      branch\ refs/heads/*)
+        local held="${line#branch refs/heads/}"
+        if [[ "$path" != "$current_top" && -d "$path" \
+           && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
+          ui_warn "worktree: '$path' holds base branch '$held'; base checkouts (feature finish) are blocked"
+          issues=1
+        fi
+        ;;
+      "") path="" ;;
+    esac
+  done < <(git worktree list --porcelain)
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "worktree: no stale or orphaned registrations"
+  fi
+  return $issues
+}
+
 # Execute all checks in order, emit one line per check, print the total
 # warning/error count, and return 0. The caller exits 1 when the printed
 # count is non-zero (V101).
@@ -215,6 +300,8 @@ doctor_run() {
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
   _doctor_tally doctor_gitattributes_check
+  _doctor_tally doctor_worktree_root_check
+  _doctor_tally doctor_worktree_check
 
   printf 'doctor: %d warning(s)/error(s)\n' "$DOCTOR_WARNINGS"
   return 0

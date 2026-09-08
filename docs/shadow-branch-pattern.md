@@ -91,7 +91,7 @@ feature/x
 
 5. Push the public branch to the shared repository and follow the normal team workflow (pull request, merge request, etc.).
 
-6. Finish the feature with `git shadow feature finish`.
+6. Finish the feature with `git shadow feature finish` (or `git shadow feature finish <name>` from a checkout of the base branch).
 
 ```
 main@local
@@ -188,14 +188,18 @@ Example usage:
 
 ```bash
 git shadow feature start feature/login
-# work on feature/login@local; use `git shadow commit -m "..."` to split
+# or: git shadow feature start feature/login --worktree
+#     creates a git worktree under WORKTREE_ROOT hosting feature/login@local
+# work on feature/login@local (in the current checkout or its worktree);
+# use `git shadow commit -m "..."` to split
 # public work from `///` and `// @local` markers stored in .git-shadow/annotations/
 # use `git shadow show --with-annotations <file>` to review annotated source
 # use `git shadow annotations reapply [path]` to edit with markers again
 git shadow feature publish
 git shadow push feature/login
-# after PR merge
-git shadow feature finish
+# after PR merge — from feature/login@local or a base checkout:
+git shadow feature finish            # removes a feature worktree, if any
+git shadow feature finish feature/login --keep-worktree   # keep it instead
 git shadow push main
 ```
 

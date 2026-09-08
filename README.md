@@ -175,6 +175,7 @@ The hooks will not error on other team members' environments if they haven't ins
 - checks git availability.
 - checks `git shadow` command presence.
 - checks current repo status (clean/staged, current branch).
+- checks `WORKTREE_ROOT` validity, stale or orphaned worktree registrations, and worktrees holding a base branch.
 
 ```bash
 git shadow doctor
@@ -187,6 +188,20 @@ git shadow doctor
 ```bash
 git shadow feature start feature/login
 ```
+
+Or create the feature in a dedicated git worktree that checks out
+`feature/login@local` (the public branch is never checked out):
+
+```bash
+git shadow feature start feature/login --worktree          # under WORKTREE_ROOT
+git shadow feature start feature/login --worktree-dir <dir>
+```
+
+`--worktree` requires `WORKTREE_ROOT`, an absolute parent directory
+(configure once: `git shadow config set WORKTREE_ROOT <path>`); the
+worktree dir defaults to `<WORKTREE_ROOT>/<name with '/' → '-'>`.
+`--worktree-dir` uses the given path verbatim. `--worktree` and
+`--worktree-dir` are mutually exclusive.
 
 Creates:
 
@@ -270,8 +285,17 @@ git shadow feature sync --abort
 After the MR is merged :
 
 ```bash
+# on feature/login@local:
 git shadow feature finish
+
+# or from a checkout of the base (main or main@local):
+git shadow feature finish feature/login
 ```
+
+If the feature lives in a worktree, finish removes the worktree before
+deleting the feature branches; a dirty worktree or a `cd` inside it
+aborts before any change. `--keep-worktree` keeps the worktree and
+`feature/login@local`.
 
 This command:
 

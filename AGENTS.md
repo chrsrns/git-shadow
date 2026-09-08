@@ -117,7 +117,11 @@ git shadow base sync
 # 2. Start a feature
 git shadow feature start <branch-name>
 
-# 3. Work on <branch-name>@local
+#    Or start it in a dedicated worktree on <branch-name>@local:
+git shadow feature start <branch-name> --worktree          # under WORKTREE_ROOT
+git shadow feature start <branch-name> --worktree-dir <dir>
+
+# 3. Work on <branch-name>@local (the current checkout, or the worktree)
 #    - Use `git shadow commit -m "..."` for public code that contains `///` or `// @local` markers.
 #    - Use `git commit` for public code without markers.
 #    - Use `git commit -m "[MEMORY] ..."` for local-only reasoning files.
@@ -142,8 +146,24 @@ If the public branch was force-pushed or rewritten and patch-id recovery cannot 
 After the PR is merged:
 
 ```bash
+# On <name>@local in the main checkout:
 git shadow feature finish
+
+# Or, from a checkout of the base (public or @local):
+git shadow feature finish <name>
+
 git shadow push <public-base-branch>
+```
+
+If the feature lives in a worktree, `feature finish` removes the worktree before deleting
+the feature branches — use `--keep-worktree` to keep both it and `<name>@local`.
+A dirty worktree or a `cd` inside it aborts finish before any change.
+
+`WORKTREE_ROOT` is the parent directory for `--worktree` worktrees and is empty by
+default. Configure it once per project or user:
+
+```bash
+git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 ```
 
 ### Direct commits on public branches
@@ -166,7 +186,7 @@ If you are asked to finalize work, prefer publication through git shadow rather 
 - Run `git shadow check public <branch>` to audit a public branch for unpromoted files or leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, and `SPEC.md merge=union` in `.gitattributes`. It exits 1 on any warning.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
 
 ## Git shadow configuration
 

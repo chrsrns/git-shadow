@@ -51,6 +51,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook-installer.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"
 
+# Load worktree lifecycle helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"
@@ -223,7 +227,15 @@ detect_hook_file() {
   hooks_path="${hooks_path%/}"
 
   if [[ -z "$hooks_path" ]]; then
-    printf '%s\n' ".git/hooks/$hook_name"
+    # hooks/ is shared across worktrees; --git-path resolves it to the
+    # common .git dir even inside a linked worktree, where .git is a file.
+    local resolved
+    resolved="$(git rev-parse --git-path "hooks/$hook_name" 2>/dev/null)" || resolved=""
+    if [[ -n "$resolved" ]]; then
+      printf '%s\n' "$resolved"
+    else
+      printf '%s\n' ".git/hooks/$hook_name"
+    fi
     return
   fi
 

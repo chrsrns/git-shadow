@@ -97,6 +97,31 @@ teardown() {
 }
 
 # ---------------------------------------------------------------------------
+# Worktree configuration
+# ---------------------------------------------------------------------------
+
+@test "config list includes WORKTREE_ROOT" {
+  run git shadow config list
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"WORKTREE_ROOT"* ]]
+}
+
+@test "config get returns empty default for WORKTREE_ROOT" {
+  run git shadow config get WORKTREE_ROOT --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"value":""'* ]]
+  [[ "$output" == *'"source":"defaults"'* ]]
+}
+
+@test "WORKTREE_ROOT in project config produces no unknown-key warning" {
+  printf 'WORKTREE_ROOT="%s"\n' "$TEST_DIR/wts" > .git-shadow.env
+  run git shadow config get WORKTREE_ROOT
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Unknown config key"* ]]
+  [[ "$output" == *"$TEST_DIR/wts"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # config show
 # ---------------------------------------------------------------------------
 

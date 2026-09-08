@@ -759,3 +759,58 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"git-shadow sync is in progress"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# Named mode: git shadow feature finish <name>
+# ---------------------------------------------------------------------------
+
+@test "feature finish <name> from the local base finishes the feature" {
+  git checkout -q "main@local"
+  run git shadow feature finish test-feature --no-pull
+  [ "$status" -eq 0 ]
+  run git branch --list "test-feature"
+  [ -z "$output" ]
+  run git branch --list "test-feature@local"
+  [ -z "$output" ]
+}
+
+@test "feature finish <name> from the public base works" {
+  git checkout -q main
+  run git shadow feature finish test-feature --no-pull
+  [ "$status" -eq 0 ]
+  run git branch --list "test-feature"
+  [ -z "$output" ]
+}
+
+@test "feature finish <name> aborts when run from a feature branch" {
+  run git shadow feature finish test-feature --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"main"* ]]
+}
+
+@test "feature finish <name> aborts on an unknown name" {
+  git checkout -q "main@local"
+  run git shadow feature finish nope --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"does not exist"* ]]
+}
+
+@test "feature finish <name> cannot target the base branch" {
+  git checkout -q "main@local"
+  run git shadow feature finish main --no-pull
+  [ "$status" -eq 1 ]
+}
+
+@test "feature finish <name> is rejected together with --continue" {
+  git checkout -q "main@local"
+  run git shadow feature finish test-feature --continue
+  [ "$status" -eq 1 ]
+}
+
+@test "feature finish --keep-worktree keeps the @local branch without a worktree" {
+  run git shadow feature finish --no-pull --keep-worktree
+  [ "$status" -eq 0 ]
+  git show-ref --verify --quiet "refs/heads/test-feature@local"
+  run git branch --list "test-feature"
+  [ -z "$output" ]
+}

@@ -59,10 +59,10 @@ Commands:
   show --with-annotations <file>
   annotations reapply [path]
   completion install
-  feature start <name>
+  feature start <name> [--worktree|--worktree-dir <path>]
   feature publish
   feature sync [--recover] [--continue|--abort]
-  feature finish [--no-pull] [--keep-branches] [--continue|--abort] [--mark-applied <sha>]
+  feature finish [<name>] [--no-pull] [--keep-branches] [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
   base sync [--recover] [--continue|--abort]
   re-anchor <branch@local>
   push <branch>

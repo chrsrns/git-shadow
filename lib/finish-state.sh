@@ -7,9 +7,12 @@
 
 FINISH_STATE_FILE_NAME="git-shadow-finish"
 
+# The finish state file lives in the common .git dir so a paused finish is
+# visible from every worktree. --git-path would resolve unknown names to
+# the per-worktree admin dir; --git-common-dir is required.
 finish_state_file() {
   local git_dir
-  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || true
+  git_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || true
   if [[ -z "$git_dir" ]]; then
     printf '%s\n' ".git/$FINISH_STATE_FILE_NAME"
   else

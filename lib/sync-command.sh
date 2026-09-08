@@ -111,7 +111,7 @@ EOF
       return 1
     fi
 
-    sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_CHECKPOINT_PUBLIC" "$SYNC_TARGET_PUBLIC"
+    sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_DIFF_START" "$SYNC_TARGET_PUBLIC"
 
     if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$SYNC_LOCAL_BRANCH" "$SYNC_TARGET_PUBLIC" $SYNC_PIDS)"; then
       return 1

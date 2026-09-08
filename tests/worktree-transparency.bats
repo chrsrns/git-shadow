@@ -74,3 +74,35 @@ teardown() {
   [[ "$output" == *"publishable  : 1"* ]]
   [[ "$output" == *"diverged"* ]]
 }
+
+@test "re-anchor runs inside a worktree on the feature @local branch" {
+  # Publish a public commit so the remote has real feature history.
+  echo "v2" > "$TEST_DIR/wt/app.ts"
+  git -C "$TEST_DIR/wt" add app.ts
+  git -C "$TEST_DIR/wt" commit -qm "feat: v2"
+  git -C "$TEST_DIR/wt" shadow feature publish
+
+  # Bare-clone "origin", push the public feature, then rewrite it remotely.
+  ORIGIN_DIR="$(mktemp -d)"
+  REMOTE_WORK="$(mktemp -d)"
+  git clone -q --bare . "$ORIGIN_DIR"
+  git remote add origin "$ORIGIN_DIR"
+  GIT_SHADOW=1 git push -q origin feature-foo
+  git clone -q "$ORIGIN_DIR" "$REMOTE_WORK/repo"
+  RW="$REMOTE_WORK/repo"
+  git -C "$RW" checkout -q feature-foo
+  echo "v2" > "$RW/app.ts"
+  git -C "$RW" add app.ts
+  git -C "$RW" -c user.name="Test User" -c user.email="test@example.com" commit -q --amend -m "feat: v2 amended"
+  git -C "$RW" push -q --force-with-lease origin feature-foo
+  git fetch -q origin
+
+  run git -C "$TEST_DIR/wt" shadow re-anchor
+  [ "$status" -eq 0 ]
+  subject="$(git -C "$TEST_DIR/wt" log -1 --format='%s')"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+  [ "$(git rev-parse feature-foo)" = "$(git rev-parse origin/feature-foo)" ]
+  [ "$(git -C "$TEST_DIR/wt" branch --show-current)" = "feature-foo@local" ]
+
+  rm -rf "$ORIGIN_DIR" "$REMOTE_WORK"
+}

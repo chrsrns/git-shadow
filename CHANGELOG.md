@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.3.0] — 2026-09-08
+
+### Added
+
+- **Diff-sync model** — public and `@local` branches are now independent history lines synchronized by net diffs and `[CHECKPOINT]` commits instead of merges and cherry-picks. Public branch SHAs are never rewritten, and merge, rebase, and squash public workflows are all supported.
+- **Resumable sync and finish** — `feature sync`, `base sync`, and `feature finish` pause with conflict markers on apply conflicts and support `--continue` / `--abort`; `feature finish --mark-applied <sha>` records already-applied `[MEMORY]` commits.
+- **`git shadow feature start --worktree|--worktree-dir <path>`** — create a git worktree hosting `<name>@local` under `WORKTREE_ROOT` or an explicit path. In-repo worktrees are hidden via shared `info/exclude` and `.git-shadow.env` is copied in.
+- **`git shadow feature finish [<name>]`** — named finish from a base checkout, `--keep-worktree`, dirty-worktree and cwd-inside guards, and feature worktree cleanup before branch deletion.
+- **`git shadow doctor`** — read-only diagnostics: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, `.gitattributes`, and worktree checks (`WORKTREE_ROOT` validity, stale/orphaned registrations, base-branch holders).
+- **`git shadow push <branch>`** — push helper that sets `GIT_SHADOW=1` and auto-configures upstream on first push.
+- **`git shadow check public <branch>`** — audit a public branch for unpromoted local-only files.
+- **`WORKTREE_ROOT` config key** — parent directory for `--worktree` feature worktrees.
+
+### Fixed
+
+- `patch_ids_for` no longer returns failure when a range ends in a merge or empty-diff commit; previously `feature finish` and sync could abort silently under `set -e`/`pipefail`.
+- `sync --continue` records the actual `diff_start` in the `[SYNC]` range and patch-ids.
+- Sync/finish state files and hook detection resolve via `--git-common-dir` / `--git-path`, so state is shared across linked worktrees.
+
 ## [1.2.0] — 2026-09-06
 
 ### Added

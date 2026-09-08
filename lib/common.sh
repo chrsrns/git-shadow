@@ -55,6 +55,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
 
+# Load local patch sidecar helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"

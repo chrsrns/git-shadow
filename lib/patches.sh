@@ -11,6 +11,21 @@
 
 PATCHES_DIR=".git-shadow/patches"
 
+# Abort if a paused sync or finish state exists.
+patches_require_no_paused_op() {
+  local sync_file finish_file
+  sync_file="$(sync_state_file)"
+  finish_file="$(finish_state_file)"
+  if [[ -f "$sync_file" ]]; then
+    ui_error "A sync is in progress. Resolve or run 'git shadow feature sync --abort' / 'git shadow base sync --abort'."
+    exit 1
+  fi
+  if [[ -f "$finish_file" ]]; then
+    ui_error "A finish is in progress. Resolve or run 'git shadow feature finish --abort'."
+    exit 1
+  fi
+}
+
 # Print the sidecar path for a repository-relative source path.
 patches_sidecar_for() {
   local relpath="${1#./}"

@@ -186,6 +186,20 @@ local_branch_from_any() {
   _branch_transform "$1" ensure
 }
 
+# Abort unless the current branch ends with LOCAL_SUFFIX.
+require_local_branch() {
+  local branch
+  branch="$(current_branch)"
+  if [[ -z "$branch" ]]; then
+    ui_error "Unable to determine current branch."
+    exit 1
+  fi
+  if [[ ! "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+    ui_error "This command must be run from a branch ending with '${LOCAL_SUFFIX}'."
+    exit 1
+  fi
+}
+
 # Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
 ensure_clean_repo() {
   local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir

@@ -51,6 +51,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook-installer.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"
 
+# Load worktree lifecycle helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"

@@ -123,3 +123,18 @@ EOF
   [[ "$output" != *"No publishable commits"* ]]
   [[ "$output" == *"chore: empty note"* ]]
 }
+
+@test "feature publish does not replay a stranded [SYNC] commit to the public branch" {
+  # Simulate a [SYNC] commit stranded on the @local branch after the last
+  # checkpoint (e.g. a sync created [SYNC] then crashed before [CHECKPOINT]).
+  # [SYNC] is a tool-internal marker and must never reach the public branch.
+  echo "synced content" > sync-file.txt
+  git add sync-file.txt
+  git commit -qm "[SYNC] test-feature@local: net diff from develop (aaa..bbb)"
+
+  run git shadow feature publish
+  [ "$status" -eq 0 ]
+
+  git checkout -q test-feature
+  ! git log --format='%s' | grep -q '^\[SYNC\]'
+}

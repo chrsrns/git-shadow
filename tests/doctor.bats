@@ -276,3 +276,22 @@ EOF
   [ "$status" -eq 1 ]
   git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-stale"
 }
+
+@test "doctor warns on orphaned annotation sidecars" {
+  # A sidecar whose ### search block can no longer be re-anchored is marked
+  # '### orphan'. doctor should surface it so the annotation is not silently
+  # dropped.
+  mkdir -p .git-shadow/annotations
+  cat > .git-shadow/annotations/feature.txt <<'EOF2'
+## hunk abc123
+### search
+feature code
+### replace
+feature code
+/// lost note
+### orphan
+EOF2
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"orphan"* ]]
+}

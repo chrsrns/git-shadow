@@ -658,6 +658,30 @@ EOF
   [[ "$output" == *"sync"* ]]
 }
 
+@test "feature finish accepts a squash-merged feature" {
+  # Replace the normal merge from setup with a squash merge: the feature's
+  # changes land on main in a new commit, but test-feature is not an ancestor.
+  git checkout -q main
+  git reset -q --hard HEAD^1
+  git merge -q --squash test-feature
+  GIT_SHADOW=1 git commit -qm "squash: test-feature"
+
+  ! git merge-base --is-ancestor test-feature main
+  [ "$(git rev-parse test-feature^{tree})" != "" ]
+  # The feature's public tree is contained in main (same file, same content).
+  [ "$(git show main:feature.txt)" = "feature code" ]
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Feature finished successfully"* ]]
+
+  git checkout -q "main@local"
+  [ "$(cat feature.txt)" = "feature code" ]
+  run git branch --list "test-feature" "test-feature@local"
+  [ -z "$output" ]
+}
+
 # --- T53 regression tests ------------------------------------------------------
 
 @test "feature finish --continue base-diff staging tolerates ignored .git-shadow.env" {

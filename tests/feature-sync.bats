@@ -200,6 +200,47 @@ EOF
   [[ "$output" == *"/// note"* ]]
 }
 
+@test "feature sync --continue after --recover records diff_start in the [SYNC] range" {
+  # Publish the local public commit so the checkpoint carries patch-ids.
+  git checkout -q feature-foo@local
+  git shadow feature publish
+  cp_public="$(git rev-parse feature-foo)"
+
+  # Local divergence that will conflict with the recovered public diff.
+  echo "local divergence" >> app.ts
+  git add app.ts
+  git commit -qm "feat: local divergence"
+
+  # Rewrite the public branch: amend (same diff, same patch-id, new SHA).
+  git checkout -q feature-foo
+  GIT_SHADOW=1 git commit -q --amend -m "feat: shadow app update (amended)"
+  recovered_ancestor="$(git rev-parse HEAD)"
+
+  # A second public commit that conflicts with the local divergence.
+  echo "public divergence" >> app.ts
+  git add app.ts
+  GIT_SHADOW=1 git commit -qm "feat: public divergence"
+  public_head="$(git rev-parse HEAD)"
+
+  # Recover finds the amended commit as new ancestor; the net diff conflicts.
+  git checkout -q feature-foo@local
+  run git shadow feature sync --recover
+  [ "$status" -eq 1 ]
+
+  # Resolve and continue.
+  echo "resolved" > app.ts
+  git add app.ts
+  run git shadow feature sync --continue
+  [ "$status" -eq 0 ]
+
+  # The [SYNC] commit must record the applied range: recovered ancestor,
+  # not the (rewritten-away) checkpoint public SHA.
+  sync_sha="$(git log -1 --format='%H' --grep='^\[SYNC\]')"
+  body="$(git log -1 --format='%B' "$sync_sha")"
+  [[ "$body" == *"Range: ${recovered_ancestor}..${public_head}"* ]]
+  [[ "$body" != *"Range: ${cp_public}.."* ]]
+}
+
 @test "feature sync exits with warning when run on the local base branch" {
   git shadow config set PUBLIC_BASE_BRANCH=develop --project-config >/dev/null
   git checkout -q "develop@local"

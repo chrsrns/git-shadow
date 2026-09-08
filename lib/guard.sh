@@ -68,7 +68,7 @@ guard_staged_files() {
 
     # Sidecar paths are local-only and never contain source markers.
     case "$path" in
-      .git-shadow/annotations/*) continue ;;
+      .git-shadow/annotations/* | .git-shadow/patches/*) continue ;;
     esac
 
     # Binary files cannot be scanned for marker lines.
@@ -117,7 +117,8 @@ guard_tree() {
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
 
-    if [[ "$path" == .git-shadow/annotations/* || "$path" == .git-shadow/annotations ]]; then
+    if [[ "$path" == .git-shadow/annotations/* || "$path" == .git-shadow/annotations ||
+          "$path" == .git-shadow/patches/* || "$path" == .git-shadow/patches ]]; then
       echo "[git-shadow] Refusing to publish: public tree contains local-only path '$path'." >&2
       return 1
     fi

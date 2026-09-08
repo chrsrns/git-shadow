@@ -309,3 +309,140 @@ teardown() {
   run worktree_supported
   [ "$status" -eq 0 ]
 }
+
+# ---------------------------------------------------------------------------
+# feature start --worktree / --worktree-dir
+# ---------------------------------------------------------------------------
+
+# Write a project config enabling WORKTREE_ROOT and ignore the env file so
+# it never counts as worktree dirt.
+_start_setup_env() {
+  printf 'WORKTREE_ROOT="%s"\n' "$TEST_DIR/wts" > .git-shadow.env
+  printf '.git-shadow.env\n' > .gitignore
+  git add .gitignore
+  git commit -qm "chore: ignore env file"
+}
+
+@test "feature start --worktree aborts when WORKTREE_ROOT is unset" {
+  run git shadow feature start feat-wt --worktree
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"WORKTREE_ROOT"* ]]
+  [[ "$output" == *"config set"* ]]
+  ! git show-ref --verify --quiet "refs/heads/feat-wt"
+}
+
+@test "feature start rejects --worktree and --worktree-dir together" {
+  _start_setup_env
+  run git shadow feature start feat-wt --worktree --worktree-dir "$TEST_DIR/x"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"mutually exclusive"* ]]
+}
+
+@test "feature start --worktree requires a feature name" {
+  _start_setup_env
+  run git shadow feature start --worktree
+  [ "$status" -eq 1 ]
+}
+
+@test "feature start --worktree creates worktree at root/sanitized on @local" {
+  _start_setup_env
+  run git shadow feature start feature/login --worktree
+  [ "$status" -eq 0 ]
+  [ -d "$TEST_DIR/wts/feature-login" ]
+  current="$(git -C "$TEST_DIR/wts/feature-login" branch --show-current)"
+  [ "$current" = "feature/login@local" ]
+}
+
+@test "feature start --worktree keeps the invoking checkout on the local base" {
+  _start_setup_env
+  run git shadow feature start feat-wt --worktree
+  [ "$status" -eq 0 ]
+  current="$(git branch --show-current)"
+  [ "$current" = "main@local" ]
+}
+
+@test "feature start --worktree writes the initial checkpoint on the local feature" {
+  _start_setup_env
+  git shadow feature start feat-wt --worktree
+  subject="$(git -C "$TEST_DIR/wts/feat-wt" log -1 --format='%s')"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature start --worktree-dir uses the path verbatim" {
+  _start_setup_env
+  run git shadow feature start feat-wt --worktree-dir "$TEST_DIR/custom-dir"
+  [ "$status" -eq 0 ]
+  [ -d "$TEST_DIR/custom-dir" ]
+  current="$(git -C "$TEST_DIR/custom-dir" branch --show-current)"
+  [ "$current" = "feat-wt@local" ]
+}
+
+@test "feature start --worktree-dir resolves a relative path against cwd" {
+  _start_setup_env
+  run git shadow feature start feat-wt --worktree-dir rel-wt
+  [ "$status" -eq 0 ]
+  [ -d "$TEST_DIR/rel-wt" ]
+}
+
+@test "feature start --worktree aborts on an existing non-empty dir" {
+  _start_setup_env
+  mkdir -p "$TEST_DIR/wts/feat-wt"
+  echo "content" > "$TEST_DIR/wts/feat-wt/file.txt"
+  run git shadow feature start feat-wt --worktree
+  [ "$status" -eq 1 ]
+  ! git show-ref --verify --quiet "refs/heads/feat-wt"
+}
+
+@test "feature start --worktree reuses an existing empty dir" {
+  _start_setup_env
+  mkdir -p "$TEST_DIR/wts/feat-wt"
+  run git shadow feature start feat-wt --worktree
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/wts/feat-wt/file.txt" ]
+}
+
+@test "feature start --worktree-dir aborts on an already-registered path" {
+  _start_setup_env
+  git worktree add -q "$TEST_DIR/taken" "feat-x@local"
+  run git shadow feature start feat-wt --worktree-dir "$TEST_DIR/taken"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"already"* ]]
+  ! git show-ref --verify --quiet "refs/heads/feat-wt"
+}
+
+@test "feature start --worktree inside the repo appends info/exclude" {
+  _start_setup_env
+  run git shadow feature start inner-wt --worktree-dir "$TEST_DIR/wt-inner"
+  [ "$status" -eq 0 ]
+  grep -qxF "/wt-inner/" .git/info/exclude
+}
+
+@test "feature start --worktree copies .git-shadow.env into the worktree" {
+  _start_setup_env
+  run git shadow feature start feat-wt --worktree
+  [ "$status" -eq 0 ]
+  [ -f "$TEST_DIR/wts/feat-wt/.git-shadow.env" ]
+  [ ! -L "$TEST_DIR/wts/feat-wt/.git-shadow.env" ]
+  grep -q 'WORKTREE_ROOT=' "$TEST_DIR/wts/feat-wt/.git-shadow.env"
+}
+
+@test "feature start reports leftover branches when worktree creation fails" {
+  _start_setup_env
+  # A regular file where the parent dir should be: mkdir -p fails after
+  # validation, exercising the post-branch-creation failure path.
+  touch "$TEST_DIR/blocker"
+  run git shadow feature start feat-wt --worktree-dir "$TEST_DIR/blocker/sub"
+  [ "$status" -eq 1 ]
+  git show-ref --verify --quiet "refs/heads/feat-wt"
+  git show-ref --verify --quiet "refs/heads/feat-wt@local"
+  [[ "$output" == *"feat-wt"* ]]
+  [[ "$output" == *"feat-wt@local"* ]]
+}
+
+@test "feature start --worktree never checks out the public branch" {
+  _start_setup_env
+  git shadow feature start feat-wt --worktree
+  ! git worktree list --porcelain | grep -qxF "branch refs/heads/feat-wt"
+  current="$(git -C "$TEST_DIR/wts/feat-wt" branch --show-current)"
+  [ "$current" = "feat-wt@local" ]
+}

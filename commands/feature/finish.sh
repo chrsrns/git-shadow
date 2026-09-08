@@ -591,8 +591,13 @@ fi
 PUBLIC_BASE_HEAD="$(git rev-parse "$PUBLIC_BASE")"
 
 # Verify the public feature branch has been merged into the public base.
-if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE"; then
-  ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE'. Merge it first."
+# An ancestry check alone misses squash merges (a new commit whose tree
+# contains the feature changes but whose history does not include the
+# feature commits), so fall back to checking that the feature's public
+# tree is contained in the base tree.
+if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" \
+   && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" 2>/dev/null; then
+  ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths). Merge it first."
   exit 1
 fi
 

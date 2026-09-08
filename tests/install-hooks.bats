@@ -193,3 +193,22 @@ teardown() {
   run bash -c "printf 'refs/heads/test@local %s refs/heads/test@local %s\n' \"$initial_sha\" \"$initial_sha\" | .git/hooks/pre-push origin url"
   [ "$status" -eq 0 ]
 }
+
+@test "pre-commit re-exec does not re-run pre-existing husky hook content" {
+  # A .husky/pre-commit that already has user content before the git-shadow
+  # marker must not run that content twice when a non-bash runner triggers
+  # the re-exec stub inside the git-shadow block.
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  git config core.hooksPath ".husky/_"
+  mkdir -p .husky
+  cat > .husky/pre-commit <<EOF2
+#!/bin/sh
+echo user-ran >> "$TEST_DIR/hook-count"
+EOF2
+
+  git shadow install-hooks
+  GIT_SHADOW=1 zsh .husky/pre-commit
+
+  [ -f "$TEST_DIR/hook-count" ]
+  [ "$(wc -l < "$TEST_DIR/hook-count")" -eq 1 ]
+}

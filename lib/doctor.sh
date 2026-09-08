@@ -111,7 +111,7 @@ doctor_checkpoint_summary() {
     while IFS= read -r sha; do
       [[ -z "$sha" ]] && continue
       subject="$(git log -1 --format='%s' "$sha")"
-      if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* ]]; then
+      if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
         publishable=$((publishable + 1))
       fi
     done < <(git rev-list "${cp_local}..${local_head}")
@@ -183,6 +183,29 @@ doctor_gitattributes_check() {
   fi
   ui_warn "gitattributes: SPEC.md exists but .gitattributes lacks 'SPEC.md merge=union'"
   return 1
+}
+
+# Warn when .git-shadow/annotations/ sidecars contain records marked
+# '### orphan' — their ### search block could not be re-anchored, so the
+# annotation is no longer applied to the source.
+doctor_annotations_check() {
+  local dir=".git-shadow/annotations"
+  if [[ ! -d "$dir" ]]; then
+    ui_info "annotations: no sidecars"
+    return 0
+  fi
+
+  local orphans
+  orphans="$(grep -rl '^### orphan$' "$dir" 2>/dev/null || true)"
+  if [[ -n "$orphans" ]]; then
+    local f
+    while IFS= read -r f; do
+      [[ -n "$f" ]] && ui_warn "annotations: orphan record(s) in '$f'"
+    done <<< "$orphans"
+    return 1
+  fi
+  ui_ok "annotations: no orphan records"
+  return 0
 }
 
 # Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and
@@ -300,6 +323,7 @@ doctor_run() {
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
   _doctor_tally doctor_gitattributes_check
+  _doctor_tally doctor_annotations_check
   _doctor_tally doctor_worktree_root_check
   _doctor_tally doctor_worktree_check
 

@@ -25,7 +25,7 @@ check_public_commits() {
   local sha subject
   for sha in $revlist; do
     subject="$(git log -1 --format='%s' "$sha")"
-    if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* ]]; then
+    if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
       printf '%s\n' "$sha"
     fi
   done

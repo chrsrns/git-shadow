@@ -115,39 +115,41 @@ _has_non_marker_changes() {
   return 0
 }
 
-# Strip patch overlays before reapplying markers, then reapply them after.
-patches_strip >/dev/null
+# Wrapped in patches_transaction so overlays are stripped before the working
+# tree is reset to HEAD for marker insertion and re-applied before exit.
+_annotations_reapply_body() {
+  for relpath in "${TARGETS[@]}"; do
+    ann_path=".git-shadow/annotations/$relpath"
 
-for relpath in "${TARGETS[@]}"; do
-  ann_path=".git-shadow/annotations/$relpath"
+    if [[ ! -f "$ann_path" ]]; then
+      ui_warn "No annotation sidecar for $relpath"
+      continue
+    fi
 
-  if [[ ! -f "$ann_path" ]]; then
-    ui_warn "No annotation sidecar for $relpath"
-    continue
-  fi
+    if _has_non_marker_changes "$relpath"; then
+      ui_error "$relpath has unstaged non-marker changes. Commit or discard them first."
+      return 1
+    fi
 
-  if _has_non_marker_changes "$relpath"; then
-    ui_error "$relpath has unstaged non-marker changes. Commit or discard them first."
-    patches_reapply >/dev/null || true
-    exit 1
-  fi
+    head_tmp="$TMP_DIR/head_${relpath////_}"
+    if ! git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
+      # Source file not in HEAD; likely a new file. We cannot reapply to a base
+      # that does not exist, so warn and continue.
+      ui_warn "Source $relpath not found in HEAD; skipping reapply."
+      continue
+    fi
 
-  head_tmp="$TMP_DIR/head_${relpath////_}"
-  if ! git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
-    # Source file not in HEAD; likely a new file. We cannot reapply to a base
-    # that does not exist, so warn and continue.
-    ui_warn "Source $relpath not found in HEAD; skipping reapply."
-    continue
-  fi
+    if ! annotations_reapply "$head_tmp" "$ann_path" "$relpath"; then
+      ui_error "Failed to reapply annotations to $relpath"
+      return 1
+    fi
+    ui_shadow "Reapplied markers to $relpath"
+  done
+  return 0
+}
 
-  if ! annotations_reapply "$head_tmp" "$ann_path" "$relpath"; then
-    ui_error "Failed to reapply annotations to $relpath"
-    patches_reapply >/dev/null || true
-    exit 1
-  fi
-  ui_shadow "Reapplied markers to $relpath"
-done
-
-patches_reapply >/dev/null || true
+if ! patches_transaction _annotations_reapply_body; then
+  exit 1
+fi
 
 ui_ok "Annotations reapplied."

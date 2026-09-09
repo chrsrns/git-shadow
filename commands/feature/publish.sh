@@ -53,64 +53,61 @@ if [[ "$PUBLIC_HEAD" != "$CP_PUBLIC" ]]; then
   exit 1
 fi
 
-# Run the diff-based check pass, replay public commits onto a temp branch, and
-# compare the replayed tree to the local tree.  On success, the first line of
-# output is the temp branch name; the remaining lines are the public commits.
-PIDS=""
 LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
 
-# Strip local patch overlays before the replay modifies the working tree,
-# and reapply them on every exit path from here on.
-trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
-patches_strip >/dev/null
-
-replay_output=""
-if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
-  ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
-  exit 1
-fi
-
-if [[ -z "$replay_output" ]]; then
-  ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
-  exit 0
-fi
-
-PUBLISH_TMP_BRANCH="$(head -n1 <<< "$replay_output")"
-PUBLIC_COMMITS="$(tail -n +2 <<< "$replay_output")"
-NEW_PUBLIC_HEAD="$(git rev-parse "$PUBLISH_TMP_BRANCH")"
-
-# Guard: the replayed public tree must not contain local-only artifacts.
-if ! guard_tree "$NEW_PUBLIC_HEAD"; then
-  git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
-  ui_error "Publication aborted due to leaked local-only markers."
-  exit 1
-fi
-
-# Fast-forward the public branch to the already-replayed head.
-if ! git update-ref "refs/heads/$PUBLIC_BRANCH" "$NEW_PUBLIC_HEAD" "$CP_PUBLIC"; then
-  git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
-  ui_error "Could not update public branch '$PUBLIC_BRANCH' (it may have moved)."
-  exit 1
-fi
-
-git branch -D "$PUBLISH_TMP_BRANCH" >/dev/null 2>&1 || true
-
-while IFS= read -r sha; do
-  if [[ -z "$sha" ]]; then
-    continue
-  fi
-  pid=""
-  if ! pid="$(patch_id_for "$sha")"; then
-    ui_error "Could not compute patch-id for commit $sha during publish."
+# Body of the publish mutation. Wrapped by patches_transaction so that local
+# patch sidecars are stripped before the working tree is touched and re-applied
+# on every exit/return path.
+_feature_publish_body() {
+  local replay_output
+  if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
+    ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
     exit 1
   fi
-  if [[ -n "$pid" ]]; then
-    PIDS="$PIDS $pid"
+
+  if [[ -z "$replay_output" ]]; then
+    ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
+    return 0
   fi
-done <<< "$PUBLIC_COMMITS"
 
-PIDS="${PIDS# }"
+  local publish_tmp_branch public_commits new_public_head
+  publish_tmp_branch="$(head -n1 <<< "$replay_output")"
+  public_commits="$(tail -n +2 <<< "$replay_output")"
+  new_public_head="$(git rev-parse "$publish_tmp_branch")"
 
-_new_checkpoint="$(checkpoint_create "$NEW_PUBLIC_HEAD" "$LOCAL_HEAD_BEFORE" $PIDS)"
+  # Guard: the replayed public tree must not contain local-only artifacts.
+  if ! guard_tree "$new_public_head"; then
+    git branch -D "$publish_tmp_branch" >/dev/null 2>&1 || true
+    ui_error "Publication aborted due to leaked local-only markers."
+    exit 1
+  fi
 
-ui_ok "Published to '$PUBLIC_BRANCH'."
+  # Fast-forward the public branch to the already-replayed head.
+  if ! git update-ref "refs/heads/$PUBLIC_BRANCH" "$new_public_head" "$CP_PUBLIC"; then
+    git branch -D "$publish_tmp_branch" >/dev/null 2>&1 || true
+    ui_error "Could not update public branch '$PUBLIC_BRANCH' (it may have moved)."
+    exit 1
+  fi
+
+  git branch -D "$publish_tmp_branch" >/dev/null 2>&1 || true
+
+  local pids pid
+  pids=""
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    pid=""
+    if ! pid="$(patch_id_for "$sha")"; then
+      ui_error "Could not compute patch-id for commit $sha during publish."
+      exit 1
+    fi
+    if [[ -n "$pid" ]]; then
+      pids="$pids $pid"
+    fi
+  done <<< "$public_commits"
+  pids="${pids# }"
+
+  checkpoint_create "$new_public_head" "$LOCAL_HEAD_BEFORE" $pids >/dev/null
+  ui_ok "Published to '$PUBLIC_BRANCH'."
+}
+
+patches_transaction _feature_publish_body

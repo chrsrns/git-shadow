@@ -4,6 +4,42 @@
 # Purpose: shared `git shadow (feature|base) sync` command flow.
 # -------------------------------------------------------------------
 
+# Callback for patches_transaction during a normal sync apply.
+# Arguments: <local_branch> <public_branch> <start_sha> <end_sha>
+# Sets SYNC_PIDS from the stdout of sync_apply_and_commit.
+_sync_apply_body() {
+  if ! SYNC_PIDS="$(sync_apply_and_commit "$1" "$2" "$3" "$4")"; then
+    return 1
+  fi
+  return 0
+}
+
+# Callback for patches_transaction during a sync --continue.
+# Uses the SYNC_* state loaded by sync_command_run.
+_sync_continue_body() {
+  sync_stage_all
+  if sync_tree_changed; then
+    sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_DIFF_START" "$SYNC_TARGET_PUBLIC"
+  fi
+  return 0
+}
+
+# Callback for patches_transaction during a sync --abort.
+# Uses the SYNC_* state loaded by sync_command_run and the outer $conflicted
+# and $label variables for messages.
+_sync_abort_body() {
+  git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
+  git reset --hard "$SYNC_LOCAL_HEAD"
+  sync_clear_state
+  ui_ok "${label} sync aborted."
+  ui_info "Aborted sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
+  if [[ -n "${conflicted:-}" ]]; then
+    ui_info "Discarded conflicting paths: $conflicted"
+  fi
+  ui_info "Restart with 'git shadow $mode sync'; the paused state is cleared (--continue/--abort no longer apply)."
+  return 0
+}
+
 # Run the full `git shadow feature sync` or `git shadow base sync` command.
 #
 # Usage: sync_command_run <mode> [--recover] [--continue|--abort]
@@ -54,10 +90,6 @@ EOF
 
   enter_project '.'
 
-  # Ensure sidecars are restored at the end of every non-paused exit.
-  PAUSED=0
-  trap 'if [[ "${PAUSED:-0}" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi' EXIT
-
   if finish_state_active; then
     ui_error "A feature finish is in progress. Resolve it before running '$mode sync'."
     return 1
@@ -77,15 +109,9 @@ EOF
     fi
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
-    git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
-    git reset --hard "$SYNC_LOCAL_HEAD"
-    sync_clear_state
-    ui_ok "$label sync aborted."
-    ui_info "Aborted sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
-    if [[ -n "$conflicted" ]]; then
-      ui_info "Discarded conflicting paths: $conflicted"
+    if ! patches_transaction _sync_abort_body; then
+      return 1
     fi
-    ui_info "Restart with 'git shadow $mode sync'; the paused state is cleared (--continue/--abort no longer apply)."
     return 0
   fi
 
@@ -115,7 +141,16 @@ EOF
       return 1
     fi
 
-    sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_DIFF_START" "$SYNC_TARGET_PUBLIC"
+    PATCHES_REAPPLY_PAUSE=1
+    if ! patches_transaction _sync_continue_body; then
+      sync_save_state "$mode" "$SYNC_PUBLIC_BRANCH" "$SYNC_LOCAL_BRANCH" \
+        "$SYNC_CHECKPOINT_PUBLIC" "$SYNC_CHECKPOINT_LOCAL" "$SYNC_DIFF_START" \
+        "$SYNC_TARGET_PUBLIC" "$(git rev-parse "$SYNC_LOCAL_BRANCH")" "$SYNC_PIDS"
+      ui_error "Cannot re-apply local patch sidecars after resolving sync conflicts."
+      ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+      ui_info "Or run: git shadow $mode sync --abort"
+      return 1
+    fi
 
     if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$SYNC_LOCAL_BRANCH" "$SYNC_TARGET_PUBLIC" $SYNC_PIDS)"; then
       return 1
@@ -224,17 +259,16 @@ EOF
   fi
 
   # Apply net diff and create a [SYNC] commit when the tree changed.
-  # Strip local patch overlays first so the net diff applies to public content.
-  patches_strip >/dev/null
-
-  local pids
-  if pids=$(sync_apply_and_commit "$local_branch" "$public_branch" "$diff_start" "$public_head"); then
-    :
-  else
-    PAUSED=1
-    sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$diff_start" "$public_head" "$local_head" "$pids"
+  # Wrap in patches_transaction so sidecars are stripped before the diff is
+  # applied and re-applied before the final checkpoint. Pause mode leaves
+  # 3-way conflict markers for --continue when the reapply conflicts.
+  local SYNC_PIDS=""
+  PATCHES_REAPPLY_PAUSE=1
+  if ! patches_transaction _sync_apply_body "$local_branch" "$public_branch" "$diff_start" "$public_head"; then
+    local _tx_status=$?
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$diff_start" "$public_head" "$local_head" "$SYNC_PIDS"
     ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
     [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $conflicted"
     ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
@@ -242,7 +276,7 @@ EOF
     return 1
   fi
 
-  if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$local_branch" "$public_head" $pids)"; then
+  if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$local_branch" "$public_head" $SYNC_PIDS)"; then
     return 1
   fi
   ui_ok "$label '$local_branch' synced with '$public_branch'."

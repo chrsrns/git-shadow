@@ -340,11 +340,11 @@ fi
 
 enter_project '.'
 
-# Restore local patch overlays at the end of every non-paused exit.
-# Also cleans FINISH_TMP_DIR; keep this the only EXIT trap so nothing below
-# replaces it.
-PAUSED=0
-trap 'if [[ "$PAUSED" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi; if [[ -n "${FINISH_TMP_DIR:-}" ]]; then rm -rf "$FINISH_TMP_DIR"; fi' EXIT
+# Clean FINISH_TMP_DIR on exit. Patch overlay reapply is handled by
+# `patches_transaction` around each mutating block; this trap must only
+# manage the temporary directory so it is not clobbered by inner `trap 0`
+# calls.
+trap 'if [[ -n "${FINISH_TMP_DIR:-}" ]]; then rm -rf "$FINISH_TMP_DIR"; fi' EXIT
 
 # V88: all feature finish modes refuse while a git-shadow sync is in progress.
 if [[ -f "$(sync_state_file)" ]]; then
@@ -360,22 +360,30 @@ if [[ "$ABORT" -eq 1 ]]; then
     ui_error "No finish in progress."
     exit 1
   fi
-  if [[ "$(current_branch)" != "$FINISH_LOCAL_BASE" ]]; then
-    finish_check_base_exclusivity \
-      "$(public_branch_from_any "$FINISH_LOCAL_BASE")" "$FINISH_LOCAL_BASE" || exit 1
-    git checkout -q "$FINISH_LOCAL_BASE" >/dev/null 2>&1 || {
-      ui_error "Cannot checkout '$FINISH_LOCAL_BASE'."
-      exit 1
-    }
-  fi
   conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
-  git reset --hard "$FINISH_PRE_FINISH_HEAD"
-  finish_clear_state
-  ui_ok "Feature finish aborted. Restored '$FINISH_LOCAL_BASE' to pre-finish state."
-  if [[ -n "$conflicted" ]]; then
-    ui_info "Discarded conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+
+  _finish_abort_body() {
+    if [[ "$(current_branch)" != "$FINISH_LOCAL_BASE" ]]; then
+      finish_check_base_exclusivity \
+        "$(public_branch_from_any "$FINISH_LOCAL_BASE")" "$FINISH_LOCAL_BASE" || return 1
+      git checkout -q "$FINISH_LOCAL_BASE" >/dev/null 2>&1 || {
+        ui_error "Cannot checkout '$FINISH_LOCAL_BASE'."
+        return 1
+      }
+    fi
+    git reset --hard "$FINISH_PRE_FINISH_HEAD"
+    finish_clear_state
+    ui_ok "Feature finish aborted. Restored '$FINISH_LOCAL_BASE' to pre-finish state."
+    if [[ -n "$conflicted" ]]; then
+      ui_info "Discarded conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+    fi
+    ui_info "Restart with 'git shadow feature finish'; the paused state is cleared (--continue/--abort no longer apply)."
+    return 0
+  }
+
+  if ! patches_transaction _finish_abort_body; then
+    exit 1
   fi
-  ui_info "Restart with 'git shadow feature finish'; the paused state is cleared (--continue/--abort no longer apply)."
   exit 0
 fi
 
@@ -406,42 +414,50 @@ if [[ -n "$MARK_APPLIED" ]]; then
     ensure_clean_repo
   fi
 
-  if [[ "$(current_branch)" != "$local_base" ]]; then
-    finish_check_base_exclusivity \
-      "$(public_branch_from_any "$local_base")" "$local_base" || exit 1
-    patches_strip >/dev/null
-    git checkout -q "$local_base" >/dev/null 2>&1 || {
-      ui_error "Cannot checkout '$local_base'."
-      exit 1
-    }
-  fi
+  _finish_mark_applied_body() {
+    if [[ "$(current_branch)" != "$local_base" ]]; then
+      finish_check_base_exclusivity \
+        "$(public_branch_from_any "$local_base")" "$local_base" || return 1
+      git checkout -q "$local_base" >/dev/null 2>&1 || {
+        ui_error "Cannot checkout '$local_base'."
+        return 1
+      }
+    fi
 
-  subject="$(git log -1 --format='%s' "$target_sha")"
-  pid="$(patch_id_for "$target_sha")"
-  tree="$(git rev-parse "$local_base^{tree}")"
-  parent="$(git rev-parse "$local_base")"
+    subject="$(git log -1 --format='%s' "$target_sha")"
+    pid="$(patch_id_for "$target_sha")"
+    tree="$(git rev-parse "$local_base^{tree}")"
+    parent="$(git rev-parse "$local_base")"
 
-  commit_args=(-m "$subject" -m "git-shadow-source-memory: $target_sha")
-  if [[ -n "$pid" ]]; then
-    commit_args+=(-m "git-shadow-source-pid: $pid")
-  fi
-  new_sha="$(env GIT_SHADOW=1 git commit-tree "$tree" -p "$parent" "${commit_args[@]}")"
-  git update-ref "refs/heads/$local_base" "$new_sha"
+    local commit_args=(-m "$subject" -m "git-shadow-source-memory: $target_sha")
+    if [[ -n "$pid" ]]; then
+      commit_args+=(-m "git-shadow-source-pid: $pid")
+    fi
+    local new_sha
+    new_sha="$(env GIT_SHADOW=1 git commit-tree "$tree" -p "$parent" "${commit_args[@]}")"
+    git update-ref "refs/heads/$local_base" "$new_sha"
 
-  if finish_load_state; then
-    remaining=()
-    for s in $FINISH_REMAINING_SHAS; do
-      [[ "$s" != "$target_sha" ]] && remaining+=("$s")
-    done
-    conflicted="$FINISH_CONFLICTED_SHA"
-    [[ "$conflicted" == "$target_sha" ]] && conflicted=""
-    finish_save_state \
-      "$FINISH_FEATURE_PUBLIC" "$FINISH_FEATURE_LOCAL" "$local_base" \
-      "$new_sha" "$FINISH_PHASE" "$conflicted" \
-      "${remaining[*]}" "$FINISH_RANGE_START" "$FINISH_RANGE_END" "$FINISH_PIDS"
-    ui_ok "Recorded provenance for $target_sha and updated paused finish state."
-  else
-    ui_ok "Recorded provenance for $target_sha on '$local_base'."
+    if finish_load_state; then
+      local remaining=()
+      local s
+      for s in $FINISH_REMAINING_SHAS; do
+        [[ "$s" != "$target_sha" ]] && remaining+=("$s")
+      done
+      local conflicted="$FINISH_CONFLICTED_SHA"
+      [[ "$conflicted" == "$target_sha" ]] && conflicted=""
+      finish_save_state \
+        "$FINISH_FEATURE_PUBLIC" "$FINISH_FEATURE_LOCAL" "$local_base" \
+        "$new_sha" "$FINISH_PHASE" "$conflicted" \
+        "${remaining[*]}" "$FINISH_RANGE_START" "$FINISH_RANGE_END" "$FINISH_PIDS"
+      ui_ok "Recorded provenance for $target_sha and updated paused finish state."
+    else
+      ui_ok "Recorded provenance for $target_sha on '$local_base'."
+    fi
+    return 0
+  }
+
+  if ! patches_transaction _finish_mark_applied_body; then
+    exit 1
   fi
   exit 0
 fi
@@ -461,7 +477,6 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   if sync_has_conflicts; then
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
     ui_error "Working tree still has unresolved conflicts: $conflicted"
-    PAUSED=1
     exit 1
   fi
 
@@ -475,49 +490,54 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   RANGE_END="$FINISH_RANGE_END"
   PIDS_BASE="$FINISH_PIDS"
 
-  if [[ "$FINISH_PHASE" == "base-diff" ]]; then
-    patches_strip >/dev/null
-    sync_stage_all
-    if sync_tree_changed; then
-      sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
+  _finish_continue_body() {
+    if [[ "$FINISH_PHASE" == "base-diff" ]]; then
+      sync_stage_all
+      if sync_tree_changed; then
+        sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
+      fi
+      finish_clear_state
+      MEMORY_SHAS=($FINISH_REMAINING_SHAS)
+    elif [[ "$FINISH_PHASE" == "memory-replay" ]]; then
+      # The conflicted [MEMORY] non-sidecar is already resolved in the working
+      # tree. Re-run the sidecar merge from the resolved source and commit it,
+      # unless --mark-applied has already recorded it (V102).
+      finish_collect_applied
+      if [[ -n "$FINISH_CONFLICTED_SHA" ]]; then
+        # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0`
+        # here would replace it (bash traps are global).
+        FINISH_TMP_DIR="$(mktemp -d)"
+        finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
+        # Apply only the patch sidecars from the conflicted commit; the source
+        # diff is already resolved in the working tree.
+        git diff "$FINISH_CONFLICTED_SHA^" "$FINISH_CONFLICTED_SHA" -- .git-shadow/patches/ | git apply --allow-empty
+        finish_commit_memory "$FINISH_CONFLICTED_SHA"
+        APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
+        pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"
+        [[ -n "$pid" ]] && APPLIED_MEMORY_PIDS+=("$pid")
+      fi
+      finish_clear_state
+      MEMORY_SHAS=($FINISH_REMAINING_SHAS)
+    else
+      ui_error "Unknown finish phase: $FINISH_PHASE"
+      return 1
     fi
-    finish_clear_state
-    MEMORY_SHAS=($FINISH_REMAINING_SHAS)
-  elif [[ "$FINISH_PHASE" == "memory-replay" ]]; then
-    # The conflicted [MEMORY] non-sidecar is already resolved in the working
-    # tree. Re-run the sidecar merge from the resolved source and commit it,
-    # unless --mark-applied has already recorded it (V102).
+
     finish_collect_applied
-    if [[ -n "$FINISH_CONFLICTED_SHA" ]]; then
-      # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0`
-      # here would replace it (bash traps are global).
-      FINISH_TMP_DIR="$(mktemp -d)"
-      finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
-      # Apply only the patch sidecars from the conflicted commit; the source
-      # diff is already resolved in the working tree.
-      git diff "$FINISH_CONFLICTED_SHA^" "$FINISH_CONFLICTED_SHA" -- .git-shadow/patches/ | git apply --allow-empty
-      finish_commit_memory "$FINISH_CONFLICTED_SHA"
-      APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
-      pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"
-      [[ -n "$pid" ]] && APPLIED_MEMORY_PIDS+=("$pid")
+    if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
+      if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+        return 1
+      fi
     fi
-    finish_clear_state
-    MEMORY_SHAS=($FINISH_REMAINING_SHAS)
-  else
-    ui_error "Unknown finish phase: $FINISH_PHASE"
-    PAUSED=1
-    exit 1
-  fi
 
-  finish_collect_applied
-  if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
-    if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
-      PAUSED=1
-      exit 1
+    if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
+      return 1
     fi
-  fi
+    return 0
+  }
 
-  if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
+  PATCHES_REAPPLY_PAUSE=1
+  if ! patches_transaction _finish_continue_body; then
     exit 1
   fi
 
@@ -603,141 +623,145 @@ ui_shadow "Finalizing feature '$FEATURE_PUBLIC_BRANCH'"
 ui_git    "   Public base   : $PUBLIC_BASE"
 ui_shadow "   Local base    : $LOCAL_BASE"
 
-# ---------------------------------------------------------------------------
-# Pull / refresh the public base
-# ---------------------------------------------------------------------------
-if [[ "$NO_PULL" -eq 0 ]]; then
-  ui_git "Pulling latest changes for '$PUBLIC_BASE'"
-  patches_strip >/dev/null
-  git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
-  if ! git pull >/dev/null 2>&1; then
-    ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
-  fi
-fi
-
-PUBLIC_BASE_HEAD="$(git rev-parse "$PUBLIC_BASE")"
-
-# Verify the public feature branch has been merged into the public base.
-# An ancestry check alone misses squash merges (a new commit whose tree
-# contains the feature changes but whose history does not include the
-# feature commits), so fall back to checking that the feature's public
-# tree is contained in the base tree.
-if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" \
-   && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" 2>/dev/null; then
-  ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths). Merge it first."
-  exit 1
-fi
-
-# ---------------------------------------------------------------------------
-# Compute the feature [MEMORY] list before the base diff.
-# ---------------------------------------------------------------------------
-MERGE_BASE="$(git merge-base "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE")"
-MEMORY_SHAS=()
-while IFS= read -r sha; do
-  [[ -z "$sha" ]] && continue
-  subject="$(git log -1 --format='%s' "$sha")"
-  if [[ "$subject" == "[MEMORY]"* ]]; then
-    MEMORY_SHAS+=("$sha")
-  fi
-done < <(git rev-list --reverse "${MERGE_BASE}..$FEATURE_LOCAL_BRANCH")
-
-finish_collect_applied
-MEMORY_SHAS_UNIQUE=()
-for sha in "${MEMORY_SHAS[@]}"; do
-  skip=0
-  for applied_sha in "${APPLIED_MEMORY_SHAS[@]}"; do
-    if [[ "$applied_sha" == "$sha" ]]; then
-      skip=1
-      break
+_finish_normal_body() {
+  # ---------------------------------------------------------------------------
+  # Pull / refresh the public base
+  # ---------------------------------------------------------------------------
+  if [[ "$NO_PULL" -eq 0 ]]; then
+    ui_git "Pulling latest changes for '$PUBLIC_BASE'"
+    git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
+    if ! git pull >/dev/null 2>&1; then
+      ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
     fi
-  done
-  if [[ "$skip" -eq 0 ]]; then
-    pid="$(patch_id_for "$sha")"
-    for applied_pid in "${APPLIED_MEMORY_PIDS[@]}"; do
-      if [[ "$applied_pid" == "$pid" ]]; then
+  fi
+
+  PUBLIC_BASE_HEAD="$(git rev-parse "$PUBLIC_BASE")"
+
+  # Verify the public feature branch has been merged into the public base.
+  # An ancestry check alone misses squash merges (a new commit whose tree
+  # contains the feature changes but whose history does not include the
+  # feature commits), so fall back to checking that the feature's public
+  # tree is contained in the base tree.
+  if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" \
+     && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" 2>/dev/null; then
+    ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths). Merge it first."
+    return 1
+  fi
+
+  # ---------------------------------------------------------------------------
+  # Compute the feature [MEMORY] list before the base diff.
+  # ---------------------------------------------------------------------------
+  MERGE_BASE="$(git merge-base "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE")"
+  MEMORY_SHAS=()
+  while IFS= read -r sha; do
+    [[ -z "$sha" ]] && continue
+    subject="$(git log -1 --format='%s' "$sha")"
+    if [[ "$subject" == "[MEMORY]"* ]]; then
+      MEMORY_SHAS+=("$sha")
+    fi
+  done < <(git rev-list --reverse "${MERGE_BASE}..$FEATURE_LOCAL_BRANCH")
+
+  finish_collect_applied
+  MEMORY_SHAS_UNIQUE=()
+  for sha in "${MEMORY_SHAS[@]}"; do
+    skip=0
+    for applied_sha in "${APPLIED_MEMORY_SHAS[@]}"; do
+      if [[ "$applied_sha" == "$sha" ]]; then
         skip=1
         break
       fi
     done
-  fi
-  if [[ "$skip" -eq 0 ]]; then
-    MEMORY_SHAS_UNIQUE+=("$sha")
-  fi
-done
-MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
-
-# ---------------------------------------------------------------------------
-# Apply the public base net diff to the local base.
-# ---------------------------------------------------------------------------
-ui_shadow "Checkout '$LOCAL_BASE'"
-patches_strip >/dev/null
-git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
-
-LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
-if [[ -z "$LATEST_CP" ]]; then
-  ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow base sync' first."
-  exit 1
-fi
-
-CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
-PRE_FINISH_HEAD="$(git rev-parse "$LOCAL_BASE")"
-RANGE_START="$CP_PUBLIC"
-RANGE_END="$PUBLIC_BASE_HEAD"
-PIDS_BASE=""
-
-if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
-  if ! git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"; then
-    ui_error "Public base '$PUBLIC_BASE' has moved non-fast-forward from the local checkpoint."
-    exit 1
-  fi
-
-  # V14: skip the base net diff when the local base already contains the public
-  # base tree (only local-only additions differ).
-  if git diff-tree --no-renames -r "$PUBLIC_BASE_HEAD" "$PRE_FINISH_HEAD" | awk '$5 != "A" {exit 1}'; then
-    :
-  else
-    PIDS_BASE="$(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" | tr '\n' ' ' | sed 's/ $//')"
-    finish_save_state \
-      "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE" \
-      "$PRE_FINISH_HEAD" "base-diff" "" \
-      "${MEMORY_SHAS[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
-
-    if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
-      conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
-      ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
-      [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
-      ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
-      ui_info "Or run: git shadow feature finish --abort"
-      PAUSED=1
-      exit 1
+    if [[ "$skip" -eq 0 ]]; then
+      pid="$(patch_id_for "$sha")"
+      for applied_pid in "${APPLIED_MEMORY_PIDS[@]}"; do
+        if [[ "$applied_pid" == "$pid" ]]; then
+          skip=1
+          break
+        fi
+      done
     fi
-    finish_clear_state
+    if [[ "$skip" -eq 0 ]]; then
+      MEMORY_SHAS_UNIQUE+=("$sha")
+    fi
+  done
+  MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
+
+  # ---------------------------------------------------------------------------
+  # Apply the public base net diff to the local base.
+  # ---------------------------------------------------------------------------
+  ui_shadow "Checkout '$LOCAL_BASE'"
+  git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
+
+  LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
+  if [[ -z "$LATEST_CP" ]]; then
+    ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow base sync' first."
+    return 1
   fi
-fi
 
-# ---------------------------------------------------------------------------
-# Replay [MEMORY] commits from the feature's @local branch.
-# ---------------------------------------------------------------------------
-ui_shadow "Replaying [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
-if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
-  if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
-    PAUSED=1
-    exit 1
+  CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
+  CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+  PRE_FINISH_HEAD="$(git rev-parse "$LOCAL_BASE")"
+  RANGE_START="$CP_PUBLIC"
+  RANGE_END="$PUBLIC_BASE_HEAD"
+  PIDS_BASE=""
+
+  if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
+    if ! git merge-base --is-ancestor "$CP_PUBLIC" "$PUBLIC_BASE_HEAD"; then
+      ui_error "Public base '$PUBLIC_BASE' has moved non-fast-forward from the local checkpoint."
+      return 1
+    fi
+
+    # V14: skip the base net diff when the local base already contains the public
+    # base tree (only local-only additions differ).
+    if git diff-tree --no-renames -r "$PUBLIC_BASE_HEAD" "$PRE_FINISH_HEAD" | awk '$5 != "A" {exit 1}'; then
+      :
+    else
+      PIDS_BASE="$(sync_patch_ids "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" | tr '\n' ' ' | sed 's/ $//')"
+      finish_save_state \
+        "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE" \
+        "$PRE_FINISH_HEAD" "base-diff" "" \
+        "${MEMORY_SHAS[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
+
+      if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
+        conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+        ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
+        [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+        ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
+        ui_info "Or run: git shadow feature finish --abort"
+        return 1
+      fi
+      finish_clear_state
+    fi
   fi
-fi
 
-# ---------------------------------------------------------------------------
-# Re-anchor any base sidecars not touched by the feature, then checkpoint.
-# ---------------------------------------------------------------------------
-if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
-  exit 1
-fi
+  # ---------------------------------------------------------------------------
+  # Replay [MEMORY] commits from the feature's @local branch.
+  # ---------------------------------------------------------------------------
+  ui_shadow "Replaying [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
+  if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
+    if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+      return 1
+    fi
+  fi
 
-# ---------------------------------------------------------------------------
-# Worktree + branch cleanup
-# ---------------------------------------------------------------------------
-if ! finish_cleanup_feature; then
+  # ---------------------------------------------------------------------------
+  # Re-anchor any base sidecars not touched by the feature, then checkpoint.
+  # ---------------------------------------------------------------------------
+  if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" $PIDS_BASE)"; then
+    return 1
+  fi
+
+  # ---------------------------------------------------------------------------
+  # Worktree + branch cleanup
+  # ---------------------------------------------------------------------------
+  if ! finish_cleanup_feature; then
+    return 1
+  fi
+  return 0
+}
+
+PATCHES_REAPPLY_PAUSE=1
+if ! patches_transaction _finish_normal_body; then
   exit 1
 fi
 

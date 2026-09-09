@@ -45,6 +45,15 @@ git shadow feature publish
 git shadow push feature/x
 ```
 
+### Local patch workflow
+
+- `git shadow local add <path>` — store local-only edits to a public-tracked file as `.git-shadow/patches/<relpath>.patch`; sidecar committed as `[MEMORY]`, source file stays modified.
+- `git shadow local apply` — reapply all sidecars after sync, re-anchor, or checkout.
+- `git shadow local rm [--revert] <path>` — remove sidecar; `--revert` restores source to `HEAD`.
+- `git shadow local diff [<path>...]` — print one or all sidecars.
+- `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
+- `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
+
 ### When public branch changes
 
 - Identical rebase on remote: `git shadow feature sync --recover`.
@@ -72,9 +81,9 @@ Configure it with `git shadow config set WORKTREE_ROOT <absolute-path> --project
 ### Safety
 
 - Run `git shadow check public feature/x` before push to audit local-only leaks.
-- Pre-commit hook rejects public-tracked files with `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
-- `git shadow feature publish` runs diff-based check pass + scans replayed tree for local markers and `.git-shadow/annotations/` paths.
-- `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks, unpromoted files, `SPEC.md merge=union`, worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on warning.
+- Pre-commit hook rejects public-tracked files with `///` or `// @local` markers and staged paths with a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
+- `git shadow feature publish` runs diff-based check pass + scans replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
+- `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks (install status and freshness), orphan `.git-shadow/annotations/` records, unpromoted files, `SPEC.md merge=union`, worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on warning.
 
 ### Decision rule
 

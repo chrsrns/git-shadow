@@ -21,6 +21,16 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
 - Local notes, scratch files, debug logs: `git commit -m "[MEMORY] <subject>"`.
   `[MEMORY]` commits must not modify files already tracked by the public branch.
 
+### Local patch workflow
+
+- Use `git shadow local add <path>` to store local-only edits to a public-tracked file as a unified-diff sidecar under `.git-shadow/patches/<relpath>.patch`.
+- The sidecar is committed as `[MEMORY]` and the source file in the working tree keeps the local change applied.
+- Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
+- Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
+- Use `git shadow local diff [<path>...]` to print one sidecar or all sidecars.
+- If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
+- `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
+
 ### Typical workflow
 
 ```bash
@@ -78,9 +88,9 @@ git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 ### Safety and verification
 
 - Run `git shadow check public feature/x` before push to audit leaked local-only content.
-- The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers unless `GIT_SHADOW=1` is set.
-- `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, paused sync/finish state, per-`@local` checkpoint summary, hooks, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on any warning.
+- The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers and rejects staged paths that have a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
+- `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, paused sync/finish state, per-`@local` checkpoint summary, hooks (install status and freshness), orphan `.git-shadow/annotations/` records, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on any warning.
 
 ### Agent decision rule
 

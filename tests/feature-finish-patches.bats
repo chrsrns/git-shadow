@@ -41,6 +41,29 @@ teardown() {
   [ -f "${TEST_DIR}/.git-shadow/patches/file.txt.patch" ]
 }
 
+@test "feature finish reapplies the patch overlay after [MEMORY] replay" {
+  git shadow feature start inherited >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  git reset --hard HEAD >/dev/null
+  printf 'feature\n' > feature.txt
+  git add feature.txt
+  git commit -qm "feat: add feature"
+  git shadow feature publish >/dev/null
+  git checkout -q main
+  git merge -q --no-edit inherited
+  git checkout -q main@local
+  printf 'base\n' > base.txt
+  git add base.txt
+  git commit -qm "chore: base change"
+  git checkout -q inherited@local
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+  [ -f "${TEST_DIR}/.git-shadow/patches/file.txt.patch" ]
+  # The inherited overlay must be applied on the local base, not left stripped.
+  [ "$(sed -n '2p' file.txt)" = "B local" ]
+}
+
 @test "doctor reports no orphan sidecar when a patch overlay is applied" {
   git shadow feature start healthy >/dev/null
   printf 'A\nB local\nC\n' > file.txt

@@ -227,6 +227,43 @@ teardown() {
   [ "$(git log -1 --format='%s')" = "[MEMORY] reapply local patches" ]
 }
 
+@test "feature publish failure leaves the patch overlay applied" {
+  git shadow feature start pub-fail >/dev/null
+  echo "local edit" >> file.txt
+  git shadow local add file.txt >/dev/null
+
+  # A public commit that leaks a local-only marker: the publish guard aborts
+  # after the overlay has been stripped for the check-pass replay.
+  printf 'pub\n/// secret note\n' > leaked.txt
+  git add leaked.txt
+  GIT_SHADOW=1 git commit -qm "feat: leaked marker"
+
+  run git shadow feature publish
+  [ "$status" -ne 0 ]
+  [ "$(cat file.txt)" = $'initial\nlocal edit' ]
+}
+
+@test "feature start checkout failure reapplies patch overlays" {
+  git shadow feature start first >/dev/null
+  echo "local edit" >> file.txt
+  git shadow local add file.txt >/dev/null
+  cp .git-shadow/patches/file.txt.patch "$TEST_DIR/side.patch"
+
+  # Carry the applied overlay onto the public branch and plant the
+  # (gitignored) sidecar there, so the strip before checkout does work.
+  git checkout -q first
+  mkdir -p .git-shadow/patches
+  cp "$TEST_DIR/side.patch" .git-shadow/patches/file.txt.patch
+
+  # Hold the landing branch in a linked worktree so the checkout fails.
+  git worktree add -q "$TEST_DIR/wt" first@local
+
+  run git shadow feature start second
+  [ "$status" -ne 0 ]
+  [ "$(git branch --show-current)" = "first" ]
+  [ "$(cat file.txt)" = $'initial\nlocal edit' ]
+}
+
 @test "local apply reapplies all stored sidecars" {
   git shadow feature start my-feature
   echo "local edit" >> file.txt

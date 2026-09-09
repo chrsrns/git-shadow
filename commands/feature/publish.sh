@@ -59,18 +59,18 @@ fi
 PIDS=""
 LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
 
-# Strip local patch overlays before the replay modifies the working tree.
+# Strip local patch overlays before the replay modifies the working tree,
+# and reapply them on every exit path from here on.
+trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
 patches_strip >/dev/null
 
 replay_output=""
 if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
-  patches_reapply >/dev/null || true
   ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
   exit 1
 fi
 
 if [[ -z "$replay_output" ]]; then
-  patches_reapply >/dev/null || true
   ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
   exit 0
 fi
@@ -112,7 +112,5 @@ done <<< "$PUBLIC_COMMITS"
 PIDS="${PIDS# }"
 
 _new_checkpoint="$(checkpoint_create "$NEW_PUBLIC_HEAD" "$LOCAL_HEAD_BEFORE" $PIDS)"
-
-patches_reapply >/dev/null || true
 
 ui_ok "Published to '$PUBLIC_BRANCH'."

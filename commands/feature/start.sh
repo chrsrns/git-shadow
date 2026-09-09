@@ -17,6 +17,9 @@ if [[ $# -eq 0 ]]; then
   enter_project '.'
   ensure_clean_repo
 
+  # Reapply patch overlays on every exit: the checkout below may strip them.
+  trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
+
   CURRENT_BRANCH="$(current_branch)"
   if [[ -z "$CURRENT_BRANCH" ]]; then
     ui_error "Unable to determine current branch."
@@ -127,6 +130,9 @@ fi
 enter_project '.'
 ensure_clean_repo
 
+# Reapply patch overlays on every exit: the checkouts below may strip them.
+trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
+
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
@@ -219,7 +225,6 @@ else
 
   ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
   _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
-  patches_reapply >/dev/null || true
 fi
 
 "$TOOLKIT_ROOT/commands/install-hooks.sh"

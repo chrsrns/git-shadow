@@ -51,6 +51,10 @@ if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
   exit 1
 fi
 
+# Restore the @local checkout and reapply patch overlays on every exit from
+# here on: the flow below strips overlays and checks out the public branch.
+trap 'if [[ "$(current_branch 2>/dev/null)" == "$PUBLIC_BRANCH" ]]; then git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1 || true; fi; patches_reapply >/dev/null 2>&1 || true' EXIT
+
 LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 
 # ---------------------------------------------------------------------------
@@ -110,8 +114,6 @@ patches_strip >/dev/null
 git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1
 
 if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BRANCH" "$PUBLIC_HEAD" $PIDS)"; then
-  patches_reapply >/dev/null || true
   exit 1
 fi
-patches_reapply >/dev/null || true
 ui_ok "Re-anchored '$LOCAL_BRANCH' to '$PUBLIC_BRANCH'."

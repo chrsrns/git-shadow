@@ -213,8 +213,9 @@ finish_commit_memory() {
 # Uses APPLIED_MEMORY_SHAS / APPLIED_MEMORY_PIDS for idempotency.
 finish_memory_replay() {
   local -a shas=("$@")
+  # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0` here
+  # would replace it (bash traps are global, not function-local).
   FINISH_TMP_DIR="$(mktemp -d)"
-  trap 'rm -rf "$FINISH_TMP_DIR"' 0
 
   local i sha subject skip applied_sha applied_pid
   local -a remaining
@@ -340,8 +341,10 @@ fi
 enter_project '.'
 
 # Restore local patch overlays at the end of every non-paused exit.
+# Also cleans FINISH_TMP_DIR; keep this the only EXIT trap so nothing below
+# replaces it.
 PAUSED=0
-trap 'if [[ "$PAUSED" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi' EXIT
+trap 'if [[ "$PAUSED" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi; if [[ -n "${FINISH_TMP_DIR:-}" ]]; then rm -rf "$FINISH_TMP_DIR"; fi' EXIT
 
 # V88: all feature finish modes refuse while a git-shadow sync is in progress.
 if [[ -f "$(sync_state_file)" ]]; then
@@ -486,8 +489,9 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     # unless --mark-applied has already recorded it (V102).
     finish_collect_applied
     if [[ -n "$FINISH_CONFLICTED_SHA" ]]; then
+      # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0`
+      # here would replace it (bash traps are global).
       FINISH_TMP_DIR="$(mktemp -d)"
-      trap 'rm -rf "$FINISH_TMP_DIR"' 0
       finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
       # Apply only the patch sidecars from the conflicted commit; the source
       # diff is already resolved in the working tree.

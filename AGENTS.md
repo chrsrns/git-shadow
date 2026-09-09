@@ -54,6 +54,16 @@ Use `git commit -m "[MEMORY] <subject>"` for notes, scratch files, plans, debug 
 - Use `git shadow annotations reapply [path]` to write markers back into the working tree for editing.
 - Do not rely on publish-time stripping; always use `git shadow commit` to remove markers from public commits before `git shadow feature publish`.
 
+## Local patch workflow
+
+- Use `git shadow local add <path>` to store local-only edits to a public-tracked file as a unified-diff sidecar under `.git-shadow/patches/<relpath>.patch`.
+- The sidecar is committed as `[MEMORY]` and the source file in the working tree keeps the local change applied.
+- Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
+- Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
+- Use `git shadow local diff [<path>...]` to print one sidecar or all sidecars.
+- If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
+- `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
+
 ## Agent behavior rules
 
 1. Default to the shadow branch

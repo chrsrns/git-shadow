@@ -60,7 +60,7 @@ Use `git commit -m "[MEMORY] <subject>"` for notes, scratch files, plans, debug 
 - The sidecar is committed as `[MEMORY]` and the source file in the working tree keeps the local change applied.
 - Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
 - Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
-- Use `git shadow local diff [<path>...]` to print one sidecar or all sidecars.
+- Use `git shadow local diff [path]` to print one sidecar or all sidecars.
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
 
@@ -196,7 +196,7 @@ If you are asked to finalize work, prefer publication through git shadow rather 
 - Run `git shadow check public <branch>` to audit a public branch for unpromoted files or leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers and rejects staged paths that have a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, orphan `.git-shadow/annotations/` records, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
 
 ## Git shadow configuration
 

@@ -90,7 +90,7 @@ git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 - Run `git shadow check public feature/x` before push to audit leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers and rejects staged paths that have a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, paused sync/finish state, per-`@local` checkpoint summary, hooks (install status and freshness), orphan `.git-shadow/annotations/` records, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on any warning.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, paused sync/finish state, per-`@local` checkpoint summary, hooks (install status and freshness), orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on any warning.
 
 ### Agent decision rule
 

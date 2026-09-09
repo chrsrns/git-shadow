@@ -66,8 +66,8 @@ patches_transaction() {
       cb_status=$?
     fi
     if [[ "$PATCHES_TX_REAPPLIED" -eq 0 ]]; then
-      if ! patches_reapply >/dev/null 2>&1; then
-        status=$?
+      if ! patches_reapply >/dev/null; then
+        status=1
       fi
       PATCHES_TX_REAPPLIED=1
     fi

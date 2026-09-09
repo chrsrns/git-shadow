@@ -20,5 +20,9 @@ if ! check_output="$(patches_check --orphan)"; then
   printf '%s\n' "$check_output" >&2
 fi
 
-patches_reapply
+_local_apply_body() {
+  return 0
+}
+
+patches_transaction _local_apply_body
 ui_ok "Local patches reapplied."

@@ -43,6 +43,40 @@ teardown() {
   [ -f .git-shadow/patches/file.txt.patch ]
 }
 
+@test "commit passes staged content that lacks the local patch" {
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+
+  # Stage public content without the overlay: the patch is absent from the
+  # staged blob, so the staged content must pass through unchanged.
+  printf 'A\nB\nC\nD\n' > file.txt
+  git add file.txt
+
+  run git shadow commit -m "public change without overlay"
+  [ "$status" -eq 0 ]
+
+  run git show HEAD:file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'A\nB\nC\nD'* ]]
+}
+
+@test "commit subtracts using a sidecar that exists only in HEAD" {
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+
+  # Delete the sidecar from the worktree without committing the deletion;
+  # the committed sidecar must still drive subtraction.
+  rm .git-shadow/patches/file.txt.patch
+
+  git add file.txt
+  run git shadow commit -m "staged overlay"
+  [ "$status" -eq 0 ]
+
+  run git show HEAD:file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'A\nB\nC'* ]]
+}
+
 @test "commit routes a staged .git-shadow/patches sidecar to [MEMORY]" {
   printf 'A\nB local\nC\n' > file.txt
   git shadow local add file.txt >/dev/null

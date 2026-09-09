@@ -132,6 +132,60 @@ teardown() {
   [ "$(cat file.txt)" = "initial" ]
 }
 
+@test "local rm --revert on a non-applied sidecar notes the skipped revert" {
+  git shadow feature start my-feature
+  echo "local edit" >> file.txt
+  git shadow local add file.txt
+
+  # Restore the source to HEAD so the overlay is not applied.
+  git checkout -q HEAD -- file.txt
+
+  run git shadow local rm --revert file.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"not applied"* ]]
+  [ ! -f .git-shadow/patches/file.txt.patch ]
+}
+
+@test "local rm --revert does not commit the source path in [MEMORY]" {
+  git shadow feature start my-feature
+  printf 'one\ntwo\nthree\nfour\n' > file.txt
+  git add file.txt
+  git commit -qm "expand file"
+  echo "local edit" >> file.txt
+  git shadow local add file.txt
+
+  # An extra edit outside the overlay hunk's context: the revert removes the
+  # overlay only, leaving this change in the working tree.
+  sed -i 's/one/user change/' file.txt
+
+  run git shadow local rm --revert file.txt
+  [ "$status" -eq 0 ]
+  [ "$(cat file.txt)" = $'user change\ntwo\nthree\nfour' ]
+
+  # The [MEMORY] commit must not modify the public-tracked source file.
+  [ "$(git diff-tree --no-commit-id --name-only -r HEAD | grep -cx 'file.txt')" = "0" ]
+}
+
+@test "annotations reapply abort keeps the patch overlay applied" {
+  git shadow feature start my-feature
+  printf 'public one\n/// local note\npublic two\npublic three\npublic four\n' > file.txt
+  git add file.txt
+  git shadow commit -m "add note"
+  git checkout -q -- file.txt
+
+  echo "local tweak" >> file.txt
+  git shadow local add file.txt
+
+  # A non-marker change far from the overlay forces annotations reapply to
+  # abort after the strip succeeds.
+  sed -i 's/public one/user change/' file.txt
+  run git shadow annotations reapply file.txt
+  [ "$status" -ne 0 ]
+
+  # The overlay must still be applied after the abort.
+  [[ "$(cat file.txt)" == *"local tweak"* ]]
+}
+
 @test "local rm errors when no sidecar exists" {
   git shadow feature start my-feature
   run git shadow local rm file.txt

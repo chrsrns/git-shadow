@@ -128,6 +128,7 @@ for relpath in "${TARGETS[@]}"; do
 
   if _has_non_marker_changes "$relpath"; then
     ui_error "$relpath has unstaged non-marker changes. Commit or discard them first."
+    patches_reapply >/dev/null || true
     exit 1
   fi
 
@@ -141,6 +142,7 @@ for relpath in "${TARGETS[@]}"; do
 
   if ! annotations_reapply "$head_tmp" "$ann_path" "$relpath"; then
     ui_error "Failed to reapply annotations to $relpath"
+    patches_reapply >/dev/null || true
     exit 1
   fi
   ui_shadow "Reapplied markers to $relpath"

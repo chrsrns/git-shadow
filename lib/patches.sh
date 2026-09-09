@@ -288,8 +288,12 @@ patches_reapply() {
 # Remove the stored patch from staged content.
 #
 # Usage: patches_subtract <relpath> <staged_file> <out>
-# Returns 0 and writes the clean content to <out> if the sidecar can be
-# reverse-applied. Returns 1 if the sidecar is not present in <staged_file>.
+# Decides from the staged blob alone: if the sidecar would apply to the
+# staged content, the patch is absent and the content passes through
+# unchanged; if it reverse-applies, the patch is present and is subtracted;
+# if neither check passes, returns 1 (partial or mixed staging).
+# The sidecar is read from the worktree, falling back to the committed copy
+# in HEAD when the worktree file is missing.
 patches_subtract() {
   local relpath="${1#./}"
   local staged_file="$2"
@@ -297,21 +301,39 @@ patches_subtract() {
 
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
-  if [[ ! -f "$sidecar" ]]; then
-    # No sidecar for this path; no subtraction needed.
-    cp "$staged_file" "$out"
-    return 0
-  fi
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   # shellcheck disable=SC2064
   trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
+  local sidecar_file="$sidecar"
+  if [[ ! -f "$sidecar_file" ]]; then
+    # The sidecar may exist only in HEAD (deleted in the worktree, not yet
+    # committed); use the committed copy so subtraction still happens.
+    if git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
+      sidecar_file="$tmp_dir/head_sidecar.patch"
+      if ! git show "HEAD:$sidecar" > "$sidecar_file" 2>/dev/null; then
+        return 1
+      fi
+    else
+      # No sidecar for this path; no subtraction needed.
+      cp "$staged_file" "$out"
+      return 0
+    fi
+  fi
+
   mkdir -p "$tmp_dir/$(dirname "$relpath")"
   cp "$staged_file" "$tmp_dir/$relpath"
-  cp "$sidecar" "$tmp_dir/patch.patch"
+  cp "$sidecar_file" "$tmp_dir/patch.patch"
 
+  # The patch is absent from the staged blob: pass it through unchanged.
+  if git -C "$tmp_dir" apply --check patch.patch 2>/dev/null; then
+    cp "$staged_file" "$out"
+    return 0
+  fi
+
+  # The patch is present: subtract it.
   if ! git -C "$tmp_dir" apply -R --check patch.patch 2>/dev/null; then
     return 1
   fi

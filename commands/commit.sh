@@ -158,7 +158,8 @@ for path in "${STAGED[@]}"; do
   # If a local patch is stored for this path, subtract it from the staged
   # blob before marker extraction so the public commit contains clean source.
   work_tmp="$staged_tmp"
-  if [[ -f ".git-shadow/patches/$relpath.patch" ]]; then
+  if [[ -f ".git-shadow/patches/$relpath.patch" ]] || \
+     git cat-file -e "HEAD:.git-shadow/patches/$relpath.patch" 2>/dev/null; then
     public_tmp="$TMP_DIR/public_${relpath////_}"
     if ! patches_subtract "$relpath" "$staged_tmp" "$public_tmp"; then
       ui_error "Staged content for '$relpath' does not match the stored local patch. Refresh with 'git shadow local add'."

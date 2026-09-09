@@ -39,16 +39,16 @@ if [[ ! -f "$SIDECAR" ]]; then
 fi
 
 if [[ $REVERT -eq 1 ]]; then
-  # Reverse-apply the overlay only if it is currently applied.
-  if ! git diff --quiet HEAD -- "$RELPATH" 2>/dev/null; then
-    if git apply -R --check < "$SIDECAR" 2>/dev/null; then
-      git apply -R < "$SIDECAR"
-    else
-      ui_warn "Could not reverse-apply overlay for '$RELPATH'."
-    fi
+  # Reverse-apply the overlay only if it is currently applied. The reverted
+  # source is left in the working tree; it is never staged — a [MEMORY]
+  # commit must not modify public-tracked files.
+  if git diff --quiet HEAD -- "$RELPATH" 2>/dev/null; then
+    ui_info "Patch for '$RELPATH' is not applied; skipping revert."
+  elif git apply -R --check < "$SIDECAR" 2>/dev/null; then
+    git apply -R < "$SIDECAR"
+  else
+    ui_warn "Could not reverse-apply overlay for '$RELPATH'."
   fi
-  # Stage the reverted source.
-  git add -f -- "$RELPATH"
 fi
 
 # Stage the sidecar deletion.
@@ -59,7 +59,7 @@ else
 fi
 
 if ! git diff --cached --quiet; then
-  env GIT_SHADOW=1 git commit -m "[MEMORY] remove local patch for $RELPATH" -- "$RELPATH" "$SIDECAR" >/dev/null
+  env GIT_SHADOW=1 git commit -m "[MEMORY] remove local patch for $RELPATH" -- "$SIDECAR" >/dev/null
 fi
 
 rmdir "$(dirname "$SIDECAR")" 2>/dev/null || true

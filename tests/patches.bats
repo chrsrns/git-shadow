@@ -221,10 +221,17 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$(cat "$clean_out")" = "initial" ]
 
-  # A staged HEAD blob should fail subtraction (patch absent).
+  # A staged HEAD blob has no patch applied: it passes through unchanged.
   local head_staged="$TEST_DIR/head-staged.txt"
   git show HEAD:file.txt > "$head_staged"
   run patches_subtract "file.txt" "$head_staged" "$clean_out"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$clean_out")" = "initial" ]
+
+  # Content matching neither the patch nor its reverse aborts (partial or
+  # mixed staging).
+  printf 'unrelated\ncontent\n' > "$TEST_DIR/mixed.txt"
+  run patches_subtract "file.txt" "$TEST_DIR/mixed.txt" "$clean_out"
   [ "$status" -ne 0 ]
 }
 

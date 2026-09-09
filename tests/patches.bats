@@ -247,3 +247,116 @@ teardown() {
   [[ "$subject" == "[MEMORY]"* ]]
   git show HEAD -- .git-shadow/patches/file.txt.patch >/dev/null
 }
+
+@test "patches_transaction wraps a callback and reapplies on return" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  run patches_store "file.txt"
+  [ "$status" -eq 0 ]
+
+  _tx_callback() {
+    [ "$(cat file.txt)" = "initial" ]
+  }
+
+  status=0
+  patches_transaction _tx_callback || status=$?
+  [ "$status" -eq 0 ]
+  [ "$(cat file.txt)" = $'initial\nlocal edit' ]
+}
+
+@test "patches_transaction reapplies on callback failure" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  _tx_fail_callback() {
+    [ "$(cat file.txt)" = "initial" ]
+    return 42
+  }
+
+  status=42
+  patches_transaction _tx_fail_callback || status=$?
+  [ "$status" -eq 42 ]
+  [ "$(cat file.txt)" = $'initial\nlocal edit' ]
+}
+
+@test "patches_transaction nested does not double-strip or double-reapply" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  _tx_inner() {
+    [ "$(cat file.txt)" = "initial" ]
+    echo "inner ran" > "$TEST_DIR/inner.txt"
+  }
+
+  _tx_outer() {
+    [ "$(cat file.txt)" = "initial" ]
+    patches_transaction _tx_inner
+    [ "$(cat file.txt)" = "initial" ]
+  }
+
+  status=0
+  patches_transaction _tx_outer || status=$?
+  [ "$status" -eq 0 ]
+  [ "$(cat file.txt)" = $'initial\nlocal edit' ]
+  [ -f "$TEST_DIR/inner.txt" ]
+}
+
+@test "patches_strip skips sidecars not applied to the working tree" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  # Replace the working tree content so the sidecar is no longer applied.
+  printf 'other\nlocal edit\n' > file.txt
+
+  run patches_strip
+  [ "$status" -eq 0 ]
+  [ "$(cat file.txt)" = $'other\nlocal edit' ]
+}
+
+@test "patches_check passes for applied overlay" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  run patches_check
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run patches_check --orphan
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "patches_check lists stale sidecars that cannot apply to HEAD" {
+  git checkout -q -b feature@local
+  echo "local" >> file.txt
+  patches_store "file.txt"
+
+  # Rewrite the public file; the stored sidecar no longer applies.
+  echo "rewritten" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "change"
+
+  run patches_check
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"cannot apply to HEAD"* ]]
+}
+
+@test "patches_check --orphan lists sidecars not applied to working tree" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  # Restore file to HEAD while keeping the sidecar.
+  git checkout -q HEAD -- file.txt
+
+  run patches_check
+  [ "$status" -eq 0 ]
+
+  run patches_check --orphan
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"not applied to working tree"* ]]
+}

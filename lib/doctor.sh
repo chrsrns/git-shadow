@@ -237,41 +237,17 @@ doctor_annotations_check() {
 # applied overlay is the normal state and must not warn.
 # This flags orphan or stale local patches before a reapply tries to use them.
 doctor_patches_check() {
-  local dir=".git-shadow/patches"
-  if [[ ! -d "$dir" ]]; then
-    ui_info "patches: no sidecars"
-    return 0
+  local output
+  if ! output="$(patches_check 2>&1)"; then
+    local sidecar reason
+    while IFS=$'\t' read -r sidecar reason; do
+      [[ -z "$sidecar" ]] && continue
+      ui_warn "patches: orphan sidecar '$sidecar' ($reason)"
+    done <<< "$output"
+    return 1
   fi
-
-  local probe
-  probe="$(mktemp -d)"
-
-  local issues=0 sidecar relpath
-  while IFS= read -r -d '' sidecar; do
-    relpath="${sidecar#$dir/}"
-    relpath="${relpath%.patch}"
-
-    rm -rf "$probe/tree"
-    mkdir -p "$probe/tree/$(dirname "$relpath")"
-    if ! git show "HEAD:$relpath" > "$probe/tree/$relpath" 2>/dev/null; then
-      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
-      issues=1
-      continue
-    fi
-    cp "$sidecar" "$probe/tree/patch.patch"
-    if ! git -C "$probe/tree" apply --check patch.patch >/dev/null 2>&1; then
-      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
-      issues=1
-    fi
-  done < <(find "$dir" -type f -name '*.patch' -print0 2>/dev/null)
-
-  rm -rf "$probe"
-
-  if [[ $issues -eq 0 ]]; then
-    ui_ok "patches: no orphan sidecars"
-    return 0
-  fi
-  return 1
+  ui_ok "patches: no orphan sidecars"
+  return 0
 }
 
 # Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and

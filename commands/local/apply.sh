@@ -14,5 +14,15 @@ enter_project '.'
 require_local_branch
 patches_require_no_paused_op
 
-patches_reapply
+check_output=""
+if ! check_output="$(patches_check --orphan)"; then
+  ui_warn "Some local patch sidecars are not applied to the working tree:"
+  printf '%s\n' "$check_output" >&2
+fi
+
+_local_apply_body() {
+  return 0
+}
+
+patches_transaction _local_apply_body
 ui_ok "Local patches reapplied."

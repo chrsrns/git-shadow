@@ -17,9 +17,6 @@ if [[ $# -eq 0 ]]; then
   enter_project '.'
   ensure_clean_repo
 
-  # Reapply patch overlays on every exit: the checkout below may strip them.
-  trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
-
   CURRENT_BRANCH="$(current_branch)"
   if [[ -z "$CURRENT_BRANCH" ]]; then
     ui_error "Unable to determine current branch."
@@ -47,9 +44,15 @@ if [[ $# -eq 0 ]]; then
     git branch "$LOCAL_BASE" "$PUBLIC_BASE"
   fi
 
-  patches_strip >/dev/null
-  git checkout "$LOCAL_BASE"
-  "$TOOLKIT_ROOT/commands/base/sync.sh"
+  _feature_start_noarg_body() {
+    git checkout "$LOCAL_BASE"
+    "$TOOLKIT_ROOT/commands/base/sync.sh"
+    return 0
+  }
+
+  if ! patches_transaction _feature_start_noarg_body; then
+    exit 1
+  fi
   ui_ok "Switched to local base '$LOCAL_BASE'."
   exit 0
 fi
@@ -130,9 +133,6 @@ fi
 enter_project '.'
 ensure_clean_repo
 
-# Reapply patch overlays on every exit: the checkouts below may strip them.
-trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
-
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
@@ -169,11 +169,15 @@ if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BASE"; then
 fi
 
 # Run base sync from the local base.
-if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
-  patches_strip >/dev/null
-  git checkout "$LOCAL_BASE"
-fi
-"$TOOLKIT_ROOT/commands/base/sync.sh"
+_feature_start_base_body() {
+  if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+    git checkout "$LOCAL_BASE"
+  fi
+  "$TOOLKIT_ROOT/commands/base/sync.sh"
+  return 0
+}
+
+patches_transaction _feature_start_base_body
 
 # The latest checkpoint on the local base is the branch point.
 LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
@@ -200,31 +204,37 @@ git branch "$PUBLIC_FEATURE" "$PUBLIC_CP"
 ui_shadow "Creating local feature branch '$LOCAL_FEATURE' from '$LOCAL_BASE'"
 git branch "$LOCAL_FEATURE" "$LOCAL_CP"
 
-if [[ "$USE_WORKTREE" -eq 1 ]]; then
-  # Write the initial checkpoint onto the local feature without checking it
-  # out in the invoking checkout — the worktree add below checks it out
-  # there instead.
-  ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
-  _cp_summary="$(checkpoint_summary "$PUBLIC_CP" "$LOCAL_CP")"
-  _new_cp="$(env GIT_SHADOW=1 git commit-tree \
-    "$(git rev-parse "$LOCAL_FEATURE^{tree}")" -p "$LOCAL_FEATURE" -m "$_cp_summary")"
-  git update-ref "refs/heads/$LOCAL_FEATURE" "$_new_cp"
+_feature_start_feature_body() {
+  if [[ "$USE_WORKTREE" -eq 1 ]]; then
+    # Write the initial checkpoint onto the local feature without checking it
+    # out in the invoking checkout — the worktree add below checks it out
+    # there instead.
+    ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
+    _cp_summary="$(checkpoint_summary "$PUBLIC_CP" "$LOCAL_CP")"
+    _new_cp="$(env GIT_SHADOW=1 git commit-tree \
+      "$(git rev-parse "$LOCAL_FEATURE^{tree}")" -p "$LOCAL_FEATURE" -m "$_cp_summary")"
+    git update-ref "refs/heads/$LOCAL_FEATURE" "$_new_cp"
 
-  if ! worktree_add "$LOCAL_FEATURE" "$WORKTREE_PATH"; then
-    ui_error "Failed to create the worktree for '$LOCAL_FEATURE'."
-    ui_error "Leftover branches: '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
-    ui_info  "Recover with: git branch -D '$PUBLIC_FEATURE' '$LOCAL_FEATURE'"
-    ui_info  "Or retry manually: git worktree add '$WORKTREE_PATH' '$LOCAL_FEATURE'"
-    exit 1
+    if ! worktree_add "$LOCAL_FEATURE" "$WORKTREE_PATH"; then
+      ui_error "Failed to create the worktree for '$LOCAL_FEATURE'."
+      ui_error "Leftover branches: '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
+      ui_info  "Recover with: git branch -D '$PUBLIC_FEATURE' '$LOCAL_FEATURE'"
+      ui_info  "Or retry manually: git worktree add '$WORKTREE_PATH' '$LOCAL_FEATURE'"
+      return 1
+    fi
+    _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
+  else
+    ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
+    git checkout "$LOCAL_FEATURE"
+
+    ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
+    _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
   fi
-  _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
-else
-  ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
-  patches_strip >/dev/null
-  git checkout "$LOCAL_FEATURE"
+  return 0
+}
 
-  ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
-  _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"
+if ! patches_transaction _feature_start_feature_body; then
+  exit 1
 fi
 
 "$TOOLKIT_ROOT/commands/install-hooks.sh"

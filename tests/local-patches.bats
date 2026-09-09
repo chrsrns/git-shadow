@@ -51,6 +51,18 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
+@test "local add rejects a [MEMORY]-only file" {
+  git shadow feature start my-feature
+  echo "scratch" > scratch.txt
+  git add scratch.txt
+  git commit -qm "[MEMORY] scratch notes"
+  echo "more" >> scratch.txt
+
+  run git shadow local add scratch.txt
+  [ "$status" -ne 0 ]
+  [ ! -f .git-shadow/patches/scratch.txt.patch ]
+}
+
 @test "local add rejects a new non public-tracked file" {
   git shadow feature start my-feature
   echo "new" > new-file.txt

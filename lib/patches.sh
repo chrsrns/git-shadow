@@ -67,9 +67,18 @@ patches_store() {
     return 1
   fi
 
-  # The path must already be tracked by the public branch (in HEAD).
+  # The path must be public-tracked: present in HEAD and introduced by at
+  # least one non-[MEMORY] commit. On @local, HEAD alone is not the oracle —
+  # [MEMORY]-only files live there too and must be rejected.
   if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
     ui_error "patches_store: '$relpath' is not public-tracked. [MEMORY] commits are for new local files."
+    return 1
+  fi
+
+  local add_subjects
+  add_subjects="$(git log --diff-filter=A --format='%s' HEAD -- "$relpath" 2>/dev/null)"
+  if [[ -z "$add_subjects" ]] || ! grep -qv '^\[MEMORY\]' <<< "$add_subjects"; then
+    ui_error "patches_store: '$relpath' exists only via [MEMORY] commits. [MEMORY] commits are for new local files."
     return 1
   fi
 

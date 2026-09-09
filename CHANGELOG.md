@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.3.3] — 2026-09-10
+
+### Added
+
+- **Local patch sidecar transaction** — `patches_transaction` wraps every command that mutates the working tree or checks out a branch, so `.git-shadow/patches/` sidecars are always stripped before the operation and re-applied on every exit path, including nested calls and resumable pause paths.
+- **`patches_check`** — `git shadow doctor` and `git shadow local apply` now verify sidecars against `HEAD` content and warn when an overlay is stale or orphaned.
+- **`git shadow commit` patch+marker guard** — rejects a staged file that has both a `.git-shadow/patches/` sidecar and active `///` or `// @local` markers, preventing ambiguous public commits.
+
+### Fixed
+
+- `lib/patches.sh`: `patches_reapply` no longer has its `stderr` hidden inside `patches_transaction`, so degraded reapply methods and orphan warnings remain visible.
+- `lib/patches.sh`: `patches_transaction` now correctly propagates a failing `patches_reapply` status.
+
 ## [1.3.0] — 2026-09-08
 
 ### Added

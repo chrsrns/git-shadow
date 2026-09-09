@@ -145,9 +145,28 @@ for path in "${STAGED[@]}"; do
     continue
   fi
 
+  if [[ "$relpath" == .git-shadow/patches/* ]]; then
+    MEMORY_PATHS+=("$relpath")
+    git reset -q HEAD -- "$relpath" 2>/dev/null || true
+    continue
+  fi
+
   # Export staged content to a temp file.
   staged_tmp="$TMP_DIR/staged_${relpath////_}"
   git show :"$relpath" > "$staged_tmp"
+
+  # If a local patch is stored for this path, subtract it from the staged
+  # blob before marker extraction so the public commit contains clean source.
+  work_tmp="$staged_tmp"
+  if [[ -f ".git-shadow/patches/$relpath.patch" ]] || \
+     git cat-file -e "HEAD:.git-shadow/patches/$relpath.patch" 2>/dev/null; then
+    public_tmp="$TMP_DIR/public_${relpath////_}"
+    if ! patches_subtract "$relpath" "$staged_tmp" "$public_tmp"; then
+      ui_error "Staged content for '$relpath' does not match the stored local patch. Refresh with 'git shadow local add'."
+      exit 1
+    fi
+    work_tmp="$public_tmp"
+  fi
 
   binary=false
   if _is_binary "$relpath"; then
@@ -176,7 +195,7 @@ for path in "${STAGED[@]}"; do
   # Otherwise, try the committed version and re-anchor it.
   elif git show "HEAD:.git-shadow/annotations/$relpath" > "$TMP_DIR/existing_${relpath////_}.md" 2>/dev/null; then
     reanchored_tmp="$TMP_DIR/reanchored_${relpath////_}.md"
-    if annotations_reanchor "$staged_tmp" "$TMP_DIR/existing_${relpath////_}.md" "$reanchored_tmp" 2>/dev/null; then
+    if annotations_reanchor "$work_tmp" "$TMP_DIR/existing_${relpath////_}.md" "$reanchored_tmp" 2>/dev/null; then
       existing_ann="$reanchored_tmp"
     else
       existing_ann="$TMP_DIR/existing_${relpath////_}.md"
@@ -190,7 +209,7 @@ for path in "${STAGED[@]}"; do
     continue
   fi
 
-  if ! annotations_extract "$staged_tmp" "$clean_tmp" "$records_tmp" "$meta_tmp" "$existing_ann" "$skip_triple" 2>&1; then
+  if ! annotations_extract "$work_tmp" "$clean_tmp" "$records_tmp" "$meta_tmp" "$existing_ann" "$skip_triple" 2>&1; then
     ui_error "Failed to extract annotations from $relpath."
     exit 1
   fi
@@ -271,7 +290,7 @@ done
 # Public commit, if the public index now differs from HEAD.
 PUBLIC_SHA=""
 if ! git diff --cached --quiet; then
-  PUBLIC_SHA="$(git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
+  PUBLIC_SHA="$(env GIT_SHADOW=1 git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
   if [[ -z "$PUBLIC_SHA" ]]; then
     PUBLIC_SHA="$(git rev-parse HEAD)"
   fi

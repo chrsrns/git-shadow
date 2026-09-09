@@ -14,7 +14,7 @@ complete -c git-shadow -f
 # Top-level commands
 # ---------------------------------------------------------------------------
 
-set -l top_cmds version install-hooks doctor status commit show annotations completion feature base re-anchor push check config
+set -l top_cmds version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config
 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a version              -d "show the current version"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a install-hooks        -d "install pre-commit and pre-push git hooks"
@@ -101,6 +101,20 @@ set -l annotations_subcmds reapply
 complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and not __fish_seen_subcommand_from $annotations_subcmds" -a reapply -d "write stored markers into the working tree"
 
 complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and __fish_seen_subcommand_from reapply" -a "(__fish_complete_path)" -d "source path"
+
+# ---------------------------------------------------------------------------
+# local subcommands and flags
+# ---------------------------------------------------------------------------
+
+set -l local_subcmds add rm diff apply
+
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a add   -d "capture working-tree delta as a sidecar"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a rm    -d "remove a local patch sidecar"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a diff  -d "print stored local patch sidecars"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a apply -d "re-apply all stored local patch sidecars"
+
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from add diff" -a "(__fish_complete_path)" -d "source path"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from rm"      -l revert -d "reverse-apply overlay before removing"
 
 # ---------------------------------------------------------------------------
 # config subcommands and flags

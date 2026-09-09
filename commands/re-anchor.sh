@@ -51,6 +51,10 @@ if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
   exit 1
 fi
 
+# Restore the @local checkout and reapply patch overlays on every exit from
+# here on: the flow below strips overlays and checks out the public branch.
+trap 'if [[ "$(current_branch 2>/dev/null)" == "$PUBLIC_BRANCH" ]]; then git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1 || true; fi; patches_reapply >/dev/null 2>&1 || true' EXIT
+
 LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 
 # ---------------------------------------------------------------------------
@@ -62,6 +66,7 @@ if git remote >/dev/null 2>&1; then
     remote_ref="origin/$PUBLIC_BRANCH"
     if git rev-parse --verify --quiet "$remote_ref" >/dev/null 2>&1; then
       NEW_PUBLIC_HEAD="$(git rev-parse "$remote_ref")"
+      patches_strip >/dev/null
       git checkout -q "$PUBLIC_BRANCH" >/dev/null 2>&1
       if git merge-base --is-ancestor "$NEW_PUBLIC_HEAD" "$(git rev-parse "$PUBLIC_BRANCH")"; then
         # Local public is ahead of or equal to remote; keep it.
@@ -105,6 +110,7 @@ for sha in $(git rev-list --reverse "$PUBLIC_HEAD"); do
 done
 PIDS="${PIDS# }"
 
+patches_strip >/dev/null
 git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1
 
 if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BRANCH" "$PUBLIC_HEAD" $PIDS)"; then

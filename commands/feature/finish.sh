@@ -198,6 +198,9 @@ finish_commit_memory() {
   if [[ -d .git-shadow/annotations ]]; then
     git add -f .git-shadow/annotations/
   fi
+  if [[ -d .git-shadow/patches ]]; then
+    git add -f .git-shadow/patches/
+  fi
 
   local -a commit_args=(-m "$subject" -m "git-shadow-source-memory: $sha")
   if [[ -n "$memory_pid" ]]; then
@@ -210,8 +213,9 @@ finish_commit_memory() {
 # Uses APPLIED_MEMORY_SHAS / APPLIED_MEMORY_PIDS for idempotency.
 finish_memory_replay() {
   local -a shas=("$@")
+  # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0` here
+  # would replace it (bash traps are global, not function-local).
   FINISH_TMP_DIR="$(mktemp -d)"
-  trap 'rm -rf "$FINISH_TMP_DIR"' 0
 
   local i sha subject skip applied_sha applied_pid
   local -a remaining
@@ -247,13 +251,20 @@ finish_memory_replay() {
       "$PRE_FINISH_HEAD" "memory-replay" "$sha" \
       "${remaining[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
 
-    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' | git apply --3way --allow-empty; then
+    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git apply --3way --allow-empty; then
       local conflicted
       conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
       ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'."
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
       ui_info "Or run: git shadow feature finish --abort"
+      return 1
+    fi
+
+    # Patch sidecars are local-only whole-file sidecars: apply them separately
+    # so they do not participate in the generic 3-way merge of source files.
+    if ! git diff "$sha^" "$sha" -- .git-shadow/patches/ | git apply --allow-empty; then
+      ui_error "Failed to apply patch sidecars from [MEMORY] commit $sha."
       return 1
     fi
 
@@ -329,6 +340,12 @@ fi
 
 enter_project '.'
 
+# Restore local patch overlays at the end of every non-paused exit.
+# Also cleans FINISH_TMP_DIR; keep this the only EXIT trap so nothing below
+# replaces it.
+PAUSED=0
+trap 'if [[ "$PAUSED" -eq 0 ]]; then patches_reapply >/dev/null 2>&1 || true; fi; if [[ -n "${FINISH_TMP_DIR:-}" ]]; then rm -rf "$FINISH_TMP_DIR"; fi' EXIT
+
 # V88: all feature finish modes refuse while a git-shadow sync is in progress.
 if [[ -f "$(sync_state_file)" ]]; then
   ui_error "A git-shadow sync is in progress. Resolve it before running 'git shadow feature finish'."
@@ -392,6 +409,7 @@ if [[ -n "$MARK_APPLIED" ]]; then
   if [[ "$(current_branch)" != "$local_base" ]]; then
     finish_check_base_exclusivity \
       "$(public_branch_from_any "$local_base")" "$local_base" || exit 1
+    patches_strip >/dev/null
     git checkout -q "$local_base" >/dev/null 2>&1 || {
       ui_error "Cannot checkout '$local_base'."
       exit 1
@@ -443,6 +461,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   if sync_has_conflicts; then
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
     ui_error "Working tree still has unresolved conflicts: $conflicted"
+    PAUSED=1
     exit 1
   fi
 
@@ -457,6 +476,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   PIDS_BASE="$FINISH_PIDS"
 
   if [[ "$FINISH_PHASE" == "base-diff" ]]; then
+    patches_strip >/dev/null
     sync_stage_all
     if sync_tree_changed; then
       sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
@@ -469,9 +489,13 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     # unless --mark-applied has already recorded it (V102).
     finish_collect_applied
     if [[ -n "$FINISH_CONFLICTED_SHA" ]]; then
+      # FINISH_TMP_DIR is cleaned by the global EXIT trap — a `trap ... 0`
+      # here would replace it (bash traps are global).
       FINISH_TMP_DIR="$(mktemp -d)"
-      trap 'rm -rf "$FINISH_TMP_DIR"' 0
       finish_merge_sidecars "$FINISH_CONFLICTED_SHA" "$FINISH_TMP_DIR"
+      # Apply only the patch sidecars from the conflicted commit; the source
+      # diff is already resolved in the working tree.
+      git diff "$FINISH_CONFLICTED_SHA^" "$FINISH_CONFLICTED_SHA" -- .git-shadow/patches/ | git apply --allow-empty
       finish_commit_memory "$FINISH_CONFLICTED_SHA"
       APPLIED_MEMORY_SHAS+=("$FINISH_CONFLICTED_SHA")
       pid="$(patch_id_for "$FINISH_CONFLICTED_SHA")"
@@ -481,12 +505,14 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     MEMORY_SHAS=($FINISH_REMAINING_SHAS)
   else
     ui_error "Unknown finish phase: $FINISH_PHASE"
+    PAUSED=1
     exit 1
   fi
 
   finish_collect_applied
   if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
     if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+      PAUSED=1
       exit 1
     fi
   fi
@@ -582,6 +608,7 @@ ui_shadow "   Local base    : $LOCAL_BASE"
 # ---------------------------------------------------------------------------
 if [[ "$NO_PULL" -eq 0 ]]; then
   ui_git "Pulling latest changes for '$PUBLIC_BASE'"
+  patches_strip >/dev/null
   git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
   if ! git pull >/dev/null 2>&1; then
     ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
@@ -643,6 +670,7 @@ MEMORY_SHAS=("${MEMORY_SHAS_UNIQUE[@]}")
 # Apply the public base net diff to the local base.
 # ---------------------------------------------------------------------------
 ui_shadow "Checkout '$LOCAL_BASE'"
+patches_strip >/dev/null
 git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
 
 LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
@@ -681,6 +709,7 @@ if [[ "$CP_PUBLIC" != "$PUBLIC_BASE_HEAD" ]]; then
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
       ui_info "Or run: git shadow feature finish --abort"
+      PAUSED=1
       exit 1
     fi
     finish_clear_state
@@ -693,6 +722,7 @@ fi
 ui_shadow "Replaying [MEMORY] commits from '$FEATURE_LOCAL_BRANCH'"
 if [[ ${#MEMORY_SHAS[@]} -gt 0 ]]; then
   if ! finish_memory_replay "${MEMORY_SHAS[@]}"; then
+    PAUSED=1
     exit 1
   fi
 fi

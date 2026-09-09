@@ -55,6 +55,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"
 # shellcheck disable=SC1091
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
 
+# Load local patch sidecar helpers
+# shellcheck disable=SC1091
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"
@@ -182,6 +186,20 @@ local_branch_from_any() {
   _branch_transform "$1" ensure
 }
 
+# Abort unless the current branch ends with LOCAL_SUFFIX.
+require_local_branch() {
+  local branch
+  branch="$(current_branch)"
+  if [[ -z "$branch" ]]; then
+    ui_error "Unable to determine current branch."
+    exit 1
+  fi
+  if [[ ! "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+    ui_error "This command must be run from a branch ending with '${LOCAL_SUFFIX}'."
+    exit 1
+  fi
+}
+
 # Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
 ensure_clean_repo() {
   local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir
@@ -205,14 +223,19 @@ ensure_clean_repo() {
     exit 1
   fi
 
-  if ! git diff --quiet; then
-    echo "❌ Working tree contains uncommitted changes." >&2
-    git diff --name-only >&2
+  if ! patches_overlay_clean; then
+    if ! git diff --cached --quiet; then
+      ui_error "Working tree contains staged but uncommitted changes."
+    else
+      ui_error "Working tree contains uncommitted changes."
+    fi
+    ui_info  "Refresh local patches with 'git shadow local add' or resolve the changes below."
+    git status --short >&2
     exit 1
   fi
 
   if ! git diff --cached --quiet; then
-    echo "❌ Index still contains staged changes." >&2
+    ui_error "Index still contains staged changes." >&2
     git diff --cached --name-only >&2
     exit 1
   fi

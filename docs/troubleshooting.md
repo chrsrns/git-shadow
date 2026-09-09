@@ -27,6 +27,7 @@ This page covers failure recovery for the most common situations where git shado
 11. [Local comment markers leaked into a public commit](#11-local-comment-markers-leaked-into-a-public-commit)
 12. [Committing directly on a public branch](#12-committing-directly-on-a-public-branch)
 13. [Worktree issues](#13-worktree-issues)
+14. [Local patches](#14-local-patches)
 
 ---
 
@@ -529,4 +530,37 @@ git worktree list --porcelain
 git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 ```
 
-The value must be absolute after `~` expansion. To place a single worktree without configuring a root, use `--worktree-dir <path>` instead.
+---
+
+## 14. Local patches
+
+**Scenario:** You want local-only changes to public-tracked files (for example local build flags, test config, container settings) to persist through branch operations without leaking into public commits.
+
+**Use `git shadow local add`:**
+
+```bash
+# After editing a public-tracked file with a local-only change
+git shadow local add package.json
+```
+
+This stores the change as a unified-diff sidecar in `.git-shadow/patches/package.json.patch`, commits that sidecar as `[MEMORY]`, and keeps the source file modified in the working tree. The sidecar is gitignored and never appears in a public commit.
+
+**What can be stored:**
+
+- Existing public-tracked files.
+- Text files only (binary files are rejected).
+- Files that still exist and are not staged in the index with unrelated changes.
+
+**What cannot be stored:**
+
+- New files that are not yet tracked by the public branch.
+- Deletions.
+- Binary files.
+- Files with staged unrelated changes (stage only the public change first).
+
+**Common symptoms and recovery:**
+
+- **`git shadow feature publish` or `git shadow check public` aborts with `.git-shadow/patches` on the public branch.** A patch sidecar was committed directly on a public branch. Public branches must never contain `.git-shadow/patches/` paths. Remove the files from the public branch and recreate the sidecar on the local branch with `git shadow local add`.
+- **`git shadow local apply` warns "orphan sidecar."** The public source has changed in a way that the sidecar can no longer apply. The source is reset to `HEAD`. Refresh with `git shadow local add <path>` or remove the sidecar with `git shadow local rm <path>`.
+- **`git shadow annotations reapply` overwrites a local patch.** Before reapplying markers, `git shadow annotations reapply` strips patch overlays, writes markers, and reapplies patch overlays. If markers and patches overlap on the same lines the patch may fail and become an orphan. In that case refresh the sidecar.
+- **Working tree looks "dirty" when a patch is already applied.** `git shadow` operations treat a correctly-applied patch overlay as clean, so `ensure_clean_repo` does not force you to stash local config. A stale or mismatched overlay is still rejected.

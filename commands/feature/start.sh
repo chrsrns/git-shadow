@@ -17,6 +17,9 @@ if [[ $# -eq 0 ]]; then
   enter_project '.'
   ensure_clean_repo
 
+  # Reapply patch overlays on every exit: the checkout below may strip them.
+  trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
+
   CURRENT_BRANCH="$(current_branch)"
   if [[ -z "$CURRENT_BRANCH" ]]; then
     ui_error "Unable to determine current branch."
@@ -44,6 +47,7 @@ if [[ $# -eq 0 ]]; then
     git branch "$LOCAL_BASE" "$PUBLIC_BASE"
   fi
 
+  patches_strip >/dev/null
   git checkout "$LOCAL_BASE"
   "$TOOLKIT_ROOT/commands/base/sync.sh"
   ui_ok "Switched to local base '$LOCAL_BASE'."
@@ -126,6 +130,9 @@ fi
 enter_project '.'
 ensure_clean_repo
 
+# Reapply patch overlays on every exit: the checkouts below may strip them.
+trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
+
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
@@ -163,6 +170,7 @@ fi
 
 # Run base sync from the local base.
 if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+  patches_strip >/dev/null
   git checkout "$LOCAL_BASE"
 fi
 "$TOOLKIT_ROOT/commands/base/sync.sh"
@@ -212,6 +220,7 @@ if [[ "$USE_WORKTREE" -eq 1 ]]; then
   _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
 else
   ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
+  patches_strip >/dev/null
   git checkout "$LOCAL_FEATURE"
 
   ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
@@ -223,6 +232,8 @@ fi
 if [[ "$USE_WORKTREE" -eq 1 ]]; then
   ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE' with worktree at '$_wt_abs'."
   ui_info "Work in: cd '$_wt_abs'"
+  # Apply any local patch sidecars that were inherited from the base.
+  git -C "$_wt_abs" shadow local apply >/dev/null 2>&1 || true
 else
   ui_ok "Created '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
 fi

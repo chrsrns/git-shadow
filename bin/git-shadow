@@ -58,6 +58,10 @@ Commands:
   commit -m <message>
   show --with-annotations <file>
   annotations reapply [path]
+  local add <path>
+  local rm [--revert] <path>
+  local diff [path]
+  local apply
   completion install
   feature start <name> [--worktree|--worktree-dir <path>]
   feature publish

@@ -199,3 +199,25 @@ EOF
   [[ "$output" == *"finish"* ]]
   [[ "$output" != *"uncommitted changes"* ]]
 }
+
+@test "re-anchor failure restores the @local checkout and patch overlay" {
+  # Overlay on the shadow branch's public file.
+  printf 'v2\nlocal tweak\n' > file.txt
+  git shadow local add file.txt >/dev/null
+
+  # Advance the remote public branch on file.txt so the local tree no
+  # longer contains the public tree and the containment check fails after
+  # the checkout to the public branch.
+  cd "$REMOTE_WORK"
+  git checkout -q feature-foo
+  printf 'v3-remote\n' > file.txt
+  git add file.txt
+  git commit -qm "feat: remote change"
+  git push -q origin feature-foo
+  cd "$TEST_DIR"
+
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -ne 0 ]
+  [ "$(git branch --show-current)" = "feature-foo@local" ]
+  [ "$(cat file.txt)" = $'v2\nlocal tweak' ]
+}

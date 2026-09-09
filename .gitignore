@@ -2,3 +2,4 @@
 .git-shadow.env
 dummy-repo/
 .git-shadow/annotations/
+.git-shadow/patches/

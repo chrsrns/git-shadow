@@ -27,6 +27,7 @@ _git_shadow() {
         commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' ;;
         show)       _arguments '--with-annotations[render the annotated view]' ;;
         annotations) _git_shadow_annotations ;;
+        local)      _git_shadow_local ;;
         completion) _arguments '1: :_git_shadow_completion_subcommands' ;;
         push|re-anchor) _arguments '*:branch:__git_refs2' ;;
       esac
@@ -44,6 +45,7 @@ _git_shadow_commands() {
     'commit:split staged changes into public and [MEMORY] commits'
     'show:render source with local annotations'
     'annotations:manage local annotation sidecars'
+    'local:manage local patch sidecars'
     'completion:manage shell completion'
     'feature:manage the feature branch lifecycle'
     'base:sync the public/@local base pair'
@@ -195,6 +197,32 @@ _git_shadow_annotations_subcommands() {
   local subcommands
   subcommands=(
     'reapply:write stored markers into the working tree'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_local() {
+  _arguments -C \
+    '1: :_git_shadow_local_subcommands' \
+    '*:: :->args'
+
+  case $state in
+    args)
+      case $line[1] in
+        add|diff) _arguments '*:path:_path_files' ;;
+        rm)       _arguments '--revert[reverse-apply overlay before removing sidecar]' '*:path:_path_files' ;;
+      esac
+      ;;
+  esac
+}
+
+_git_shadow_local_subcommands() {
+  local subcommands
+  subcommands=(
+    'add:capture working-tree delta as a local patch sidecar'
+    'rm:remove a local patch sidecar'
+    'diff:print stored local patch sidecars'
+    'apply:re-apply all stored local patch sidecars'
   )
   _describe 'subcommand' subcommands
 }

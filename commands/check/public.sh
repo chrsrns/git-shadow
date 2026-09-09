@@ -54,8 +54,8 @@ CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
 LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 
-if git ls-tree -r --name-only "$PUBLIC_HEAD" | grep -q '^\.git-shadow/annotations'; then
-  ui_error "Public branch '$PUBLIC_BRANCH' contains .git-shadow/annotations/ paths."
+if shadow_path="$(git ls-tree -r --name-only "$PUBLIC_HEAD" | grep -m1 '^\.git-shadow/')"; then
+  ui_error "Public branch '$PUBLIC_BRANCH' contains .git-shadow/ path '$shadow_path'."
   exit 1
 fi
 

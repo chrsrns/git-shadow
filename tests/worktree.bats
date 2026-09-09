@@ -430,6 +430,10 @@ _start_setup_env() {
   _start_setup_env
   # A regular file where the parent dir should be: mkdir -p fails after
   # validation, exercising the post-branch-creation failure path.
+  # Ignore it so the cleanliness check does not abort before branch creation.
+  printf 'blocker\n' >> .gitignore
+  git add .gitignore
+  git commit -qm "ignore blocker"
   touch "$TEST_DIR/blocker"
   run git shadow feature start feat-wt --worktree-dir "$TEST_DIR/blocker/sub"
   [ "$status" -eq 1 ]

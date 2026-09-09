@@ -59,6 +59,11 @@ fi
 PIDS=""
 LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
 
+# Strip local patch overlays before the replay modifies the working tree,
+# and reapply them on every exit path from here on.
+trap 'patches_reapply >/dev/null 2>&1 || true' EXIT
+patches_strip >/dev/null
+
 replay_output=""
 if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
   ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."

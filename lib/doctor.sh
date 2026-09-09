@@ -133,23 +133,47 @@ doctor_checkpoint_summary() {
   return 0
 }
 
-# Verify the pre-commit and pre-push hooks exist and contain the git-shadow
-# marker block (V98).
+# Verify the pre-commit and pre-push hooks exist, contain the git-shadow
+# marker block (V98), and match a fresh render (V155).
 doctor_hooks_check() {
   local issues=0 pc pp
   pc="$(detect_hook_file pre-commit)"
   pp="$(detect_hook_file pre-push)"
 
-  if [[ ! -f "$pc" ]] || ! grep -Fq "$HOOK_CHECK_MARKER" "$pc" 2>/dev/null; then
-    ui_warn "hooks: pre-commit hook missing or lacks git-shadow marker ($pc)"
+  if [[ ! -f "$pc" ]]; then
+    ui_warn "hooks: pre-commit hook missing ($pc)"
     issues=1
-  fi
-  if [[ ! -f "$pp" ]] || ! grep -Fq "# git-shadow pre-push hook" "$pp" 2>/dev/null; then
-    ui_warn "hooks: pre-push hook missing or lacks git-shadow marker ($pp)"
+  elif ! grep -Fq "$HOOK_CHECK_MARKER" "$pc" 2>/dev/null; then
+    ui_warn "hooks: pre-commit hook lacks git-shadow marker ($pc)"
     issues=1
+  else
+    local installed desired
+    installed="$(hook_block_extract "$pc" "$HOOK_CHECK_MARKER")"
+    desired="$(hook_block_fresh "$HOOK_CHECK_MARKER" "$(hook_pre_commit_content)")"
+    if [[ "$installed" != "$desired" ]]; then
+      ui_warn "hooks: pre-commit hook is stale ($pc). Run 'git shadow install-hooks' to refresh."
+      issues=1
+    fi
   fi
+
+  if [[ ! -f "$pp" ]]; then
+    ui_warn "hooks: pre-push hook missing ($pp)"
+    issues=1
+  elif ! grep -Fq "$HOOK_PRE_PUSH_MARKER" "$pp" 2>/dev/null; then
+    ui_warn "hooks: pre-push hook lacks git-shadow marker ($pp)"
+    issues=1
+  else
+    local installed desired
+    installed="$(hook_block_extract "$pp" "$HOOK_PRE_PUSH_MARKER")"
+    desired="$(hook_block_fresh "$HOOK_PRE_PUSH_MARKER" "$(hook_pre_push_content)")"
+    if [[ "$installed" != "$desired" ]]; then
+      ui_warn "hooks: pre-push hook is stale ($pp). Run 'git shadow install-hooks' to refresh."
+      issues=1
+    fi
+  fi
+
   if [[ $issues -eq 0 ]]; then
-    ui_ok "hooks: pre-commit and pre-push installed"
+    ui_ok "hooks: pre-commit and pre-push up to date"
   fi
   return $issues
 }
@@ -206,6 +230,48 @@ doctor_annotations_check() {
   fi
   ui_ok "annotations: no orphan records"
   return 0
+}
+
+# Warn when .git-shadow/patches/ sidecars cannot be applied to HEAD.
+# The oracle is the committed HEAD content, not the working tree: an
+# applied overlay is the normal state and must not warn.
+# This flags orphan or stale local patches before a reapply tries to use them.
+doctor_patches_check() {
+  local dir=".git-shadow/patches"
+  if [[ ! -d "$dir" ]]; then
+    ui_info "patches: no sidecars"
+    return 0
+  fi
+
+  local probe
+  probe="$(mktemp -d)"
+
+  local issues=0 sidecar relpath
+  while IFS= read -r -d '' sidecar; do
+    relpath="${sidecar#$dir/}"
+    relpath="${relpath%.patch}"
+
+    rm -rf "$probe/tree"
+    mkdir -p "$probe/tree/$(dirname "$relpath")"
+    if ! git show "HEAD:$relpath" > "$probe/tree/$relpath" 2>/dev/null; then
+      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
+      issues=1
+      continue
+    fi
+    cp "$sidecar" "$probe/tree/patch.patch"
+    if ! git -C "$probe/tree" apply --check patch.patch >/dev/null 2>&1; then
+      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
+      issues=1
+    fi
+  done < <(find "$dir" -type f -name '*.patch' -print0 2>/dev/null)
+
+  rm -rf "$probe"
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "patches: no orphan sidecars"
+    return 0
+  fi
+  return 1
 }
 
 # Validate WORKTREE_ROOT when configured: absolute after ~ expansion, and
@@ -324,6 +390,7 @@ doctor_run() {
 
   _doctor_tally doctor_gitattributes_check
   _doctor_tally doctor_annotations_check
+  _doctor_tally doctor_patches_check
   _doctor_tally doctor_worktree_root_check
   _doctor_tally doctor_worktree_check
 

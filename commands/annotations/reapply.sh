@@ -65,10 +65,11 @@ _has_non_marker_changes() {
   fi
 
   # Extract markers from the working tree and compare the clean result to HEAD.
-  local wt_tmp clean_tmp meta_tmp
+  local wt_tmp clean_tmp meta_tmp head_tmp
   wt_tmp="$TMP_DIR/wt_${relpath////_}"
   clean_tmp="$TMP_DIR/clean_${relpath////_}"
   meta_tmp="$TMP_DIR/meta_${relpath////_}"
+  head_tmp="$TMP_DIR/head_${relpath////_}"
   if [[ -f "$relpath" ]]; then
     cp "$relpath" "$wt_tmp"
   else
@@ -89,16 +90,33 @@ _has_non_marker_changes() {
     return 0
   fi
 
-  local head_tmp
-  head_tmp="$TMP_DIR/head_${relpath////_}"
+  # Subtract any local patch overlay from the marker-free working copy.
+  if [[ -f ".git-shadow/patches/$relpath.patch" ]]; then
+    if git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
+      # Skip subtraction when the marker-free copy already matches HEAD,
+      # meaning the patch overlay is not currently applied.
+      if ! diff -q "$head_tmp" "$clean_tmp" >/dev/null 2>&1; then
+        public_tmp="$TMP_DIR/public_${relpath////_}"
+        if ! patches_subtract "$relpath" "$clean_tmp" "$public_tmp" 2>/dev/null; then
+          # Stale or mismatched overlay: treat as non-marker change.
+          return 0
+        fi
+        clean_tmp="$public_tmp"
+      fi
+    fi
+  fi
+
   if git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
     if diff -q "$head_tmp" "$clean_tmp" >/dev/null 2>&1; then
-      # Only marker changes.
+      # Only marker and/or patch overlay changes.
       return 1
     fi
   fi
   return 0
 }
+
+# Strip patch overlays before reapplying markers, then reapply them after.
+patches_strip >/dev/null
 
 for relpath in "${TARGETS[@]}"; do
   ann_path=".git-shadow/annotations/$relpath"
@@ -110,6 +128,7 @@ for relpath in "${TARGETS[@]}"; do
 
   if _has_non_marker_changes "$relpath"; then
     ui_error "$relpath has unstaged non-marker changes. Commit or discard them first."
+    patches_reapply >/dev/null || true
     exit 1
   fi
 
@@ -123,9 +142,12 @@ for relpath in "${TARGETS[@]}"; do
 
   if ! annotations_reapply "$head_tmp" "$ann_path" "$relpath"; then
     ui_error "Failed to reapply annotations to $relpath"
+    patches_reapply >/dev/null || true
     exit 1
   fi
   ui_shadow "Reapplied markers to $relpath"
 done
+
+patches_reapply >/dev/null || true
 
 ui_ok "Annotations reapplied."

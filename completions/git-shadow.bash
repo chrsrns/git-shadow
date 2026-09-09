@@ -26,7 +26,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    COMPREPLY=($(compgen -W "version install-hooks doctor status commit show annotations completion feature base re-anchor push check config" -- "$cur"))
+    COMPREPLY=($(compgen -W "version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config" -- "$cur"))
     return
   fi
 
@@ -82,6 +82,13 @@ _git_shadow() {
     annotations)
       if [[ $pos -eq 1 ]]; then
         COMPREPLY=($(compgen -W "reapply" -- "$cur"))
+      fi
+      ;;
+    local)
+      if [[ $pos -eq 1 ]]; then
+        COMPREPLY=($(compgen -W "add rm diff apply" -- "$cur"))
+      elif [[ $pos -eq 2 && "$subcmd" == "rm" ]]; then
+        COMPREPLY=($(compgen -W "--revert" -- "$cur"))
       fi
       ;;
     check)

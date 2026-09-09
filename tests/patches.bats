@@ -303,16 +303,16 @@ teardown() {
   [ -f "$TEST_DIR/inner.txt" ]
 }
 
-@test "patches_strip aborts on un-reversible non-HEAD sidecar" {
+@test "patches_strip skips sidecars not applied to the working tree" {
   git checkout -q -b feature@local
   echo "local edit" >> file.txt
   patches_store "file.txt"
 
-  # Make the working tree differ so the reverse-apply cannot match.
+  # Replace the working tree content so the sidecar is no longer applied.
   printf 'other\nlocal edit\n' > file.txt
 
   run patches_strip
-  [ "$status" -ne 0 ]
+  [ "$status" -eq 0 ]
   [ "$(cat file.txt)" = $'other\nlocal edit' ]
 }
 

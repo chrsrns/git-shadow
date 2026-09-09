@@ -56,17 +56,23 @@ patches_transaction() {
   trap '_patches_tx_exit' EXIT
 
   local status=0
+  local cb_status=0
   if ! patches_strip >/dev/null; then
     status=1
   else
-    if ! "$callback" "$@"; then
-      status=$?
+    if "$callback" "$@"; then
+      cb_status=0
+    else
+      cb_status=$?
     fi
     if [[ "$PATCHES_TX_REAPPLIED" -eq 0 ]]; then
       if ! patches_reapply >/dev/null 2>&1; then
         status=$?
       fi
       PATCHES_TX_REAPPLIED=1
+    fi
+    if [[ "$status" -eq 0 ]]; then
+      status=$cb_status
     fi
   fi
 
@@ -332,8 +338,14 @@ patches_strip() {
     relpath="$(patches_relpath_from_sidecar "$sidecar")"
     [[ -z "$relpath" ]] && continue
 
-    # Already at HEAD (orphan or not-applied): nothing to strip.
-    if git diff --quiet HEAD -- "$relpath" 2>/dev/null; then
+    # Skip sidecars for paths currently involved in a merge conflict; the
+    # working tree content is not in a state we can reverse-apply from.
+    if [[ -n $(git ls-files -u "$relpath" 2>/dev/null) ]]; then
+      continue
+    fi
+
+    # Only strip sidecars that are currently applied to the working tree.
+    if ! _patches_path_is_applied_overlay "$relpath"; then
       continue
     fi
 

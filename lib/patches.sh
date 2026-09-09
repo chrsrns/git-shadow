@@ -247,27 +247,36 @@ patches_reapply() {
       git apply < "$sidecar"
       applied=1
       method="exact"
-    # 3-way.
-    elif git apply --3way < "$sidecar" 2>/dev/null; then
-      if [[ -n $(git ls-files -u "$relpath" 2>/dev/null) ]]; then
-        # 3-way produced conflicts; restore to HEAD and continue to relaxed/orphan.
-        git checkout -q HEAD -- "$relpath" 2>/dev/null || \
-          git show "HEAD:$relpath" > "$relpath" 2>/dev/null
-      else
+    else
+      # 3-way. Keep a copy of the pre-3way content: a failed or conflicted
+      # attempt can leave unmerged index entries and conflict markers, which
+      # must be undone before the relaxed ladder without touching the real
+      # worktree content the relaxed apply is meant to work against.
+      local pre_3way
+      pre_3way="$(mktemp)"
+      cp "$relpath" "$pre_3way" 2>/dev/null || true
+      if git apply --3way < "$sidecar" 2>/dev/null \
+         && [[ -z $(git ls-files -u "$relpath" 2>/dev/null) ]]; then
         applied=1
         method="3way"
+      else
+        git reset -q HEAD -- "$relpath" 2>/dev/null || true
+        cp "$pre_3way" "$relpath" 2>/dev/null || true
       fi
-    # Relaxed context (but never zero; zero context can match the wrong file).
-    else
-      local ctx
-      for ctx in 2 1; do
-        if git apply -C"$ctx" --check < "$sidecar" 2>/dev/null; then
-          git apply -C"$ctx" < "$sidecar"
-          applied=1
-          method="relaxed C$ctx"
-          break
-        fi
-      done
+      rm -f "$pre_3way"
+
+      # Relaxed context (but never zero; zero context can match the wrong file).
+      if [[ $applied -eq 0 ]]; then
+        local ctx
+        for ctx in 2 1; do
+          if git apply -C"$ctx" --check < "$sidecar" 2>/dev/null; then
+            git apply -C"$ctx" < "$sidecar"
+            applied=1
+            method="relaxed -C$ctx"
+            break
+          fi
+        done
+      fi
     fi
 
     if [[ $applied -eq 0 ]]; then
@@ -281,9 +290,10 @@ patches_reapply() {
       continue
     fi
 
-    # Degraded reapply: rewrite the sidecar so overlay checks and subtraction
-    # stay consistent against the new HEAD.
+    # Degraded reapply: log the method, then rewrite the sidecar so overlay
+    # checks and subtraction stay consistent against the new HEAD.
     if [[ "$method" != "exact" ]]; then
+      ui_warn "patches_reapply: '$relpath' reapplied via degraded method ($method); sidecar refreshed."
       git diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar"
       rewritten+=("$relpath")
     fi

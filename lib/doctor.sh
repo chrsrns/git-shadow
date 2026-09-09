@@ -209,6 +209,8 @@ doctor_annotations_check() {
 }
 
 # Warn when .git-shadow/patches/ sidecars cannot be applied to HEAD.
+# The oracle is the committed HEAD content, not the working tree: an
+# applied overlay is the normal state and must not warn.
 # This flags orphan or stale local patches before a reapply tries to use them.
 doctor_patches_check() {
   local dir=".git-shadow/patches"
@@ -217,15 +219,29 @@ doctor_patches_check() {
     return 0
   fi
 
+  local probe
+  probe="$(mktemp -d)"
+
   local issues=0 sidecar relpath
   while IFS= read -r -d '' sidecar; do
     relpath="${sidecar#$dir/}"
     relpath="${relpath%.patch}"
-    if ! git apply --check < "$sidecar" >/dev/null 2>&1; then
+
+    rm -rf "$probe/tree"
+    mkdir -p "$probe/tree/$(dirname "$relpath")"
+    if ! git show "HEAD:$relpath" > "$probe/tree/$relpath" 2>/dev/null; then
+      ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
+      issues=1
+      continue
+    fi
+    cp "$sidecar" "$probe/tree/patch.patch"
+    if ! git -C "$probe/tree" apply --check patch.patch >/dev/null 2>&1; then
       ui_warn "patches: orphan sidecar '$sidecar' for '$relpath' cannot apply to HEAD"
       issues=1
     fi
   done < <(find "$dir" -type f -name '*.patch' -print0 2>/dev/null)
+
+  rm -rf "$probe"
 
   if [[ $issues -eq 0 ]]; then
     ui_ok "patches: no orphan sidecars"

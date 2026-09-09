@@ -41,6 +41,16 @@ teardown() {
   [ -f "${TEST_DIR}/.git-shadow/patches/file.txt.patch" ]
 }
 
+@test "doctor reports no orphan sidecar when a patch overlay is applied" {
+  git shadow feature start healthy >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+
+  # An applied overlay is the normal state; doctor must not flag it.
+  run git shadow doctor
+  [[ "$output" == *"patches: no orphan sidecars"* ]]
+}
+
 @test "doctor warns about orphan patch sidecar" {
   git shadow feature start warned >/dev/null
   printf 'A\nB local\nC\n' > file.txt

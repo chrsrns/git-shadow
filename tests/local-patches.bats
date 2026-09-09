@@ -204,6 +204,29 @@ teardown() {
   [ "$status" -ne 0 ]
 }
 
+@test "local apply logs the degraded reapply method" {
+  git shadow feature start degraded >/dev/null
+  seq 1 20 > file.txt
+  git add file.txt
+  git commit -qm "feat: expand file"
+
+  echo "LOCAL" >> file.txt
+  git shadow local add file.txt >/dev/null
+
+  # Drift a hunk context line in HEAD so the exact apply fails but a
+  # three-way merge can still place the appended line.
+  git checkout -q HEAD -- file.txt
+  sed -i 's/^19$/nineteen/' file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "feat: rename nineteen"
+
+  run git shadow local apply
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"3way"* ]]
+  [ "$(tail -1 file.txt)" = "LOCAL" ]
+  [ "$(git log -1 --format='%s')" = "[MEMORY] reapply local patches" ]
+}
+
 @test "local apply reapplies all stored sidecars" {
   git shadow feature start my-feature
   echo "local edit" >> file.txt

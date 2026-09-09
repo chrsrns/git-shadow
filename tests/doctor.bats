@@ -165,6 +165,31 @@ EOF
   [[ "$output" == *"pre-push"* ]]
 }
 
+@test "doctor reports hooks up to date after install-hooks" {
+  git shadow install-hooks
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"up to date"* ]]
+}
+
+@test "doctor warns when pre-commit hook block is stale" {
+  git shadow install-hooks
+  sed -i '/^# git-shadow pre-commit hook$/a # stale' .git/hooks/pre-commit
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit"* ]]
+  [[ "$output" == *"install-hooks"* ]]
+}
+
+@test "doctor warns when pre-push hook block is stale" {
+  git shadow install-hooks
+  sed -i '/^# git-shadow pre-push hook$/a # stale' .git/hooks/pre-push
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-push"* ]]
+  [[ "$output" == *"install-hooks"* ]]
+}
+
 # ---------------------------------------------------------------------------
 # Unpromoted files check
 # ---------------------------------------------------------------------------

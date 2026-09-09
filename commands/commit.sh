@@ -165,6 +165,10 @@ for path in "${STAGED[@]}"; do
       ui_error "Staged content for '$relpath' does not match the stored local patch. Refresh with 'git shadow local add'."
       exit 1
     fi
+    if [[ "${PATCHES_SUBTRACT_REMOVED_TRIPLE:-0}" -eq 1 || "${PATCHES_SUBTRACT_REMOVED_LOCAL:-0}" -eq 1 ]]; then
+      ui_error "Staged file '$relpath' has both a local patch overlay and /// or // @local markers. Remove the patch sidecar with 'git shadow local rm $relpath' before committing markers, or convert the markers to local-only content."
+      exit 1
+    fi
     work_tmp="$public_tmp"
   fi
 

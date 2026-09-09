@@ -210,6 +210,21 @@ teardown() {
   [ "$status" -eq 0 ]
 }
 
+@test "commit: aborts when a staged file has both a patch overlay and markers" {
+  git shadow feature start my-feature
+
+  # Create a local patch sidecar that itself contains a marker line.
+  printf 'public before\n/// local note\nlocal overlay\npublic after\n' > file.txt
+  git shadow local add file.txt
+
+  # Stage the source and commit.
+  git add file.txt
+  run git shadow commit -m "add note"
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"local patch overlay"* ]]
+  [[ "$output" == *"/// or // @local"* ]]
+}
+
 @test "commit: keeps /// markers in deeply nested .git-shadow/ paths" {
   git shadow feature start my-feature
   mkdir -p .git-shadow/config.d/nested

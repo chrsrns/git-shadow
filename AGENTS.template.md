@@ -27,7 +27,7 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
 - The sidecar is committed as `[MEMORY]` and the source file in the working tree keeps the local change applied.
 - Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
 - Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
-- Use `git shadow local diff [<path>...]` to print one sidecar or all sidecars.
+- Use `git shadow local diff [path]` to print one sidecar or all sidecars.
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
 

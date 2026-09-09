@@ -50,7 +50,7 @@ git shadow push feature/x
 - `git shadow local add <path>` — store local-only edits to a public-tracked file as `.git-shadow/patches/<relpath>.patch`; sidecar committed as `[MEMORY]`, source file stays modified.
 - `git shadow local apply` — reapply all sidecars after sync, re-anchor, or checkout.
 - `git shadow local rm [--revert] <path>` — remove sidecar; `--revert` restores source to `HEAD`.
-- `git shadow local diff [<path>...]` — print one or all sidecars.
+- `git shadow local diff [path]` — print one or all sidecars.
 - `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
 

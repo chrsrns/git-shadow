@@ -52,9 +52,11 @@ teardown() {
   GIT_SHADOW=1 git commit -qm "chore: change B"
   git checkout -q warned@local
   # Make the sidecar unappliable to HEAD by deleting B entirely.
+  # Bypass the sidecar guard: this synthetic orphan setup diverges the
+  # source on purpose and is not a user-facing commit path.
   printf 'A\nC\n' > file.txt
   git add file.txt
-  git commit -qm "[MEMORY] orphan patch"
+  GIT_SHADOW=1 git commit -qm "[MEMORY] orphan patch"
   git shadow local apply >/dev/null 2>&1 || true
   run git shadow doctor
   [ "$status" -eq 1 ]

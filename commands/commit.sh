@@ -289,7 +289,7 @@ done
 # Public commit, if the public index now differs from HEAD.
 PUBLIC_SHA=""
 if ! git diff --cached --quiet; then
-  PUBLIC_SHA="$(git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
+  PUBLIC_SHA="$(env GIT_SHADOW=1 git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
   if [[ -z "$PUBLIC_SHA" ]]; then
     PUBLIC_SHA="$(git rev-parse HEAD)"
   fi

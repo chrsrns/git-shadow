@@ -11,6 +11,7 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 enter_project '.'
+patches_require_no_paused_op
 
 PATH_ARG="${1:-}"
 

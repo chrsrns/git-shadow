@@ -71,6 +71,16 @@ guard_staged_files() {
       .git-shadow/annotations/* | .git-shadow/patches/*) continue ;;
     esac
 
+    # A public-tracked file that has a patch sidecar carries a local
+    # overlay; a plain commit would leak it. Force 'git shadow commit'
+    # so the overlay is subtracted from the staged blob.
+    if [[ -f ".git-shadow/patches/$path.patch" ]] || \
+       git cat-file -e "HEAD:.git-shadow/patches/$path.patch" 2>/dev/null; then
+      echo "[git-shadow] Staged file $path has a local patch sidecar (.git-shadow/patches/$path.patch)." >&2
+      echo "Run 'git shadow commit' to subtract the local overlay, or 'git shadow local rm $path' to drop it." >&2
+      return 1
+    fi
+
     # Binary files cannot be scanned for marker lines.
     local numstat
     numstat="$(git diff --cached --numstat -- "$path" | head -1)"

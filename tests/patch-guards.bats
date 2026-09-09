@@ -52,3 +52,55 @@ teardown() {
   [ "$status" -eq 1 ]
   [[ "$output" == *".git-shadow"* ]]
 }
+
+@test "guard_staged_files rejects a staged file that has a patch sidecar" {
+  git shadow feature start sidecar-guard >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  git add file.txt
+  run guard_staged_files
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sidecar"* ]]
+  [[ "$output" == *"git shadow commit"* ]]
+}
+
+@test "pre-commit hook rejects a staged file with a patch sidecar" {
+  git shadow feature start hook-guard >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  git add file.txt
+  run git commit -qm "leak attempt"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sidecar"* ]]
+}
+
+@test "git shadow commit succeeds on a staged file that has a patch sidecar" {
+  git shadow feature start own-op >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  git add file.txt
+  run git shadow commit -m "public work"
+  [ "$status" -eq 0 ]
+  run git show HEAD:file.txt
+  [[ "$output" == *$'A\nB\nC'* ]]
+}
+
+@test "local diff refuses to run while a sync is paused" {
+  git shadow feature start diff-paused >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  echo "mode=feature" > .git/git-shadow-sync
+  run git shadow local diff file.txt
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sync"* ]]
+}
+
+@test "local diff refuses to run while a finish is paused" {
+  git shadow feature start diff-paused2 >/dev/null
+  printf 'A\nB local\nC\n' > file.txt
+  git shadow local add file.txt >/dev/null
+  echo "phase=base-diff" > .git/git-shadow-finish
+  run git shadow local diff
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"finish"* ]]
+}

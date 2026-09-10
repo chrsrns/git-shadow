@@ -70,13 +70,23 @@ Do not commit on `<base>@local` first — there is no base publish path; publish
 ### After merge
 
 ```bash
+# On <name>@local in the main checkout:
 git shadow feature finish
-git shadow push main
+
+# Or, from a checkout of the base (public or @local):
+git shadow feature finish <name>
+
+git shadow push <public-base-branch>
 ```
 
 If the feature lives in a worktree, `git shadow feature finish` removes the worktree before deleting
 the feature branches — use `--keep-worktree` to keep both it and `feature/x@local`.
 A dirty worktree or a `cd` inside it aborts `finish` before any change.
+
+`--keep-worktree` and `--keep-branches` are stored in the paused finish state, so
+`git shadow feature finish --continue` and `git shadow feature finish --mark-applied`
+honor the original intent. Re-supplying either flag on `--continue` or `--mark-applied`
+widens the stored value to `1`; it never narrows a stored `1` back to `0`.
 
 `WORKTREE_ROOT` is the parent directory for `--worktree` worktrees and is empty by default.
 Configure it once per project or user:

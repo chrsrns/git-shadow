@@ -35,6 +35,8 @@ finish_save_state() {
     echo "range_start=$8"
     echo "range_end=$9"
     echo "pids=${10}"
+    echo "keep_worktree=${11}"
+    echo "keep_branches=${12}"
   } > "$file"
 }
 
@@ -58,6 +60,8 @@ finish_load_state() {
       range_start)     FINISH_RANGE_START="$value" ;;
       range_end)       FINISH_RANGE_END="$value" ;;
       pids)            FINISH_PIDS="$value" ;;
+      keep_worktree)   FINISH_KEEP_WORKTREE="$value" ;;
+      keep_branches)   FINISH_KEEP_BRANCHES="$value" ;;
     esac
   done < "$file"
   return 0

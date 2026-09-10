@@ -544,6 +544,46 @@ _setup_finished_worktree_feature() {
   git show-ref --verify --quiet "refs/heads/wt-feat@local"
 }
 
+@test "paused feature finish --keep-worktree survives --continue" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+
+  # A [MEMORY] on the feature that collides with an independent change on
+  # main@local triggers the memory-replay pause.
+  echo "feature memory" > "$TEST_DIR/wt-feat/file.txt"
+  git -C "$TEST_DIR/wt-feat" add file.txt
+  git -C "$TEST_DIR/wt-feat" commit -qm "[MEMORY] collide"
+  echo "base memory" > file.txt
+  git add file.txt
+  git commit -qm "chore: independent base change"
+
+  run git shadow feature finish wt-feat --no-pull --keep-worktree
+  [ "$status" -eq 1 ]
+  [ -d "$TEST_DIR/wt-feat" ]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=memory-replay" "$state_file"
+  grep -q "keep_worktree=1" "$state_file"
+
+  # Resolve the conflict in the base checkout (main@local).
+  echo "resolved" > file.txt
+  git add file.txt
+
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  [ ! -f "$state_file" ]
+
+  # Worktree and @local branch remain; public branch is deleted.
+  [ -d "$TEST_DIR/wt-feat" ]
+  current="$(git -C "$TEST_DIR/wt-feat" branch --show-current)"
+  [ "$current" = "wt-feat@local" ]
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat"
+
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
 @test "feature finish aborts when a base branch is held by another worktree" {
   _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
   # Hold main@local in a second worktree; run finish from main.

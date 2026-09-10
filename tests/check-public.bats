@@ -121,3 +121,53 @@ teardown() {
   run git shadow check public test-feature
   [ "$status" -eq 0 ]
 }
+
+@test "check public exits 0 for public .git-shadow/agent-policy.yaml" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
+  git shadow feature publish
+
+  git checkout -q test-feature
+  mkdir -p .git-shadow
+  echo "version: 1" > .git-shadow/agent-policy.yaml
+  git add .git-shadow/agent-policy.yaml
+  GIT_SHADOW=1 git commit -q -m "docs: add agent policy"
+
+  run git shadow check public test-feature
+  [ "$status" -eq 0 ]
+}
+
+@test "check public rejects .git-shadow/annotations/ on public branch" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
+  git shadow feature publish
+
+  git checkout -q test-feature
+  mkdir -p .git-shadow/annotations
+  echo "note" > .git-shadow/annotations/notes.md
+  git add .git-shadow/annotations/notes.md
+  GIT_SHADOW=1 git commit -q -m "bad: leaked annotation sidecar"
+
+  run git shadow check public test-feature
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".git-shadow/annotations/notes.md"* ]]
+}
+
+@test "check public rejects .git-shadow/patches/ on public branch" {
+  echo "feature code" > feature.txt
+  git add feature.txt
+  git commit -q -m "feat: feature code"
+  git shadow feature publish
+
+  git checkout -q test-feature
+  mkdir -p .git-shadow/patches
+  echo "patch" > .git-shadow/patches/file.txt.patch
+  git add .git-shadow/patches/file.txt.patch
+  GIT_SHADOW=1 git commit -q -m "bad: leaked patch sidecar"
+
+  run git shadow check public test-feature
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".git-shadow/patches/file.txt.patch"* ]]
+}

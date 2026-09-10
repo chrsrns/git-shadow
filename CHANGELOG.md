@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.5] — 2026-09-10
+
+### Fixed
+
+- `git shadow check public` no longer rejects public `.git-shadow/` paths such as `.git-shadow/agent-policy.yaml`. It now only fails on the local-only subtrees `.git-shadow/annotations/` and `.git-shadow/patches/`, matching V50 and V51.
+
 ## [1.3.4] — 2026-09-10
 
 ### Fixed

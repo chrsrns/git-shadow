@@ -249,7 +249,8 @@ finish_memory_replay() {
     finish_save_state \
       "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE" \
       "$PRE_FINISH_HEAD" "memory-replay" "$sha" \
-      "${remaining[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
+      "${remaining[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE" \
+      "$KEEP_WORKTREE" "$KEEP_BRANCHES"
 
     if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git apply --3way --allow-empty; then
       local conflicted
@@ -445,10 +446,16 @@ if [[ -n "$MARK_APPLIED" ]]; then
       done
       local conflicted="$FINISH_CONFLICTED_SHA"
       [[ "$conflicted" == "$target_sha" ]] && conflicted=""
+      local keep_wt=0 keep_br=0
+      [[ "${FINISH_KEEP_WORKTREE:-0}" == "1" ]] && keep_wt=1
+      [[ "$KEEP_WORKTREE" -eq 1 ]] && keep_wt=1
+      [[ "${FINISH_KEEP_BRANCHES:-0}" == "1" ]] && keep_br=1
+      [[ "$KEEP_BRANCHES" -eq 1 ]] && keep_br=1
       finish_save_state \
         "$FINISH_FEATURE_PUBLIC" "$FINISH_FEATURE_LOCAL" "$local_base" \
         "$new_sha" "$FINISH_PHASE" "$conflicted" \
-        "${remaining[*]}" "$FINISH_RANGE_START" "$FINISH_RANGE_END" "$FINISH_PIDS"
+        "${remaining[*]}" "$FINISH_RANGE_START" "$FINISH_RANGE_END" "$FINISH_PIDS" \
+        "$keep_wt" "$keep_br"
       ui_ok "Recorded provenance for $target_sha and updated paused finish state."
     else
       ui_ok "Recorded provenance for $target_sha on '$local_base'."
@@ -489,6 +496,10 @@ if [[ "$CONTINUE" -eq 1 ]]; then
   RANGE_START="$FINISH_RANGE_START"
   RANGE_END="$FINISH_RANGE_END"
   PIDS_BASE="$FINISH_PIDS"
+
+  # Widen stored keep flags with any flags re-supplied on --continue.
+  [[ "${FINISH_KEEP_WORKTREE:-0}" == "1" ]] && KEEP_WORKTREE=1
+  [[ "${FINISH_KEEP_BRANCHES:-0}" == "1" ]] && KEEP_BRANCHES=1
 
   _finish_continue_body() {
     if [[ "$FINISH_PHASE" == "base-diff" ]]; then
@@ -720,7 +731,8 @@ _finish_normal_body() {
       finish_save_state \
         "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$LOCAL_BASE" \
         "$PRE_FINISH_HEAD" "base-diff" "" \
-        "${MEMORY_SHAS[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE"
+        "${MEMORY_SHAS[*]}" "$RANGE_START" "$RANGE_END" "$PIDS_BASE" \
+        "$KEEP_WORKTREE" "$KEEP_BRANCHES"
 
       if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$CP_PUBLIC" "$PUBLIC_BASE_HEAD" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
         conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"

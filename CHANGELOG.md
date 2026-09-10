@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.4] — 2026-09-10
+
+### Fixed
+
+- `commands/feature/finish.sh` + `lib/finish-state.sh`: `--keep-worktree` and `--keep-branches` are now persisted through a paused `feature finish`. `feature finish --continue` and `feature finish --mark-applied` restore the stored values, and re-supplying a keep flag widens the stored value to `1` without ever narrowing it.
+
+### Changed
+
+- `AGENTS.md`, `AGENTS.template.md`, `AGENTS.template.ultra.md`: updated after-merge finish workflow to document the `feature finish <name>` variant and keep-flag persistence semantics.
+
 ## [1.3.3] — 2026-09-10
 
 ### Added

@@ -224,7 +224,7 @@ EOF
 
   if [[ "$cp_public" == "$public_head" ]]; then
     _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
-    ui_ok "$label '$local_branch' is already up to date."
+    ui_ok "$label '$local_branch' is already up to date with '$public_branch'."
     return 0
   fi
 
@@ -251,7 +251,7 @@ EOF
 
     if [[ "$new_ancestor" == "$public_head" ]]; then
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
-      ui_ok "$label '$local_branch' is already up to date (recovered)."
+      ui_ok "$label '$local_branch' is already up to date with '$public_branch' (recovered)."
       return 0
     fi
 

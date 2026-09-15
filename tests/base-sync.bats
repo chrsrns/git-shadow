@@ -191,6 +191,15 @@ EOF
   [[ "$output" == *"file.txt"* ]]
 }
 
+@test "base sync up-to-date message names the local base and public branches" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base 'main@local' is already up to date with 'main'"* ]]
+}
+
 @test "base sync refuses to run while a finish is paused" {
   echo "phase=base-diff" > .git/git-shadow-finish
   run git shadow base sync

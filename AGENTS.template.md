@@ -65,6 +65,16 @@ git shadow push feature/x
 - Public base force-pushed or rewritten, patch-ids do not match: `git shadow re-anchor feature/x@local`.
 - Release/hotfix directly on a public branch: `GIT_SHADOW=1 git commit` on `main`, `git shadow push main`, then `git shadow base sync` absorbs it onto `main@local`.
 
+### Catching up a long-lived feature with an advanced base
+
+`git shadow base sync` only updates `<base>@local`. `git shadow feature sync` only applies the feature's own public-branch changes. If `<base>` has advanced past a long-lived feature, catch up manually:
+
+1. Update the local base: `git checkout <base>@local` && `git shadow base sync`.
+2. Rebase the public feature branch onto the new public base: `git checkout <name>` && `git rebase <base>` (resolve, then `git rebase --continue`). This is safe only if the feature has not been pushed; if it has, use `GIT_SHADOW=1 git merge --no-edit <base>` instead.
+3. Rebase the local feature branch onto the new local base: `git checkout <name>@local` && `git rebase <base>@local` (resolve, then `git rebase --continue`).
+4. Re-anchor: `git shadow re-anchor <name>@local`.
+5. Verify with `git shadow status` and `git shadow check public <name>`, then `git shadow feature publish` && `git shadow push <name>`.
+
 Do not commit on `<base>@local` first — there is no base publish path; publishing exists only for feature branches.
 
 ### After merge

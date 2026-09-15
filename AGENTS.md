@@ -153,6 +153,49 @@ Use `--abort` to stop an in-progress sync.
 
 If the public branch was force-pushed or rewritten and patch-id recovery cannot match, use `git shadow re-anchor <branch@local>`.
 
+### Catching up a long-lived feature with an advanced base
+
+`git shadow base sync` only updates `<base>@local`. It does not pull new base commits into an existing feature branch. `git shadow feature sync` only applies changes from the feature's own public branch; it does not pull base commits.
+
+If `<base>` has advanced while your feature is still open, catch up manually:
+
+1. Update the local base:
+   ```bash
+   git checkout <base>@local
+   git shadow base sync
+   ```
+
+2. Rebase the public feature branch onto the new public base. This is safe only if the feature has not yet been pushed to a shared remote; if it has already been pushed, use `GIT_SHADOW=1 git merge --no-edit <base>` instead.
+   ```bash
+   git checkout <name>
+   git rebase <base>
+   # resolve conflicts, then:
+   git rebase --continue
+   ```
+
+3. Rebase the local feature branch onto the new local base:
+   ```bash
+   git checkout <name>@local
+   git rebase <base>@local
+   # resolve conflicts, then:
+   git rebase --continue
+   ```
+
+4. Re-anchor the checkpoint:
+   ```bash
+   git shadow re-anchor <name>@local
+   ```
+
+5. Verify, then publish/push as usual:
+   ```bash
+   git shadow status
+   git shadow check public <name>
+   git shadow feature publish
+   git shadow push <name>
+   ```
+
+Never force-push a public branch that already exists on a remote unless your repository's policy allows it and you bypass the pre-push hook with `GIT_SHADOW=1`.
+
 After the PR is merged:
 
 ```bash

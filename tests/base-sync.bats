@@ -23,13 +23,27 @@ teardown() {
 @test "base sync exits 1 when not on a local base branch" {
   run git shadow base sync
   [ "$status" -ne 0 ]
-  [[ "$output" == *"@local"* ]]
+  [[ "$output" == *"'git shadow base sync' must be run from the local base branch 'main@local'"* ]]
+  [[ "$output" == *"You are currently on 'main'."* ]]
+  [[ "$output" == *"Run 'git checkout main@local' to sync the base."* ]]
+}
+
+@test "base sync exits 1 from a feature @local branch and suggests feature sync" {
+  git shadow feature start feature/x
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'git shadow base sync' must be run from the local base branch 'main@local'"* ]]
+  [[ "$output" == *"You are currently on 'feature/x@local'."* ]]
+  [[ "$output" == *"Run 'git checkout main@local' to sync the base."* ]]
+  [[ "$output" == *"Or run 'git shadow feature sync' to sync this feature shadow branch."* ]]
 }
 
 @test "base sync creates main@local with initial checkpoint" {
   git checkout -q -b main@local
   run git shadow base sync
   [ "$status" -eq 0 ]
+  [[ "$output" == *"Created initial checkpoint for 'main@local' on 'main'"* ]]
 
   latest="$(git log -1 --format='%H' main@local)"
   subject="$(git log -1 --format='%s' "$latest")"
@@ -189,6 +203,31 @@ EOF
   [ "$(cat file.txt)" = "local" ]
   # The abort message names the discarded conflicting paths.
   [[ "$output" == *"file.txt"* ]]
+}
+
+@test "base sync synced message names the local base and public branches" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  git checkout -q main
+  echo "public change" >> file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "public change"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base 'main@local' synced with 'main'"* ]]
+  [ "$(cat file.txt)" = $'initial\npublic change' ]
+}
+
+@test "base sync up-to-date message names the local base and public branches" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base 'main@local' is already up to date with 'main'"* ]]
 }
 
 @test "base sync refuses to run while a finish is paused" {

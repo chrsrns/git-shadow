@@ -95,6 +95,28 @@ EOF
     return 1
   fi
 
+  local local_branch
+  local_branch="$(current_branch)"
+  if [[ -z "$local_branch" ]]; then
+    ui_error "Unable to determine current branch."
+    return 1
+  fi
+
+  local local_base_branch="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+
+  # Base mode only runs from the local base branch.
+  if [[ "$mode" == "base" ]]; then
+    if [[ "$local_branch" != "$local_base_branch" ]]; then
+      ui_error "'git shadow base sync' must be run from the local base branch '$local_base_branch'."
+      ui_info "You are currently on '$local_branch'."
+      ui_info "Run 'git checkout $local_base_branch' to sync the base."
+      if [[ "$local_branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+        ui_info "Or run 'git shadow feature sync' to sync this feature shadow branch."
+      fi
+      return 1
+    fi
+  fi
+
   # ---------------------------------------------------------------------------
   # --abort
   # ---------------------------------------------------------------------------
@@ -165,21 +187,13 @@ EOF
   # ---------------------------------------------------------------------------
   ensure_clean_repo
 
-  local local_branch
-  local_branch="$(current_branch)"
-  if [[ -z "$local_branch" ]]; then
-    ui_error "Unable to determine current branch."
-    return 1
-  fi
-
-  if [[ ! "$local_branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-    ui_error "$mode sync must be run from a branch ending with '${LOCAL_SUFFIX}'."
-    return 1
-  fi
-
-  # Feature mode refuses to sync the local base branch.
+  # Feature mode requires a @local branch and refuses the local base branch.
+  # (Base mode already validated above.)
   if [[ "$mode" == "feature" ]]; then
-    local local_base_branch="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+    if [[ ! "$local_branch" =~ ${LOCAL_SUFFIX}$ ]]; then
+      ui_error "$mode sync must be run from a branch ending with '${LOCAL_SUFFIX}'."
+      return 1
+    fi
     if [[ "$local_branch" == "$local_base_branch" ]]; then
       ui_error "'git shadow feature sync' is for feature shadow branches, not the local base branch '$local_base_branch'."
       return 1
@@ -206,7 +220,7 @@ EOF
       local local_head
       local_head="$(git rev-parse "$local_branch")"
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head")"
-      ui_ok "Created initial checkpoint for '$local_branch'."
+      ui_ok "Created initial checkpoint for '$local_branch' on '$public_branch'."
       return 0
     fi
     ui_error "No checkpoint found on '$local_branch'. Run 'git shadow feature start' or create one."
@@ -224,7 +238,7 @@ EOF
 
   if [[ "$cp_public" == "$public_head" ]]; then
     _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
-    ui_ok "$label '$local_branch' is already up to date."
+    ui_ok "$label '$local_branch' is already up to date with '$public_branch'."
     return 0
   fi
 
@@ -251,7 +265,7 @@ EOF
 
     if [[ "$new_ancestor" == "$public_head" ]]; then
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
-      ui_ok "$label '$local_branch' is already up to date (recovered)."
+      ui_ok "$label '$local_branch' is already up to date with '$public_branch' (recovered)."
       return 0
     fi
 

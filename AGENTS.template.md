@@ -67,7 +67,9 @@ git shadow push feature/x
 
 ### Catching up a long-lived feature with an advanced base
 
-`git shadow base sync` only updates `<base>@local`. `git shadow feature sync` only applies the feature's own public-branch changes. If `<base>` has advanced past a long-lived feature, catch up manually:
+`git shadow base sync` only updates `<base>@local`. `git shadow feature sync` only applies the feature's own public-branch changes. If `<base>` has advanced past a long-lived feature, catch up manually.
+
+> If you have active `git shadow local` patch overlays, save each sidecar first (`git shadow local diff <path> > <backup>` or copy `.git-shadow/patches/<relpath>.patch`), then remove it with `git shadow local rm --revert <path>`. After the re-anchor step, apply the saved patch and re-capture with `git shadow local add <path>`.
 
 1. Update the local base: `git checkout <base>@local` && `git shadow base sync`.
 2. Rebase the public feature branch onto the new public base: `git checkout <name>` && `git rebase <base>` (resolve, then `git rebase --continue`). This is safe only if the feature has not been pushed; if it has, use `GIT_SHADOW=1 git merge --no-edit <base>` instead.

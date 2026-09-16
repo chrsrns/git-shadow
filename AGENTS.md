@@ -157,7 +157,9 @@ If the public branch was force-pushed or rewritten and patch-id recovery cannot 
 
 `git shadow base sync` only updates `<base>@local`. It does not pull new base commits into an existing feature branch. `git shadow feature sync` only applies changes from the feature's own public branch; it does not pull base commits.
 
-If `<base>` has advanced while your feature is still open, catch up manually:
+If `<base>` has advanced while your feature is still open, catch up manually.
+
+> **Precondition:** If you have active `git shadow local` patch overlays, save each sidecar before the `git checkout` / `git rebase` steps below (`git shadow local diff <path> > <backup>` or copy `.git-shadow/patches/<relpath>.patch`), then remove the overlay with `git shadow local rm --revert <path>`. After `git shadow re-anchor <name>@local`, apply the saved patch, resolve any conflicts, and re-capture with `git shadow local add <path>`.
 
 1. Update the local base:
    ```bash

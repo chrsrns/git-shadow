@@ -66,6 +66,7 @@ git shadow push feature/x
 
 - `git shadow base sync` updates `<base>@local` only; `git shadow feature sync` only applies the feature's own public changes.
 - Base advanced past a long feature? Rebase `<name>` onto `<base>`, rebase `<name>@local` onto `<base>@local`, then `git shadow re-anchor <name>@local`. Merge instead of rebase if the public branch is already pushed.
+- Active `git shadow local` overlays? Save sidecars (`git shadow local diff <path> > <backup>` or copy `.git-shadow/patches/<relpath>.patch`), then `git shadow local rm --revert <path>` before the rebase steps. After re-anchor, apply saved patch and re-capture with `git shadow local add <path>`.
 - Verify with `git shadow status` and `git shadow check public <name>` before `git shadow feature publish` && `git shadow push <name>`.
 
 No base publish path; do not commit on `<base>@local` first.

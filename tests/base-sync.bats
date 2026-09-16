@@ -192,6 +192,22 @@ EOF
   [[ "$output" == *"file.txt"* ]]
 }
 
+@test "base sync synced message names the local base and public branches" {
+  git checkout -q -b main@local
+  git shadow base sync
+
+  git checkout -q main
+  echo "public change" >> file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -q -m "public change"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Base 'main@local' synced with 'main'"* ]]
+  [ "$(cat file.txt)" = $'initial\npublic change' ]
+}
+
 @test "base sync up-to-date message names the local base and public branches" {
   git checkout -q -b main@local
   git shadow base sync

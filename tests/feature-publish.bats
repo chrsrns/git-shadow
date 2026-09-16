@@ -13,6 +13,7 @@ setup() {
   echo "initial" > file.txt
   git add file.txt
   git commit -qm "initial"
+  git shadow config set PUBLIC_BASE_BRANCH develop --project-config >/dev/null
   git checkout -q -b "develop@local"
   git checkout -q develop
   # Create a feature branch pair and add a code commit

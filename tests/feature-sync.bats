@@ -11,6 +11,7 @@ setup() {
   echo "v1" > app.ts
   git add app.ts
   git commit -qm "initial"
+  git shadow config set PUBLIC_BASE_BRANCH develop --project-config >/dev/null
 
   # Ensure tests use the toolkit under test.
   TOOLKIT_ROOT="$(cd "$BATS_TEST_DIRNAME/.." && pwd)"

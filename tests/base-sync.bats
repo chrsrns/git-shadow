@@ -23,7 +23,20 @@ teardown() {
 @test "base sync exits 1 when not on a local base branch" {
   run git shadow base sync
   [ "$status" -ne 0 ]
-  [[ "$output" == *"@local"* ]]
+  [[ "$output" == *"'git shadow base sync' must be run from the local base branch 'main@local'"* ]]
+  [[ "$output" == *"You are currently on 'main'."* ]]
+  [[ "$output" == *"Run 'git checkout main@local' to sync the base."* ]]
+}
+
+@test "base sync exits 1 from a feature @local branch and suggests feature sync" {
+  git shadow feature start feature/x
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"'git shadow base sync' must be run from the local base branch 'main@local'"* ]]
+  [[ "$output" == *"You are currently on 'feature/x@local'."* ]]
+  [[ "$output" == *"Run 'git checkout main@local' to sync the base."* ]]
+  [[ "$output" == *"Or run 'git shadow feature sync' to sync this feature shadow branch."* ]]
 }
 
 @test "base sync creates main@local with initial checkpoint" {

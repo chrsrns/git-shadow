@@ -53,6 +53,7 @@ EOF
 
   git add .
   git commit -qm "initial public commit"
+  git shadow config set PUBLIC_BASE_BRANCH master --project-config >/dev/null
 
   # Simulate the existing master@local with [MEMORY] commits that baked
   # local-only tweaks into public-tracked files.

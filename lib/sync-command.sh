@@ -206,7 +206,7 @@ EOF
       local local_head
       local_head="$(git rev-parse "$local_branch")"
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head")"
-      ui_ok "Created initial checkpoint for '$local_branch'."
+      ui_ok "Created initial checkpoint for '$local_branch' on '$public_branch'."
       return 0
     fi
     ui_error "No checkpoint found on '$local_branch'. Run 'git shadow feature start' or create one."

@@ -30,6 +30,7 @@ teardown() {
   git checkout -q -b main@local
   run git shadow base sync
   [ "$status" -eq 0 ]
+  [[ "$output" == *"Created initial checkpoint for 'main@local' on 'main'"* ]]
 
   latest="$(git log -1 --format='%H' main@local)"
   subject="$(git log -1 --format='%s' "$latest")"

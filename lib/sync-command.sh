@@ -25,15 +25,18 @@ _sync_continue_body() {
 }
 
 # Callback for patches_transaction during a sync --abort.
-# Uses the SYNC_* state loaded by sync_command_run and the outer $conflicted
-# and $label variables for messages.
+# Arguments: <label> <mode> <conflicted>
+# Uses the SYNC_* state loaded by sync_command_run.
 _sync_abort_body() {
+  local label="$1"
+  local mode="$2"
+  local conflicted="$3"
   git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
   git reset --hard "$SYNC_LOCAL_HEAD"
   sync_clear_state
   ui_ok "${label} sync aborted."
   ui_info "Aborted sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
-  if [[ -n "${conflicted:-}" ]]; then
+  if [[ -n "$conflicted" ]]; then
     ui_info "Discarded conflicting paths: $conflicted"
   fi
   ui_info "Restart with 'git shadow $mode sync'; the paused state is cleared (--continue/--abort no longer apply)."
@@ -131,7 +134,7 @@ EOF
     fi
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
-    if ! patches_transaction _sync_abort_body; then
+    if ! patches_transaction _sync_abort_body "$label" "$mode" "$conflicted"; then
       return 1
     fi
     return 0

@@ -35,10 +35,31 @@ _worktree_expand_tilde() {
   fi
 }
 
-# Print the registered worktree paths, one per line, from
-# `git worktree list --porcelain`.
+# Print one `path<TAB>branch` record per registered worktree from a single
+# `git worktree list --porcelain` parse. `branch` is `-` for a detached or
+# bare entry. Every registry consumer builds on these records so the
+# porcelain format is known in exactly one place (V168).
+worktree_records() {
+  local path="" branch="" line
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    case "$line" in
+      worktree\ *)          path="${line#worktree }" ;;
+      branch\ refs/heads/*) branch="${line#branch refs/heads/}" ;;
+      detached)             branch="-" ;;
+      bare)                 branch="-" ;;
+      "")
+        if [[ -n "$path" ]]; then
+          printf '%s\t%s\n' "$path" "${branch:--}"
+        fi
+        path=""; branch=""
+        ;;
+    esac
+  done < <(git worktree list --porcelain; printf '\n')
+}
+
+# Print the registered worktree paths, one per line, from worktree_records.
 _worktree_list_paths() {
-  git worktree list --porcelain | sed -n 's/^worktree //p'
+  worktree_records | cut -f1
 }
 
 # Print the worktree dir name for a branch: every '/' replaced by '-'.
@@ -166,20 +187,13 @@ worktree_is_dirty() {
 # Print the registered worktree path for <local_branch>, or return 1.
 worktree_find_for_branch() {
   local branch="$1"
-  local path=""
-  local line
-  while IFS= read -r line; do
-    case "$line" in
-      worktree\ *) path="${line#worktree }" ;;
-      branch\ refs/heads/*)
-        if [[ "${line#branch refs/heads/}" == "$branch" ]]; then
-          printf '%s\n' "$path"
-          return 0
-        fi
-        ;;
-      "") path="" ;;
-    esac
-  done < <(git worktree list --porcelain)
+  local path rec_branch
+  while IFS=$'\t' read -r path rec_branch; do
+    if [[ "$rec_branch" == "$branch" ]]; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done < <(worktree_records)
   return 1
 }
 
@@ -205,38 +219,22 @@ worktree_remove() {
   git worktree remove "$abs"
 }
 
-# Emit one 'path<TAB>branch' line for a worktree_orphans candidate: a
-# missing directory (stale, prune-able) or a registered @local branch
-# that no longer exists.
-_worktree_orphan_emit() {
-  local path="$1" branch="$2"
-  [[ -z "$path" ]] && return 0
-  if [[ ! -d "$path" ]]; then
-    printf '%s\t%s\n' "$path" "${branch:--}"
-    return 0
-  fi
-  if [[ -n "$branch" && "$branch" != "-" && "$branch" == *"${LOCAL_SUFFIX:-@local}" ]]; then
-    git show-ref --verify --quiet "refs/heads/$branch" || \
-      printf '%s\t%s\n' "$path" "$branch"
-  fi
-}
-
 # Print 'path<TAB>branch' for each registered worktree that is orphaned:
 # its directory is missing, or its @local branch no longer exists.
 # Read-only; used by `git shadow doctor`.
 worktree_orphans() {
-  local path="" branch="" line
-  while IFS= read -r line || [[ -n "$line" ]]; do
-    case "$line" in
-      worktree\ *)         path="${line#worktree }"; branch="" ;;
-      branch\ refs/heads/*) branch="${line#branch refs/heads/}" ;;
-      detached)            branch="-" ;;
-      "")
-        _worktree_orphan_emit "$path" "$branch"
-        path=""; branch=""
-        ;;
-    esac
-  done < <(git worktree list --porcelain; printf '\n')
+  local path branch
+  while IFS=$'\t' read -r path branch; do
+    [[ -z "$path" ]] && continue
+    if [[ ! -d "$path" ]]; then
+      printf '%s\t%s\n' "$path" "$branch"
+      continue
+    fi
+    if [[ "$branch" != "-" && "$branch" == *"${LOCAL_SUFFIX:-@local}" ]]; then
+      git show-ref --verify --quiet "refs/heads/$branch" || \
+        printf '%s\t%s\n' "$path" "$branch"
+    fi
+  done < <(worktree_records)
 }
 
 # git worktree remove requires git >= 2.17.

@@ -36,22 +36,16 @@ finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
   current_top="$(_worktree_abs "$(git rev-parse --show-toplevel)")"
-  local path="" line
-  while IFS= read -r line; do
-    case "$line" in
-      worktree\ *) path="${line#worktree }" ;;
-      branch\ refs/heads/*)
-        local held="${line#branch refs/heads/}"
-        if [[ "$path" != "$current_top" \
-           && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
-          ui_error "Base branch '$held' is checked out in another worktree: $path"
-          ui_info  "Run 'git shadow feature finish $feature_name' from that checkout, or free the branch first."
-          return 1
-        fi
-        ;;
-      "") path="" ;;
-    esac
-  done < <(git worktree list --porcelain)
+  local path held
+  while IFS=$'\t' read -r path held; do
+    [[ -z "$path" ]] && continue
+    if [[ "$path" != "$current_top" \
+       && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
+      ui_error "Base branch '$held' is checked out in another worktree: $path"
+      ui_info  "Run 'git shadow feature finish $feature_name' from that checkout, or free the branch first."
+      return 1
+    fi
+  done < <(worktree_records)
   return 0
 }
 

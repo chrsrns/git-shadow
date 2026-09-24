@@ -313,21 +313,15 @@ doctor_worktree_check() {
     done <<< "$orphans"
   fi
 
-  local path="" line
-  while IFS= read -r line; do
-    case "$line" in
-      worktree\ *) path="${line#worktree }" ;;
-      branch\ refs/heads/*)
-        local held="${line#branch refs/heads/}"
-        if [[ "$path" != "$current_top" && -d "$path" \
-           && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
-          ui_warn "worktree: '$path' holds base branch '$held'; base checkouts (feature finish) are blocked"
-          issues=1
-        fi
-        ;;
-      "") path="" ;;
-    esac
-  done < <(git worktree list --porcelain)
+  local path held
+  while IFS=$'\t' read -r path held; do
+    [[ -z "$path" ]] && continue
+    if [[ "$path" != "$current_top" && -d "$path" \
+       && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
+      ui_warn "worktree: '$path' holds base branch '$held'; base checkouts (feature finish) are blocked"
+      issues=1
+    fi
+  done < <(worktree_records)
 
   if [[ $issues -eq 0 ]]; then
     ui_ok "worktree: no stale or orphaned registrations"

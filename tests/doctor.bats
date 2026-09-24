@@ -320,3 +320,76 @@ EOF2
   [ "$status" -eq 1 ]
   [[ "$output" == *"orphan"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# doctor --fix
+# ---------------------------------------------------------------------------
+
+@test "doctor rejects unknown options and positional arguments" {
+  run git shadow doctor --bogus
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Usage:"* ]]
+
+  run git shadow doctor extra-arg
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Usage:"* ]]
+}
+
+@test "doctor --fix exits 0 on a healthy repository" {
+  git shadow install-hooks >/dev/null
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+}
+
+@test "doctor --fix prunes stale worktree registrations" {
+  git branch stale-br
+  git worktree add -q "$TEST_DIR/wt-stale" stale-br
+  rm -rf "$TEST_DIR/wt-stale"
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  ! git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-stale"
+}
+
+@test "doctor --fix refreshes a stale hook block" {
+  git shadow install-hooks >/dev/null
+  sed -i '/^# git-shadow pre-commit hook$/a # stale' .git/hooks/pre-commit
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  ! grep -qx "# stale" .git/hooks/pre-commit
+}
+
+@test "doctor --fix does not install missing hooks" {
+  rm -f .git/hooks/pre-commit
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [ ! -f .git/hooks/pre-commit ]
+}
+
+@test "doctor --fix warns on a failed repair and continues" {
+  git shadow install-hooks >/dev/null
+  sed -i '/^# git-shadow pre-commit hook$/a # stale' .git/hooks/pre-commit
+  sed -i '/^# git-shadow pre-push hook$/a # stale' .git/hooks/pre-push
+  chmod a-w .git/hooks/pre-commit
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"pre-commit"* ]]
+  # the failed pre-commit refresh did not stop the pre-push repair
+  ! grep -qx "# stale" .git/hooks/pre-push
+}
+
+@test "doctor --fix leaves orphan annotation sidecars report-only" {
+  mkdir -p .git-shadow/annotations
+  cat > .git-shadow/annotations/feature.txt <<'EOF2'
+## hunk abc123
+### search
+feature code
+### replace
+feature code
+/// lost note
+### orphan
+EOF2
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"orphan"* ]]
+  [ -f .git-shadow/annotations/feature.txt ]
+}

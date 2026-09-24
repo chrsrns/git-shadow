@@ -75,6 +75,12 @@ complete -c git-shadow -n "__fish_seen_subcommand_from base; and __fish_seen_sub
 complete -c git-shadow -n "__fish_seen_subcommand_from check; and not __fish_seen_subcommand_from public" -a public -d "audit a public branch for unpromoted files"
 
 # ---------------------------------------------------------------------------
+# doctor flags
+# ---------------------------------------------------------------------------
+
+complete -c git-shadow -n "__fish_seen_subcommand_from doctor" -l fix -d "apply mechanical repairs (prune stale worktrees, refresh stale hooks)"
+
+# ---------------------------------------------------------------------------
 # status flags
 # ---------------------------------------------------------------------------
 

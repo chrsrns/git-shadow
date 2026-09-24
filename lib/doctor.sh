@@ -9,9 +9,10 @@
 # -------------------------------------------------------------------
 
 DOCTOR_WARNINGS=0
+DOCTOR_FAILED_CHECKS=()
 
 _doctor_tally() {
-  "$@" || DOCTOR_WARNINGS=$((DOCTOR_WARNINGS + 1))
+  "$@" || { DOCTOR_WARNINGS=$((DOCTOR_WARNINGS + 1)); DOCTOR_FAILED_CHECKS+=("$1"); }
 }
 
 # Installed-version vs repo-version skew. Runs only when the current repo is
@@ -291,7 +292,8 @@ doctor_worktree_root_check() {
 
 # Warn on stale or orphaned worktree registrations, and on linked
 # worktrees that hold the public or local base branch (a base checkout by
-# feature finish is blocked there). Read-only: reports, never prunes.
+# feature finish is blocked there). Read-only: reports; pruning stale
+# registrations is `doctor --fix` only.
 doctor_worktree_check() {
   local issues=0
   local public_base="${PUBLIC_BASE_BRANCH:-main}"
@@ -334,6 +336,7 @@ doctor_worktree_check() {
 # count is non-zero (V101).
 doctor_run() {
   DOCTOR_WARNINGS=0
+  DOCTOR_FAILED_CHECKS=()
 
   _doctor_tally doctor_version_check
   _doctor_tally doctor_state_check
@@ -365,5 +368,102 @@ doctor_run() {
   _doctor_tally doctor_worktree_check
 
   printf 'doctor: %d warning(s)/error(s)\n' "$DOCTOR_WARNINGS"
+  return 0
+}
+
+# Print registered worktrees whose directory is missing (stale
+# registrations), one `path<TAB>branch` per line.
+doctor_stale_worktrees() {
+  local path branch
+  while IFS=$'\t' read -r path branch; do
+    [[ -z "$path" || -d "$path" ]] && continue
+    printf '%s\t%s\n' "$path" "$branch"
+  done < <(worktree_orphans)
+}
+
+# doctor --fix: apply only the mechanical repairs — `git worktree prune` for
+# stale registrations and regeneration of stale hook blocks (V171) — then
+# re-run the affected checks and set DOCTOR_WARNINGS to the post-fix count
+# (V172). A failed repair warns and is counted; the run continues (V174).
+# Missing or markerless hooks and orphan sidecars stay report-only.
+doctor_fix() {
+  doctor_run
+
+  local repairs_failed=0
+  local recheck_worktree=0
+  local recheck_hooks=0
+
+  # Stale worktree registrations: `prune` alone defaults to a 3-month expire
+  # and would leave fresh entries behind, so expire immediately.
+  local stale path branch
+  stale="$(doctor_stale_worktrees)"
+  if [[ -n "$stale" ]]; then
+    if git worktree prune --expire now; then
+      while IFS=$'\t' read -r path branch; do
+        [[ -n "$path" ]] && ui_ok "fix: pruned stale worktree registration '$path' (branch '$branch')"
+      done <<< "$stale"
+    else
+      ui_warn "fix: 'git worktree prune' failed"
+      repairs_failed=$((repairs_failed + 1))
+    fi
+    recheck_worktree=1
+  fi
+
+  # Stale hook blocks: regenerate in place via install_hook_file. Hooks that
+  # are missing or lack the git-shadow marker are not touched (report-only).
+  local hook_name marker shebang hook_file installed desired content spec
+  local -a hook_specs=(
+    "pre-commit:$HOOK_CHECK_MARKER:bash"
+    "pre-push:$HOOK_PRE_PUSH_MARKER:sh"
+  )
+  for spec in "${hook_specs[@]}"; do
+    hook_name="${spec%%:*}"
+    spec="${spec#*:}"
+    marker="${spec%%:*}"
+    shebang="${spec#*:}"
+    case "$hook_name" in
+      pre-commit) content="$(hook_pre_commit_content)" ;;
+      pre-push)   content="$(hook_pre_push_content)" ;;
+    esac
+    desired="$(hook_block_fresh "$marker" "$content")"
+
+    hook_file="$(detect_hook_file "$hook_name")"
+    [[ -f "$hook_file" ]] || continue
+    grep -Fq "$marker" "$hook_file" 2>/dev/null || continue
+    installed="$(hook_block_extract "$hook_file" "$marker")"
+    [[ "$installed" == "$desired" ]] && continue
+
+    recheck_hooks=1
+    # install_hook_file suppresses its own write failures under set -e when
+    # called in a condition, so verify the refreshed block explicitly.
+    if install_hook_file "$hook_name" "$marker" "$content" "$shebang" \
+       && [[ "$(hook_block_extract "$hook_file" "$marker")" == "$desired" ]]; then
+      :
+    else
+      ui_warn "fix: failed to refresh $hook_name hook ($hook_file)"
+      repairs_failed=$((repairs_failed + 1))
+    fi
+  done
+
+  # Post-fix count: baseline failures on unaffected checks carry over;
+  # repaired checks are re-run; each failed repair adds one.
+  local post=0 check
+  if [[ ${#DOCTOR_FAILED_CHECKS[@]} -gt 0 ]]; then
+    for check in "${DOCTOR_FAILED_CHECKS[@]}"; do
+      [[ "$check" == "doctor_hooks_check" && $recheck_hooks -eq 1 ]] && continue
+      [[ "$check" == "doctor_worktree_check" && $recheck_worktree -eq 1 ]] && continue
+      post=$((post + 1))
+    done
+  fi
+  if [[ $recheck_hooks -eq 1 ]]; then
+    doctor_hooks_check || post=$((post + 1))
+  fi
+  if [[ $recheck_worktree -eq 1 ]]; then
+    doctor_worktree_check || post=$((post + 1))
+  fi
+  post=$((post + repairs_failed))
+
+  DOCTOR_WARNINGS=$post
+  printf 'doctor: post-fix %d warning(s)/error(s)\n' "$post"
   return 0
 }

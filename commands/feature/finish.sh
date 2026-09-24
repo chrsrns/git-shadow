@@ -9,7 +9,7 @@ set -euo pipefail
 #          [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 usage() {
@@ -372,8 +372,7 @@ finish_finalize() {
 
   local -a pids=()
   [[ -n "$pids_base" ]] && read -ra pids <<< "$pids_base"
-  local new_checkpoint
-  if ! new_checkpoint="$(sync_reanchor_and_checkpoint "$local_base" "$public_base_head" "${pids[@]}")"; then
+  if ! sync_reanchor_and_checkpoint "$local_base" "$public_base_head" "${pids[@]}" >/dev/null; then
     return 1
   fi
 
@@ -648,6 +647,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     return 0
   }
 
+  # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
   PATCHES_REAPPLY_PAUSE=1
   if ! patches_transaction _finish_continue_body \
       "$LOCAL_BASE" "$PUBLIC_BASE" "$PUBLIC_BASE_HEAD" "$PRE_FINISH_HEAD" \
@@ -850,6 +850,7 @@ _finish_normal_body() {
   return 0
 }
 
+# shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
 PATCHES_REAPPLY_PAUSE=1
 if ! patches_transaction _finish_normal_body \
     "$PUBLIC_BASE" "$LOCAL_BASE" "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH"; then

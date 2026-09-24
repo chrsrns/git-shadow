@@ -7,7 +7,7 @@ set -euo pipefail
 #          from the current base checkpoint pair.
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 # ---------------------------------------------------------------------------

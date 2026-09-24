@@ -166,6 +166,7 @@ EOF
       return 1
     fi
 
+    # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
     PATCHES_REAPPLY_PAUSE=1
     if ! patches_transaction _sync_continue_body; then
       sync_save_state "$mode" "$SYNC_PUBLIC_BRANCH" "$SYNC_LOCAL_BRANCH" \
@@ -256,7 +257,7 @@ EOF
     ui_warn "Attempting to recover $mode sync from patch-id list."
     local pids_file
     pids_file="$(mktemp)"
-    # shellcheck disable=SC2064
+    # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
     trap 'rm -f "$pids_file"' RETURN
     printf '%s\n' $cp_pids | tr ' ' '\n' | grep -v '^$' > "$pids_file" || true
 
@@ -280,6 +281,7 @@ EOF
   # applied and re-applied before the final checkpoint. Pause mode leaves
   # 3-way conflict markers for --continue when the reapply conflicts.
   local SYNC_PIDS=""
+  # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
   PATCHES_REAPPLY_PAUSE=1
   if ! patches_transaction _sync_apply_body "$local_branch" "$public_branch" "$diff_start" "$public_head"; then
     local _tx_status=$?

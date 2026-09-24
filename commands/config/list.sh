@@ -6,7 +6,7 @@ set -euo pipefail
 # Purpose: list all known git-shadow configuration keys.
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/config-utils.sh"
 
 JSON=false

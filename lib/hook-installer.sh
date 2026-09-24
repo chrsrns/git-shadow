@@ -5,9 +5,11 @@
 # -------------------------------------------------------------------
 
 # Marker used inside the generated pre-commit hook.
+# shellcheck disable=SC2034  # read by install-hooks, doctor, and feature/publish hooks code
 HOOK_PRE_COMMIT_MARKER="# git-shadow pre-commit hook"
 
 # Marker used inside the generated pre-push hook.
+# shellcheck disable=SC2034  # read by install-hooks and doctor hook checks
 HOOK_PRE_PUSH_MARKER="# git-shadow pre-push hook"
 
 # Return the guard functions embedded in the pre-commit hook.

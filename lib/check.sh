@@ -169,6 +169,7 @@ check_tree_matches() {
 # failure and cleans up the temp branch.  The temp branch is left in place for
 # the caller on success.
 publish_replay_and_head() {
+  # shellcheck disable=SC2034  # part of the documented argument list; kept for call-site symmetry
   local public_branch="$1"
   local local_branch="$2"
   local checkpoint_public="$3"
@@ -203,8 +204,7 @@ publish_replay_and_head() {
   local original_branch
   original_branch="$(git branch --show-current)"
 
-  local replayed_branch
-  if ! replayed_branch="$(check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits)"; then
+  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits >/dev/null; then
     git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     return 1
   fi

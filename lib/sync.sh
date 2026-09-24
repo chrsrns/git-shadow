@@ -217,6 +217,7 @@ sync_load_state() {
   fi
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # shellcheck disable=SC2034  # the SYNC_* assignments below are state outputs read by lib/sync-command.sh and doctor.sh
     case "$key" in
       mode)               SYNC_MODE="$value" ;;
       public_branch)      SYNC_PUBLIC_BRANCH="$value" ;;

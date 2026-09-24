@@ -49,6 +49,7 @@ finish_load_state() {
   fi
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
+    # shellcheck disable=SC2034  # the FINISH_* assignments below are state outputs read by feature/finish.sh
     case "$key" in
       feature_public)  FINISH_FEATURE_PUBLIC="$value" ;;
       feature_local)   FINISH_FEATURE_LOCAL="$value" ;;

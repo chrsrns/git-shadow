@@ -8,7 +8,7 @@
 # using `git patch-id --stable`. Callers should not know the exact pipeline.
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ui.sh"
 
 # Print the stable patch-id for a single commit.

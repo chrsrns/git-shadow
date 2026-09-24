@@ -215,20 +215,22 @@ sync_load_state() {
   if [[ ! -f "$file" ]]; then
     return 1
   fi
+  local var
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
-    # shellcheck disable=SC2034  # the SYNC_* assignments below are state outputs read by lib/sync-command.sh and doctor.sh
+    var=""
     case "$key" in
-      mode)               SYNC_MODE="$value" ;;
-      public_branch)      SYNC_PUBLIC_BRANCH="$value" ;;
-      local_branch)       SYNC_LOCAL_BRANCH="$value" ;;
-      checkpoint_public)  SYNC_CHECKPOINT_PUBLIC="$value" ;;
-      checkpoint_local)   SYNC_CHECKPOINT_LOCAL="$value" ;;
-      diff_start)         SYNC_DIFF_START="$value" ;;
-      target_public)      SYNC_TARGET_PUBLIC="$value" ;;
-      local_head)         SYNC_LOCAL_HEAD="$value" ;;
-      pids)               SYNC_PIDS="$value" ;;
+      mode)               var=SYNC_MODE ;;
+      public_branch)      var=SYNC_PUBLIC_BRANCH ;;
+      local_branch)       var=SYNC_LOCAL_BRANCH ;;
+      checkpoint_public)  var=SYNC_CHECKPOINT_PUBLIC ;;
+      checkpoint_local)   var=SYNC_CHECKPOINT_LOCAL ;;
+      diff_start)         var=SYNC_DIFF_START ;;
+      target_public)      var=SYNC_TARGET_PUBLIC ;;
+      local_head)         var=SYNC_LOCAL_HEAD ;;
+      pids)               var=SYNC_PIDS ;;
     esac
+    [[ -n "$var" ]] && printf -v "$var" '%s' "$value"
   done < "$file"
   return 0
 }

@@ -47,23 +47,25 @@ finish_load_state() {
   if [[ ! -f "$file" ]]; then
     return 1
   fi
+  local var
   while IFS='=' read -r key value; do
     [[ -z "$key" || "$key" =~ ^# ]] && continue
-    # shellcheck disable=SC2034  # the FINISH_* assignments below are state outputs read by feature/finish.sh
+    var=""
     case "$key" in
-      feature_public)  FINISH_FEATURE_PUBLIC="$value" ;;
-      feature_local)   FINISH_FEATURE_LOCAL="$value" ;;
-      local_base)      FINISH_LOCAL_BASE="$value" ;;
-      pre_finish_head) FINISH_PRE_FINISH_HEAD="$value" ;;
-      phase)           FINISH_PHASE="$value" ;;
-      conflicted_sha)  FINISH_CONFLICTED_SHA="$value" ;;
-      remaining_shas)  FINISH_REMAINING_SHAS="$value" ;;
-      range_start)     FINISH_RANGE_START="$value" ;;
-      range_end)       FINISH_RANGE_END="$value" ;;
-      pids)            FINISH_PIDS="$value" ;;
-      keep_worktree)   FINISH_KEEP_WORKTREE="$value" ;;
-      keep_branches)   FINISH_KEEP_BRANCHES="$value" ;;
+      feature_public)  var=FINISH_FEATURE_PUBLIC ;;
+      feature_local)   var=FINISH_FEATURE_LOCAL ;;
+      local_base)      var=FINISH_LOCAL_BASE ;;
+      pre_finish_head) var=FINISH_PRE_FINISH_HEAD ;;
+      phase)           var=FINISH_PHASE ;;
+      conflicted_sha)  var=FINISH_CONFLICTED_SHA ;;
+      remaining_shas)  var=FINISH_REMAINING_SHAS ;;
+      range_start)     var=FINISH_RANGE_START ;;
+      range_end)       var=FINISH_RANGE_END ;;
+      pids)            var=FINISH_PIDS ;;
+      keep_worktree)   var=FINISH_KEEP_WORKTREE ;;
+      keep_branches)   var=FINISH_KEEP_BRANCHES ;;
     esac
+    [[ -n "$var" ]] && printf -v "$var" '%s' "$value"
   done < "$file"
   return 0
 }

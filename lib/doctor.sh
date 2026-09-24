@@ -373,7 +373,7 @@ doctor_run() {
 
 # Print registered worktrees whose directory is missing (stale
 # registrations), one `path<TAB>branch` per line.
-doctor_stale_worktrees() {
+_doctor_stale_worktrees() {
   local path branch
   while IFS=$'\t' read -r path branch; do
     [[ -z "$path" || -d "$path" ]] && continue
@@ -389,14 +389,15 @@ doctor_stale_worktrees() {
 doctor_fix() {
   doctor_run
 
-  local repairs_failed=0
+  local worktree_repair_failed=0
+  local hook_repairs_failed=0
   local recheck_worktree=0
   local recheck_hooks=0
 
   # Stale worktree registrations: `prune` alone defaults to a 3-month expire
   # and would leave fresh entries behind, so expire immediately.
   local stale path branch
-  stale="$(doctor_stale_worktrees)"
+  stale="$(_doctor_stale_worktrees)"
   if [[ -n "$stale" ]]; then
     if git worktree prune --expire now; then
       while IFS=$'\t' read -r path branch; do
@@ -404,7 +405,7 @@ doctor_fix() {
       done <<< "$stale"
     else
       ui_warn "fix: 'git worktree prune' failed"
-      repairs_failed=$((repairs_failed + 1))
+      worktree_repair_failed=$((worktree_repair_failed + 1))
     fi
     recheck_worktree=1
   fi
@@ -441,12 +442,13 @@ doctor_fix() {
       :
     else
       ui_warn "fix: failed to refresh $hook_name hook ($hook_file)"
-      repairs_failed=$((repairs_failed + 1))
+      hook_repairs_failed=$((hook_repairs_failed + 1))
     fi
   done
 
   # Post-fix count: baseline failures on unaffected checks carry over;
-  # repaired checks are re-run; each failed repair adds one.
+  # repaired checks are re-run; a failed repair adds a warning only when
+  # the re-run check did not already surface that failure (V174).
   local post=0 check
   if [[ ${#DOCTOR_FAILED_CHECKS[@]} -gt 0 ]]; then
     for check in "${DOCTOR_FAILED_CHECKS[@]}"; do
@@ -455,13 +457,16 @@ doctor_fix() {
       post=$((post + 1))
     done
   fi
+  local hook_fail=0 wt_fail=0
   if [[ $recheck_hooks -eq 1 ]]; then
-    doctor_hooks_check || post=$((post + 1))
+    doctor_hooks_check || hook_fail=1
   fi
   if [[ $recheck_worktree -eq 1 ]]; then
-    doctor_worktree_check || post=$((post + 1))
+    doctor_worktree_check || wt_fail=1
   fi
-  post=$((post + repairs_failed))
+  post=$((post + hook_fail + wt_fail))
+  [[ $hook_fail -eq 0 ]] && post=$((post + hook_repairs_failed))
+  [[ $wt_fail -eq 0 ]] && post=$((post + worktree_repair_failed))
 
   DOCTOR_WARNINGS=$post
   printf 'doctor: post-fix %d warning(s)/error(s)\n' "$post"

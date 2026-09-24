@@ -11,6 +11,19 @@ teardown() {
   rm -rf "$INSTALL_HOME" "$BIN_DIR"
 }
 
+# Clone TOOLKIT_ROOT into a bare repo that has a default `main` branch, so a
+# file:// clone of it produces a usable install dir. A bare clone of a
+# detached-HEAD checkout (e.g. a CI PR merge ref) has no branches and no
+# usable remote HEAD, which makes install.sh's update path fail.
+make_bare_toolkit() {
+  local bare_repo
+  bare_repo="$(mktemp -d)"
+  git clone --bare --quiet "$TOOLKIT_ROOT" "$bare_repo" 2>/dev/null
+  git -C "$bare_repo" branch -f main >/dev/null 2>&1
+  git -C "$bare_repo" symbolic-ref HEAD refs/heads/main
+  printf '%s\n' "$bare_repo"
+}
+
 # ---------------------------------------------------------------------------
 # Symlink / binary resolution (common to both curl and npm installs)
 # ---------------------------------------------------------------------------
@@ -37,8 +50,7 @@ teardown() {
 
 @test "install.sh: creates binary symlink in BIN_DIR" {
   local bare_repo
-  bare_repo="$(mktemp -d)"
-  git clone --bare --quiet "$TOOLKIT_ROOT" "$bare_repo" 2>/dev/null
+  bare_repo="$(make_bare_toolkit)"
 
   # Pre-clone so install.sh takes the "update" path (fetch from local bare repo)
   git clone --quiet "file://$bare_repo" "$INSTALL_HOME" 2>/dev/null
@@ -52,8 +64,7 @@ teardown() {
 
 @test "install.sh: installed binary is executable" {
   local bare_repo
-  bare_repo="$(mktemp -d)"
-  git clone --bare --quiet "$TOOLKIT_ROOT" "$bare_repo" 2>/dev/null
+  bare_repo="$(make_bare_toolkit)"
   git clone --quiet "file://$bare_repo" "$INSTALL_HOME" 2>/dev/null
 
   GIT_SHADOW_HOME="$INSTALL_HOME" GIT_SHADOW_BIN="$BIN_DIR" \
@@ -65,8 +76,7 @@ teardown() {
 
 @test "install.sh: installed binary runs correctly" {
   local bare_repo
-  bare_repo="$(mktemp -d)"
-  git clone --bare --quiet "$TOOLKIT_ROOT" "$bare_repo" 2>/dev/null
+  bare_repo="$(make_bare_toolkit)"
   git clone --quiet "file://$bare_repo" "$INSTALL_HOME" 2>/dev/null
 
   GIT_SHADOW_HOME="$INSTALL_HOME" GIT_SHADOW_BIN="$BIN_DIR" \
@@ -79,8 +89,7 @@ teardown() {
 
 @test "install.sh: re-run on existing install exits 0 (idempotent)" {
   local bare_repo
-  bare_repo="$(mktemp -d)"
-  git clone --bare --quiet "$TOOLKIT_ROOT" "$bare_repo" 2>/dev/null
+  bare_repo="$(make_bare_toolkit)"
   git clone --quiet "file://$bare_repo" "$INSTALL_HOME" 2>/dev/null
 
   GIT_SHADOW_HOME="$INSTALL_HOME" GIT_SHADOW_BIN="$BIN_DIR" \

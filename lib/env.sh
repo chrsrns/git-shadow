@@ -34,7 +34,7 @@ _load_config_file() {
   [[ -f "$file" ]] || return 0
 
   set -a
-  # shellcheck disable=SC1090,SC1091
+  # shellcheck disable=SC1090,SC1091  # sources a user-supplied config path resolved at runtime
   source "$file"
   set +a
 

@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage: git shadow feature sync [--recover] [--continue|--abort]
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 sync_command_run feature "$@"

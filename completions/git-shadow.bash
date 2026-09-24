@@ -70,6 +70,9 @@ _git_shadow() {
         esac
       fi
       ;;
+    doctor)
+      COMPREPLY=($(compgen -W "--fix" -- "$cur"))
+      ;;
     status)
       COMPREPLY=($(compgen -W "--json" -- "$cur"))
       ;;

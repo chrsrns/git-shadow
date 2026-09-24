@@ -7,9 +7,9 @@ set -euo pipefail
 # -------------------------------------------------------------------
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$LIB_DIR/config-utils.sh"
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$LIB_DIR/ui.sh"
 
 SCOPE=""

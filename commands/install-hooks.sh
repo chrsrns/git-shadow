@@ -8,7 +8,7 @@ set -euo pipefail
 
 # Environment setup
 TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$TOOLKIT_ROOT/lib/common.sh"
 
 # Install hooks in current repository only

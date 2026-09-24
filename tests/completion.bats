@@ -297,7 +297,7 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"re-anchor"* ]]
   [[ "$output" == *"push"* ]]
   [[ "$output" == *"check"* ]]
-  [[ "$output" != *"commit"* ]]
+  [[ "$output" == *"commit"* ]]
 }
 
 @test "fish completion suggests feature subcommands" {

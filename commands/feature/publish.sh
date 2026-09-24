@@ -7,7 +7,7 @@ set -euo pipefail
 #          corresponding public feature branch using the diff-sync model.
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 enter_project '.'

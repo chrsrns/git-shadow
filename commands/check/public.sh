@@ -8,7 +8,7 @@ set -euo pipefail
 # Usage: git shadow check public [<public-branch>]
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 enter_project '.'

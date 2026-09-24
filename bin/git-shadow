@@ -53,7 +53,7 @@ Diff-sync utilities for public/@local branch pairs.
 Commands:
   version
   install-hooks
-  doctor
+  doctor [--fix]
   status [--json]
   commit -m <message>
   show --with-annotations <file>

@@ -7,7 +7,7 @@ set -euo pipefail
 #          With --revert, reverse-apply the overlay before removing it.
 # -------------------------------------------------------------------
 
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
 
 enter_project '.'

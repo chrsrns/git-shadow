@@ -44,7 +44,7 @@ if command -v git >/dev/null 2>&1; then
   if [[ -d "$INSTALL_DIR/.git" ]]; then
     _info "Existing installation found at $INSTALL_DIR — updating..."
     git -C "$INSTALL_DIR" fetch --quiet origin
-    git -C "$INSTALL_DIR" reset --quiet --hard origin/main
+    git -C "$INSTALL_DIR" reset --quiet --hard FETCH_HEAD
     _success "Updated to latest version."
   else
     _info "Cloning into $INSTALL_DIR ..."
@@ -76,7 +76,7 @@ fi
 # ---------------------------------------------------------------------------
 
 chmod +x "$INSTALL_DIR/bin/git-shadow"
-find "$INSTALL_DIR/commands" "$INSTALL_DIR/lib" "$INSTALL_DIR/scripts" \
+find "$INSTALL_DIR/commands" "$INSTALL_DIR/lib" \
   -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
 
 # ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ _git_shadow() {
         base)       _git_shadow_base ;;
         check)      _git_shadow_check ;;
         config)     _git_shadow_config ;;
+        doctor)     _arguments '--fix[apply mechanical repairs: prune stale worktrees, refresh stale hooks]' ;;
         status)     _arguments '--json[output as JSON]' ;;
         commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' ;;
         show)       _arguments '--with-annotations[render the annotated view]' ;;

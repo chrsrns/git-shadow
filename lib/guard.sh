@@ -25,8 +25,9 @@ annotations_triple_excluded() {
   extglob_restore="$(shopt -p extglob)"
   set -f
   shopt -s extglob
-  # shellcheck disable=SC2206
+  # shellcheck disable=SC2206  # LOCAL_COMMENT_EXCLUDE is a space-separated glob list; word-splitting is intentional
   for pattern in $LOCAL_COMMENT_EXCLUDE; do
+    # shellcheck disable=SC2254  # LOCAL_COMMENT_EXCLUDE entries are intentionally glob patterns
     case "$relpath" in
       $pattern)
         if [[ "$old_flags" != *f* ]]; then
@@ -57,7 +58,7 @@ guard_staged_files() {
 
   local tmp_list
   tmp_list="$(mktemp -t git-shadow-guard-staged.XXXXXX)"
-  # shellcheck disable=SC2064
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -f "$tmp_list"; trap - RETURN' RETURN
 
   git diff --cached --name-only --diff-filter=ACMRT > "$tmp_list" 2>/dev/null || true

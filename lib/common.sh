@@ -7,56 +7,56 @@ set -euo pipefail
 # -------------------------------------------------------------------
 
 # Load environment config (three-tier: defaults / user / project)
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/env.sh"
 load_env
 
 # Load semantic UI helpers (colors, output functions)
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/ui.sh"
 
 # Load checkpoint parser / storage helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/checkpoint.sh"
 
 # Load diff-sync sync helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync.sh"
 
 # Load feature/base sync command flow
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sync-command.sh"
 
 # Load finish-state helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/finish-state.sh"
 
 # Load patch-id helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patch-id.sh"
 
 # Load local annotation helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/annotations.sh"
 
 # Load local marker guard helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/guard.sh"
 
 # Load git hook installer helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hook-installer.sh"
 
 # Load diff-sync check pass helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check.sh"
 
 # Load worktree lifecycle helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
 
 # Load local patch sidecar helpers
-# shellcheck disable=SC1091
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches.sh"
 
 # Resolve absolute paths

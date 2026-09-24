@@ -26,6 +26,7 @@ _worktree_abs() {
 # Expand a leading ~ or ~/ in a configured path to $HOME.
 _worktree_expand_tilde() {
   local path="$1"
+  # shellcheck disable=SC2088  # tildes are matched literally here and expanded manually below
   if [[ "$path" == "~" ]]; then
     printf '%s\n' "$HOME"
   elif [[ "$path" == "~/"* ]]; then

@@ -25,15 +25,18 @@ _sync_continue_body() {
 }
 
 # Callback for patches_transaction during a sync --abort.
-# Uses the SYNC_* state loaded by sync_command_run and the outer $conflicted
-# and $label variables for messages.
+# Arguments: <label> <mode> <conflicted>
+# Uses the SYNC_* state loaded by sync_command_run.
 _sync_abort_body() {
+  local label="$1"
+  local mode="$2"
+  local conflicted="$3"
   git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
   git reset --hard "$SYNC_LOCAL_HEAD"
   sync_clear_state
   ui_ok "${label} sync aborted."
   ui_info "Aborted sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
-  if [[ -n "${conflicted:-}" ]]; then
+  if [[ -n "$conflicted" ]]; then
     ui_info "Discarded conflicting paths: $conflicted"
   fi
   ui_info "Restart with 'git shadow $mode sync'; the paused state is cleared (--continue/--abort no longer apply)."
@@ -131,7 +134,7 @@ EOF
     fi
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
-    if ! patches_transaction _sync_abort_body; then
+    if ! patches_transaction _sync_abort_body "$label" "$mode" "$conflicted"; then
       return 1
     fi
     return 0
@@ -163,6 +166,7 @@ EOF
       return 1
     fi
 
+    # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
     PATCHES_REAPPLY_PAUSE=1
     if ! patches_transaction _sync_continue_body; then
       sync_save_state "$mode" "$SYNC_PUBLIC_BRANCH" "$SYNC_LOCAL_BRANCH" \
@@ -253,7 +257,7 @@ EOF
     ui_warn "Attempting to recover $mode sync from patch-id list."
     local pids_file
     pids_file="$(mktemp)"
-    # shellcheck disable=SC2064
+    # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
     trap 'rm -f "$pids_file"' RETURN
     printf '%s\n' $cp_pids | tr ' ' '\n' | grep -v '^$' > "$pids_file" || true
 
@@ -277,6 +281,7 @@ EOF
   # applied and re-applied before the final checkpoint. Pause mode leaves
   # 3-way conflict markers for --continue when the reapply conflicts.
   local SYNC_PIDS=""
+  # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
   PATCHES_REAPPLY_PAUSE=1
   if ! patches_transaction _sync_apply_body "$local_branch" "$public_branch" "$diff_start" "$public_head"; then
     local _tx_status=$?

@@ -208,7 +208,7 @@ _patches_path_is_applied_overlay() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  # shellcheck disable=SC2064
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
   mkdir -p "$tmp_dir/$(dirname "$relpath")"
@@ -293,7 +293,7 @@ patches_check() {
   local issues=0
   local probe
   probe="$(mktemp -d)"
-  # shellcheck disable=SC2064
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -rf "$probe"; trap - RETURN' RETURN
 
   for sidecar in "${sidecars[@]}"; do
@@ -502,7 +502,7 @@ patches_subtract() {
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
-  # shellcheck disable=SC2064
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
   local sidecar_file="$sidecar"
@@ -550,11 +550,13 @@ patches_subtract() {
   before="$(grep -cE "$LOCAL_COMMENT_PATTERN_TRIPLE" "$staged_file" 2>/dev/null || true)"
   after="$(grep -cE "$LOCAL_COMMENT_PATTERN_TRIPLE" "$out" 2>/dev/null || true)"
   if [[ "$before" -gt "$after" ]]; then
+    # shellcheck disable=SC2034  # output flag read by the caller of patches_subtract
     PATCHES_SUBTRACT_REMOVED_TRIPLE=1
   fi
   before="$(grep -cE "$LOCAL_COMMENT_PATTERN_LOCAL" "$staged_file" 2>/dev/null || true)"
   after="$(grep -cE "$LOCAL_COMMENT_PATTERN_LOCAL" "$out" 2>/dev/null || true)"
   if [[ "$before" -gt "$after" ]]; then
+    # shellcheck disable=SC2034  # output flag read by the caller of patches_subtract
     PATCHES_SUBTRACT_REMOVED_LOCAL=1
   fi
 }

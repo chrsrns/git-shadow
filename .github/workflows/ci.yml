@@ -14,15 +14,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats-core
+      - name: Install bats-core, zsh, fish, and shellcheck
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y bats
+          sudo apt-get install -y bats zsh fish shellcheck
 
       - name: Make scripts executable
         run: |
           chmod +x bin/git-shadow
-          find commands lib scripts -name "*.sh" -exec chmod +x {} \;
+          find commands lib -name "*.sh" -exec chmod +x {} \;
 
       - name: Add git-shadow to PATH
         run: echo "$PWD/bin" >> "$GITHUB_PATH"
@@ -31,6 +31,11 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.com"
+
+      - name: Shellcheck
+        run: |
+          shellcheck -S warning bin/git-shadow
+          find commands lib -name "*.sh" -exec shellcheck -S warning {} +
 
       - name: Run tests
         run: bats tests/*.bats

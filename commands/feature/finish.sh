@@ -305,7 +305,8 @@ finish_memory_replay() {
 }
 
 # Stage the working tree and commit the public→local base diff when the tree
-# changed. Shared by the fresh apply and the --continue resume paths.
+# changed. Used by the --continue resume of a paused base-diff phase, where the
+# diff was already applied and conflicts resolved manually.
 # Arguments: <local_base> <public_base> <range_start> <range_end> [source_branch]
 finish_base_diff_commit() {
   local local_base="$1" public_base="$2" range_start="$3" range_end="$4"
@@ -317,7 +318,7 @@ finish_base_diff_commit() {
 }
 
 # Fresh base-diff phase: record pause state, apply the public net diff, and
-# commit it via finish_base_diff_commit. On conflict the state stays written
+# commit it via sync_apply_and_commit. On conflict the state stays written
 # so --continue can resume.
 # Arguments: <feature_public> <feature_local> <local_base> <public_base>
 #            <pre_finish_head> <range_start> <range_end> <pids_base>
@@ -334,7 +335,7 @@ finish_base_diff_apply() {
     "$remaining_shas" "$range_start" "$range_end" "$pids_base" \
     "$KEEP_WORKTREE" "$KEEP_BRANCHES"
 
-  if ! sync_apply_range "$range_start" "$range_end"; then
+  if ! sync_apply_and_commit "$local_base" "$public_base" "$range_start" "$range_end" "$feature_public" >/dev/null; then
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
     ui_error "Conflict applying public base net diff to '$local_base'."
@@ -343,8 +344,6 @@ finish_base_diff_apply() {
     ui_info "Or run: git shadow feature finish --abort"
     return 1
   fi
-
-  finish_base_diff_commit "$local_base" "$public_base" "$range_start" "$range_end" "$feature_public"
   finish_clear_state
 }
 

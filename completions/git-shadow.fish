@@ -35,12 +35,14 @@ complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a config 
 # feature subcommands and flags
 # ---------------------------------------------------------------------------
 
-set -l feature_subcmds start publish finish sync
+set -l feature_subcmds start publish finish sync list
 
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a start   -d "create a new public/@local feature branch pair"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a publish -d "publish public commits from the @local feature branch"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a finish  -d "finalize the feature and integrate [MEMORY] commits"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a sync    -d "apply public net diff onto the @local feature branch"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a list    -d "list open feature pairs"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from list" -l json -d "print the feature pairs as a JSON array"
 
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l recover  -d "recover after public history rewrite"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l continue -d "resume after manual conflict resolution"

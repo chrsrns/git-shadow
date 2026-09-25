@@ -79,6 +79,10 @@ _git_shadow_feature() {
             '--worktree[create a worktree under WORKTREE_ROOT for <name>@local]' \
             '--worktree-dir[create the feature worktree at the given path]:path:_files -/'
           ;;
+        list)
+          _arguments \
+            '--json[print the feature pairs as a JSON array]'
+          ;;
         finish)
           _arguments \
             '--no-pull[skip git pull of the public base]' \
@@ -100,6 +104,7 @@ _git_shadow_feature_subcommands() {
     'publish:publish public commits from the @local feature branch'
     'finish:finalize the feature and integrate [MEMORY] commits'
     'sync:apply public net diff onto the @local feature branch'
+    'list:list open feature pairs'
   )
   _describe 'subcommand' subcommands
 }

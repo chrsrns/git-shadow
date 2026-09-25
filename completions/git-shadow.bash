@@ -33,11 +33,12 @@ _git_shadow() {
   case "$cmd" in
     feature)
       if [[ $pos -eq 1 ]]; then
-        COMPREPLY=($(compgen -W "start publish finish sync" -- "$cur"))
+        COMPREPLY=($(compgen -W "start publish finish sync list" -- "$cur"))
       else
         case "$subcmd" in
           sync)   COMPREPLY=($(compgen -W "--recover --continue --abort" -- "$cur")) ;;
           start)  COMPREPLY=($(compgen -W "--worktree --worktree-dir" -- "$cur")) ;;
+          list)   COMPREPLY=($(compgen -W "--json" -- "$cur")) ;;
           finish) COMPREPLY=($(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied" -- "$cur")) ;;
         esac
       fi

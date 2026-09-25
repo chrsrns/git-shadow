@@ -193,35 +193,96 @@ patches_store() {
   return 0
 }
 
-# Internal: return 0 when the working tree file for <relpath> equals
-# HEAD:<relpath> plus the stored patch applied.
-_patches_path_is_applied_overlay() {
-  local relpath="$1"
+# Internal: run the sidecar check/apply ladder for <relpath> in a temporary
+# tree so callers never build their own mktemp/RETURN-trap/apply plumbing.
+#
+# Usage: _patches_apply_ladder <relpath> <sidecar_source> <base_source> <mode> [out_file]
+#   <sidecar_source>  worktree          — the worktree sidecar is required
+#                     worktree-or-head  — worktree sidecar, else HEAD:<sidecar>
+#   <base_source>     HEAD              — materialize HEAD:<relpath> as the base
+#                     <path>            — a file holding the base content
+#   <mode>            check | apply | check-reverse | apply-reverse
+#   [out_file]        receives the applied file for apply/apply-reverse
+#
+# Exit status: 0 success; 1 the apply/check failed; 2 no sidecar exists in any
+# permitted source; 3 the base content could not be produced (missing
+# HEAD:<relpath> or missing base file).  The temp tree is removed on every
+# exit path.
+_patches_apply_ladder() {
+  local relpath="${1#./}"
+  local sidecar_source="$2"
+  local base_source="$3"
+  local mode="$4"
+  local out_file="${5:-}"
+
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
-  [[ -f "$sidecar" ]] || return 1
-
-  # HEAD must contain the file.
-  if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
-    return 1
-  fi
 
   local tmp_dir
   tmp_dir="$(mktemp -d)"
   # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
+  # Resolve the sidecar content.
+  local sidecar_file="$sidecar"
+  if [[ ! -f "$sidecar_file" ]]; then
+    if [[ "$sidecar_source" == "worktree-or-head" ]] && \
+       git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
+      # The sidecar may exist only in HEAD (deleted in the worktree, not yet
+      # committed); use the committed copy so the ladder still runs.
+      sidecar_file="$tmp_dir/head_sidecar.patch"
+      if ! git show "HEAD:$sidecar" > "$sidecar_file" 2>/dev/null; then
+        return 2
+      fi
+    else
+      return 2
+    fi
+  fi
+
+  # Resolve the base content.
+  local base_file="$base_source"
+  if [[ "$base_source" == "HEAD" ]]; then
+    base_file="$tmp_dir/base.content"
+    if ! git show "HEAD:$relpath" > "$base_file" 2>/dev/null; then
+      return 3
+    fi
+  elif [[ ! -f "$base_file" ]]; then
+    return 3
+  fi
+
   mkdir -p "$tmp_dir/$(dirname "$relpath")"
-  if ! git show "HEAD:$relpath" > "$tmp_dir/$relpath" 2>/dev/null; then
+  cp "$base_file" "$tmp_dir/$relpath" || return 1
+  cp "$sidecar_file" "$tmp_dir/patch.patch" || return 1
+
+  case "$mode" in
+    check)          git -C "$tmp_dir" apply --check patch.patch >/dev/null 2>&1 ;;
+    apply)          git -C "$tmp_dir" apply patch.patch >/dev/null 2>&1 ;;
+    check-reverse)  git -C "$tmp_dir" apply -R --check patch.patch >/dev/null 2>&1 ;;
+    apply-reverse)  git -C "$tmp_dir" apply -R patch.patch >/dev/null 2>&1 ;;
+    *)              return 1 ;;
+  esac || return 1
+
+  if [[ -n "$out_file" ]]; then
+    cp "$tmp_dir/$relpath" "$out_file" || return 1
+  fi
+  return 0
+}
+
+# Internal: return 0 when the working tree file for <relpath> equals
+# HEAD:<relpath> plus the stored patch applied.
+_patches_path_is_applied_overlay() {
+  local relpath="$1"
+
+  local out_file
+  out_file="$(mktemp)"
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$out_file"; trap - RETURN' RETURN
+
+  if ! _patches_apply_ladder "$relpath" worktree HEAD apply "$out_file"; then
     return 1
   fi
-  cp "$sidecar" "$tmp_dir/patch.patch"
 
-  if ! git -C "$tmp_dir" apply patch.patch 2>/dev/null; then
-    return 1
-  fi
-
-  diff -q "$tmp_dir/$relpath" "$relpath" >/dev/null 2>&1
+  diff -q "$out_file" "$relpath" >/dev/null 2>&1
 }
 
 # Return 0 iff every dirty tracked path has a stored sidecar and the file
@@ -291,28 +352,24 @@ patches_check() {
   fi
 
   local issues=0
-  local probe
-  probe="$(mktemp -d)"
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -rf "$probe"; trap - RETURN' RETURN
-
   for sidecar in "${sidecars[@]}"; do
     relpath="$(patches_relpath_from_sidecar "$sidecar")"
     [[ -z "$relpath" ]] && continue
 
-    rm -rf "$probe/tree"
-    mkdir -p "$probe/tree/$(dirname "$relpath")"
-    if ! git show "HEAD:$relpath" > "$probe/tree/$relpath" 2>/dev/null; then
-      printf '%s\t%s\n' "$sidecar" "source missing from HEAD"
-      issues=1
-      continue
-    fi
-    cp "$sidecar" "$probe/tree/patch.patch"
-    if ! git -C "$probe/tree" apply --check patch.patch >/dev/null 2>&1; then
-      printf '%s\t%s\n' "$sidecar" "cannot apply to HEAD"
-      issues=1
-      continue
-    fi
+    _patches_apply_ladder "$relpath" worktree HEAD check
+    case $? in
+      0) ;;
+      3)
+        printf '%s\t%s\n' "$sidecar" "source missing from HEAD"
+        issues=1
+        continue
+        ;;
+      *)
+        printf '%s\t%s\n' "$sidecar" "cannot apply to HEAD"
+        issues=1
+        continue
+        ;;
+    esac
 
     if [[ "$check_applied" -eq 1 ]]; then
       if ! _patches_path_is_applied_overlay "$relpath"; then
@@ -497,38 +554,24 @@ patches_subtract() {
   local staged_file="$2"
   local out="$3"
 
-  local sidecar
-  sidecar="$(patches_sidecar_for "$relpath")"
+  _patches_apply_ladder "$relpath" worktree-or-head "$staged_file" check
+  local ladder_status=$?
 
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
-
-  local sidecar_file="$sidecar"
-  if [[ ! -f "$sidecar_file" ]]; then
-    # The sidecar may exist only in HEAD (deleted in the worktree, not yet
-    # committed); use the committed copy so subtraction still happens.
-    if git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
-      sidecar_file="$tmp_dir/head_sidecar.patch"
-      if ! git show "HEAD:$sidecar" > "$sidecar_file" 2>/dev/null; then
-        return 1
-      fi
-    else
-      # No sidecar for this path; no subtraction needed.
-      cp "$staged_file" "$out"
-      PATCHES_SUBTRACT_REMOVED_TRIPLE=0
-      PATCHES_SUBTRACT_REMOVED_LOCAL=0
-      return 0
-    fi
+  # No sidecar for this path; no subtraction needed.
+  if [[ $ladder_status -eq 2 ]]; then
+    cp "$staged_file" "$out"
+    PATCHES_SUBTRACT_REMOVED_TRIPLE=0
+    PATCHES_SUBTRACT_REMOVED_LOCAL=0
+    return 0
   fi
 
-  mkdir -p "$tmp_dir/$(dirname "$relpath")"
-  cp "$staged_file" "$tmp_dir/$relpath"
-  cp "$sidecar_file" "$tmp_dir/patch.patch"
+  # The base content could not be produced.
+  if [[ $ladder_status -eq 3 ]]; then
+    return 1
+  fi
 
   # The patch is absent from the staged blob: pass it through unchanged.
-  if git -C "$tmp_dir" apply --check patch.patch 2>/dev/null; then
+  if [[ $ladder_status -eq 0 ]]; then
     cp "$staged_file" "$out"
     PATCHES_SUBTRACT_REMOVED_TRIPLE=0
     PATCHES_SUBTRACT_REMOVED_LOCAL=0
@@ -536,12 +579,12 @@ patches_subtract() {
   fi
 
   # The patch is present: subtract it.
-  if ! git -C "$tmp_dir" apply -R --check patch.patch 2>/dev/null; then
+  if ! _patches_apply_ladder "$relpath" worktree-or-head "$staged_file" check-reverse; then
     return 1
   fi
-
-  git -C "$tmp_dir" apply -R patch.patch
-  cp "$tmp_dir/$relpath" "$out"
+  if ! _patches_apply_ladder "$relpath" worktree-or-head "$staged_file" apply-reverse "$out"; then
+    return 1
+  fi
 
   # Signal whether subtraction removed local markers.
   PATCHES_SUBTRACT_REMOVED_TRIPLE=0

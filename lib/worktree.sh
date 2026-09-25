@@ -198,11 +198,15 @@ worktree_find_for_branch() {
   return 1
 }
 
-# Remove the worktree at <path>. A registered worktree whose directory is
-# missing is stale: `git worktree prune` clears the registration first.
-# Caller guarantees a clean tree and cwd outside <path>.
+# Remove the worktree at <path>. With --force, pass --force to
+# `git worktree remove` (the `feature start` failure cleanup must drop a
+# worktree that `worktree_add` left behind mid-failure). A registered
+# worktree whose directory is missing is stale: `git worktree prune`
+# clears the registration first. Caller guarantees a clean tree — unless
+# --force — and cwd outside <path>.
 worktree_remove() {
   local path="$1"
+  local force="${2:-}"
   local abs
   abs="$(_worktree_abs "$path")"
 
@@ -217,7 +221,11 @@ worktree_remove() {
     fi
     return 0
   fi
-  git worktree remove "$abs"
+  if [[ "$force" == "--force" ]]; then
+    git worktree remove --force "$abs"
+  else
+    git worktree remove "$abs"
+  fi
 }
 
 # Print 'path<TAB>branch' for each registered worktree that is orphaned:

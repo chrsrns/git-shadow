@@ -34,7 +34,7 @@ jobs:
 
       - name: Shellcheck
         run: |
-          shellcheck -S warning bin/git-shadow
+          shellcheck -S warning bin/git-shadow install.sh completions/git-shadow.bash
           find commands lib -name "*.sh" -exec shellcheck -S warning {} +
 
       - name: Run tests

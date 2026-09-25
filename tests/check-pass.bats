@@ -193,6 +193,21 @@ teardown() {
   [[ "$output" == *"cannot compare trees"* ]]
 }
 
+@test "check_publishable_count counts only non-marker commits" {
+  latest="$(checkpoint_latest main@local)"
+  cp_local="$(checkpoint_local "$latest")"
+
+  run check_publishable_count "main@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [ "$output" = "2" ]
+}
+
+@test "check_publishable_count returns 1 when the range cannot be listed" {
+  NULL_SHA="0000000000000000000000000000000000000000"
+  run check_publishable_count "main@local" "$NULL_SHA"
+  [ "$status" -ne 0 ]
+}
+
 @test "publish_replay_and_head fails on an invalid checkpoint public sha" {
   NULL_SHA="0000000000000000000000000000000000000000"
   git checkout -q main@local

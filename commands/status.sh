@@ -117,16 +117,10 @@ CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
 LOCAL_HEAD="$(git rev-parse "$SHADOW_BRANCH")"
 
-# Publishable public commits on shadow since checkpoint local (non-MEMORY, non-CHECKPOINT, non-SYNC)
-PUBLISHABLE=0
-if [[ "$CP_LOCAL" != "$LOCAL_HEAD" ]]; then
-  while IFS= read -r sha; do
-    [[ -z "$sha" ]] && continue
-    subject="$(git log -1 --format='%s' "$sha")"
-    if [[ ! "$subject" == "[MEMORY]"* && ! "$subject" == "[CHECKPOINT]"* && ! "$subject" == "[SYNC]"* ]]; then
-      ((PUBLISHABLE++)) || true
-    fi
-  done < <(git rev-list --reverse "${CP_LOCAL}..${LOCAL_HEAD}")
+# Publishable public commits on shadow since checkpoint local. A failed
+# range listing reports 0, matching the previous inline loop's behavior.
+if ! PUBLISHABLE="$(check_publishable_count "$LOCAL_HEAD" "$CP_LOCAL" 2>/dev/null)"; then
+  PUBLISHABLE=0
 fi
 
 # Public commits on public branch since checkpoint public

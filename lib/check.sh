@@ -31,6 +31,26 @@ check_public_commits() {
   done
 }
 
+# Print the number of publishable commits between <checkpoint_local> and
+# <local_branch>, counted from check_public_commits output so the subject
+# filter lives in exactly one place.  Returns 1 when the range cannot be
+# listed; consumers treat that as a count of 0.
+check_publishable_count() {
+  local local_branch="$1"
+  local checkpoint_local="$2"
+
+  local commits
+  if ! commits="$(check_public_commits "$local_branch" "$checkpoint_local")"; then
+    return 1
+  fi
+
+  if [[ -z "$commits" ]]; then
+    printf '0\n'
+    return 0
+  fi
+  printf '%s\n' "$commits" | wc -l
+}
+
 # Print "<sha>\t<path>" for every M/D/T diff entry in <sha>... whose path is
 # absent from the evolving path set seeded from <base_tree>.  Commits are
 # applied in order: additions insert into the set, deletions remove from it.

@@ -42,11 +42,45 @@ teardown() {
   cp_public="$(checkpoint_public "$latest")"
   cp_local="$(checkpoint_local "$latest")"
 
-  run check_pass "main" "main@local" "$cp_public" "$cp_local"
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -eq 0 ]
   # Output is the ordered public commit SHAs.
   line_count="$(printf '%s\n' "$output" | grep -c '^[0-9a-f]\{40\}$')"
   [ "$line_count" -eq 2 ]
+  # Success leaves the temp branch for the caller.
+  git show-ref --verify --quiet refs/heads/__shadow_check_tmp__
+  git branch -D __shadow_check_tmp__ >/dev/null
+}
+
+@test "publish_replay_and_head sets the caller-named variable and prints only SHAs" {
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  out_var="unset"
+  shas_file="$TEST_DIR/shas.txt"
+  publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" out_var >"$shas_file"
+  [ "$out_var" = "__shadow_check_tmp__" ]
+  line_count="$(grep -c '^[0-9a-f]\{40\}$' "$shas_file")"
+  [ "$line_count" -eq 2 ]
+  # Stdout holds no branch-name line.
+  ! grep -q "$out_var" "$shas_file"
+  git branch -D "$out_var" >/dev/null
+}
+
+@test "publish_replay_and_head sets the out variable empty with nothing to publish" {
+  git checkout -q main@local
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse main@local)")"
+
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  out_var="unset"
+  publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" out_var >"$TEST_DIR/shas.txt"
+  [ -z "$out_var" ]
+  [ ! -s "$TEST_DIR/shas.txt" ]
+  ! git show-ref --verify --quiet refs/heads/__shadow_check_tmp__
 }
 
 @test "check pass fails when [MEMORY] modifies a public-tracked file" {
@@ -59,7 +93,7 @@ teardown() {
   cp_public="$(checkpoint_public "$latest")"
   cp_local="$(checkpoint_local "$latest")"
 
-  run check_pass "main" "main@local" "$cp_public" "$cp_local"
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -ne 0 ]
   # The error names the differing path.
   [[ "$output" == *"file.txt"* ]]
@@ -79,7 +113,7 @@ teardown() {
   cp_public="$(checkpoint_public "$latest")"
   cp_local="$(checkpoint_local "$latest")"
 
-  run check_pass "main" "main@local" "$cp_public" "$cp_local"
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -ne 0 ]
   [[ "$output" == *"notes/local.md"* ]]
   [[ "$output" == *"$bad_sha"* || "$output" == *"delete local note"* ]]
@@ -139,9 +173,10 @@ teardown() {
   cp_public="$(checkpoint_public "$latest")"
   cp_local="$(checkpoint_local "$latest")"
 
-  run check_pass "main" "main@local" "$cp_public" "$cp_local"
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+  ! git show-ref --verify --quiet refs/heads/__shadow_check_tmp__
 }
 
 @test "check_missing_paths fails on an invalid base tree" {
@@ -158,14 +193,14 @@ teardown() {
   [[ "$output" == *"cannot compare trees"* ]]
 }
 
-@test "check_pass fails on an invalid checkpoint public sha" {
+@test "publish_replay_and_head fails on an invalid checkpoint public sha" {
   NULL_SHA="0000000000000000000000000000000000000000"
   git checkout -q main@local
   cp_local="$(git rev-parse main@local)"
   echo "extra" >> file.txt
   git add file.txt
   git commit -q -m "public: extra"
-  run check_pass "main" "main@local" "$NULL_SHA" "$cp_local"
+  run publish_replay_and_head "main" "main@local" "$NULL_SHA" "$cp_local" tmp_branch
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot list base tree"* ]]
 }

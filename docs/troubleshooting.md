@@ -6,7 +6,7 @@ This page covers failure recovery for the most common situations where git shado
 > ```bash
 > git status          # what branch, what is staged
 > git shadow status   # shadow/public pair health
-> git shadow doctor   # diagnostics: version, paused state, checkpoints, hooks
+> git shadow doctor   # diagnostics: version, paused state, checkpoints, hooks, base drift
 > git log --oneline -5
 > ```
 
@@ -48,6 +48,8 @@ Check pass failed: public diff does not match filtered local diff
 - The public branch moved past the checkpoint SHA stored in the latest `[CHECKPOINT]`.
 - A file was renamed or deleted on one side but not the other.
 
+If publish reports **"No publishable commits" but exits 1**, the publish range is empty yet the public tree differs from the `@local` head — a checkpoint may have skipped unpublished work. Run `git shadow feature sync` to realign, then publish again; never treat the empty-range failure as "nothing to do".
+
 **Recovery:**
 
 ```bash
@@ -84,6 +86,8 @@ git diff feature/login feature/login@local
 ```
 
 **What happened:** The command is applying the *net diff* from `diff_start` to the current public HEAD onto the `@local` branch. `diff_start` is the checkpoint public SHA — or the recovered ancestor when you ran `--recover` after a rebase. A hunk in that net diff overlaps with changes that are already on `@local`.
+
+When the public branch has not moved since the checkpoint, sync reports "already up to date" and **keeps the existing checkpoint** — it does not write a new one, so unpublished commits on `@local` stay publishable.
 
 **Where you are:** You are on the `@local` branch with conflict markers in the working tree and a paused sync. The state file `.git/git-shadow-sync` records the mode, both branches, `diff_start`, `target_public`, the pre-sync local head, and the collected patch-ids; `git shadow doctor` reports the same paused state.
 

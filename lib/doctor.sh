@@ -107,15 +107,8 @@ doctor_checkpoint_summary() {
   public_head="$(git rev-parse "$public_branch")"
   local_head="$(git rev-parse "$local_branch")"
 
-  if [[ "$cp_local" != "$local_head" ]]; then
-    local sha subject
-    while IFS= read -r sha; do
-      [[ -z "$sha" ]] && continue
-      subject="$(git log -1 --format='%s' "$sha")"
-      if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
-        publishable=$((publishable + 1))
-      fi
-    done < <(git rev-list "${cp_local}..${local_head}")
+  if ! publishable="$(check_publishable_count "$local_head" "$cp_local" 2>/dev/null)"; then
+    publishable=0
   fi
 
   if [[ "$cp_public" != "$public_head" ]]; then

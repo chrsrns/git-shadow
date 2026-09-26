@@ -59,20 +59,23 @@ LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
 # patch sidecars are stripped before the working tree is touched and re-applied
 # on every exit/return path.
 _feature_publish_body() {
-  local replay_output
-  if ! replay_output="$(publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL")"; then
+  # The temp branch name must come back through the caller-named variable:
+  # capturing stdout in $() would run the function in a subshell and lose it.
+  local shas_file publish_tmp_branch="" public_commits new_public_head
+  shas_file="$(mktemp)"
+  if ! publish_replay_and_head "$PUBLIC_BRANCH" "$CURRENT_BRANCH" "$CP_PUBLIC" "$CP_LOCAL" publish_tmp_branch >"$shas_file"; then
+    rm -f "$shas_file"
     ui_error "Check pass failed; '$CURRENT_BRANCH' cannot be published to '$PUBLIC_BRANCH'."
     exit 1
   fi
+  public_commits="$(cat "$shas_file")"
+  rm -f "$shas_file"
 
-  if [[ -z "$replay_output" ]]; then
+  if [[ -z "$public_commits" ]]; then
     ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
     return 0
   fi
 
-  local publish_tmp_branch public_commits new_public_head
-  publish_tmp_branch="$(head -n1 <<< "$replay_output")"
-  public_commits="$(tail -n +2 <<< "$replay_output")"
   new_public_head="$(git rev-parse "$publish_tmp_branch")"
 
   # Guard: the replayed public tree must not contain local-only artifacts.

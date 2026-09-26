@@ -217,9 +217,18 @@ _feature_start_feature_body() {
 
     if ! worktree_add "$LOCAL_FEATURE" "$WORKTREE_PATH"; then
       ui_error "Failed to create the worktree for '$LOCAL_FEATURE'."
-      ui_error "Leftover branches: '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
-      ui_info  "Recover with: git branch -D '$PUBLIC_FEATURE' '$LOCAL_FEATURE'"
-      ui_info  "Or retry manually: git worktree add '$WORKTREE_PATH' '$LOCAL_FEATURE'"
+      # worktree_add can fail after `git worktree add` succeeded, leaving a
+      # registered worktree whose directory still exists. `git worktree
+      # prune` does not clear that state and `git branch -D` refuses while
+      # the branch is checked out there, so force-remove it first.
+      worktree_remove "$WORKTREE_PATH" --force 2>/dev/null || true
+      if ! git branch -D "$LOCAL_FEATURE" >/dev/null 2>&1; then
+        ui_error "Leftover worktree at '$WORKTREE_PATH' and branch '$LOCAL_FEATURE'."
+        ui_info  "Recover with: git worktree remove --force '$WORKTREE_PATH' && git branch -D '$LOCAL_FEATURE' '$PUBLIC_FEATURE'"
+        return 1
+      fi
+      git branch -D "$PUBLIC_FEATURE" >/dev/null 2>&1 || true
+      ui_info  "Rolled back '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
       return 1
     fi
     _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"

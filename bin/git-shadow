@@ -64,6 +64,7 @@ Commands:
   local apply
   completion install
   feature start <name> [--worktree|--worktree-dir <path>]
+  feature list [--json]
   feature publish
   feature sync [--recover] [--continue|--abort]
   feature finish [<name>] [--no-pull] [--keep-branches] [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]

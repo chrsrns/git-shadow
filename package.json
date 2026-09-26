@@ -16,7 +16,6 @@
     "commands/",
     "config/",
     "lib/",
-    "scripts/",
     "VERSION"
   ],
   "scripts": {

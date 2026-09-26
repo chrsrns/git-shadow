@@ -426,7 +426,7 @@ _start_setup_env() {
   grep -q 'WORKTREE_ROOT=' "$TEST_DIR/wts/feat-wt/.git-shadow.env"
 }
 
-@test "feature start reports leftover branches when worktree creation fails" {
+@test "feature start cleans up branches when worktree creation fails" {
   _start_setup_env
   # A regular file where the parent dir should be: mkdir -p fails after
   # validation, exercising the post-branch-creation failure path.
@@ -437,10 +437,9 @@ _start_setup_env() {
   touch "$TEST_DIR/blocker"
   run git shadow feature start feat-wt --worktree-dir "$TEST_DIR/blocker/sub"
   [ "$status" -eq 1 ]
-  git show-ref --verify --quiet "refs/heads/feat-wt"
-  git show-ref --verify --quiet "refs/heads/feat-wt@local"
-  [[ "$output" == *"feat-wt"* ]]
-  [[ "$output" == *"feat-wt@local"* ]]
+  ! git show-ref --verify --quiet "refs/heads/feat-wt"
+  ! git show-ref --verify --quiet "refs/heads/feat-wt@local"
+  [[ "$output" == *"Failed to create the worktree"* ]]
 }
 
 @test "feature start --worktree never checks out the public branch" {
@@ -594,4 +593,43 @@ _setup_finished_worktree_feature() {
   [[ "$output" == *"$TEST_DIR/wt-base"* ]]
   [[ "$output" == *"git shadow feature finish wt-feat"* ]]
   git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature start --worktree failure removes the created branches and worktree" {
+  # Base pair: current branch is main; create its @local counterpart.
+  git checkout -q -b "main@local"
+  git checkout -q main
+
+  # Fail only the checkout inside the new worktree, so `git worktree add`
+  # exits non-zero with the directory and registration already created —
+  # the state `git worktree prune` cannot clear.
+  cat > .git/hooks/post-checkout <<HOOK
+#!/bin/sh
+if [ "\$(pwd)" = "$TEST_DIR/wts/fail-wt" ]; then
+  exit 1
+fi
+exit 0
+HOOK
+  chmod +x .git/hooks/post-checkout
+
+  run git shadow feature start feat-fail --worktree-dir "$TEST_DIR/wts/fail-wt"
+  [ "$status" -eq 1 ]
+
+  ! git show-ref --verify --quiet refs/heads/feat-fail
+  ! git show-ref --verify --quiet "refs/heads/feat-fail@local"
+  [ ! -d "$TEST_DIR/wts/fail-wt" ]
+  ! git worktree list --porcelain | grep -q "fail-wt"
+}
+
+@test "worktree_remove --force removes a live worktree holding a branch" {
+  worktree_add "feat-x@local" "$WORKTREE_ROOT/feat-x" >/dev/null
+
+  # The branch is checked out in the worktree: branch -D alone would fail.
+  ! git branch -D "feat-x@local" >/dev/null 2>&1
+
+  run worktree_remove "$WORKTREE_ROOT/feat-x" --force
+  [ "$status" -eq 0 ]
+  [ ! -d "$WORKTREE_ROOT/feat-x" ]
+  ! git worktree list --porcelain | grep -q "feat-x"
+  git branch -D "feat-x@local" >/dev/null
 }

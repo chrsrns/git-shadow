@@ -112,8 +112,9 @@ check_missing_paths() {
 }
 
 # Create a temporary branch from <checkpoint_public> and cherry-pick the given
-# public commits onto it.  Prints the temp branch name, or returns 1 on failure
-# after emitting an error naming the offending commit and involved paths.
+# public commits onto it.  Prints the applied commit SHAs (one per line) —
+# empty commits are skipped with a note and never printed.  Returns 1 on
+# failure after emitting an error naming the offending commit and paths.
 check_replay_public() {
   local checkpoint_public="$1"
   local tmp_branch="$2"
@@ -121,31 +122,74 @@ check_replay_public() {
 
   git checkout -q -b "$tmp_branch" "$checkpoint_public" >/dev/null 2>&1
 
-  local sha pick_output conflicted
+  local sha pick_output conflicted before_tree
   for sha in "$@"; do
-    if ! pick_output="$(git cherry-pick --quiet "$sha" 2>&1 >/dev/null)"; then
-      ui_error "Check pass: failed to replay public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))."
-      [[ -n "$pick_output" ]] && printf '%s\n' "$pick_output" >&2
-      # Unmerged paths cover real conflicts; an empty pick leaves none, so
-      # fall back to the paths the offending commit itself touches.
-      conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
-      if [[ -z "$conflicted" ]]; then
-        local conflicted_out conflicted_status
-        conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
-        conflicted_status=$?
-        if [[ $conflicted_status -eq 0 ]]; then
-          conflicted="$conflicted_out"
-        fi
+    # Initially-empty commits (tree == parent) have nothing to replay and
+    # would fail as empty picks; skip them up front.
+    if git diff-tree -r --no-commit-id --quiet "$sha" >/dev/null 2>&1; then
+      ui_info "Check pass: skipping initially-empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
+      continue
+    fi
+
+    before_tree="$(git rev-parse HEAD^{tree})"
+    if git_version_at_least 2 45; then
+      # --empty=drop silently drops picks that become empty on the base.
+      if ! pick_output="$(git cherry-pick --quiet --empty=drop "$sha" 2>&1 >/dev/null)"; then
+        _check_replay_fail "$sha" "$tmp_branch"
+        return 1
       fi
-      [[ -n "$conflicted" ]] && ui_error "Check pass: path(s) involved: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
-      git cherry-pick --abort >/dev/null 2>&1 || true
-      git checkout -q "-" >/dev/null 2>&1 || true
-      git branch -D "$tmp_branch" >/dev/null 2>&1 || true
-      return 1
+    else
+      if ! pick_output="$(git cherry-pick --quiet "$sha" 2>&1 >/dev/null)"; then
+        # A stopped pick with no staged or unstaged changes is an empty pick
+        # (content already present); skip it instead of failing. Detected via
+        # CHERRY_PICK_HEAD + empty diffs, not message text (localizable).
+        if [[ -f "$(git rev-parse --git-path CHERRY_PICK_HEAD)" ]] \
+           && git diff --quiet && git diff --cached --quiet; then
+          ui_info "Check pass: skipping empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
+          if git_version_at_least 2 33; then
+            git cherry-pick --skip >/dev/null 2>&1 || true
+          else
+            git cherry-pick --quit >/dev/null 2>&1 || true
+            git reset --hard HEAD >/dev/null 2>&1
+          fi
+          continue
+        fi
+        _check_replay_fail "$sha" "$tmp_branch"
+        return 1
+      fi
+    fi
+    # --empty=drop gives no signal, so compare trees: an unchanged tree means
+    # the pick was dropped as empty. Only applied commits are printed.
+    if [[ "$(git rev-parse HEAD^{tree})" != "$before_tree" ]]; then
+      printf '%s\n' "$sha"
+    else
+      ui_info "Check pass: skipping empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
     fi
   done
+}
 
-  printf '%s\n' "$tmp_branch"
+# Emit the replay failure diagnostic for <sha> and clean up the temp branch.
+# Raw git cherry-pick output is never printed.
+_check_replay_fail() {
+  local sha="$1"
+  local tmp_branch="$2"
+  ui_error "Check pass: failed to replay public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))."
+  # Unmerged paths cover real conflicts; an empty pick leaves none, so
+  # fall back to the paths the offending commit itself touches.
+  local conflicted
+  conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
+  if [[ -z "$conflicted" ]]; then
+    local conflicted_out conflicted_status
+    conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
+    conflicted_status=$?
+    if [[ $conflicted_status -eq 0 ]]; then
+      conflicted="$conflicted_out"
+    fi
+  fi
+  [[ -n "$conflicted" ]] && ui_error "Check pass: path(s) involved: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+  git cherry-pick --abort >/dev/null 2>&1 || true
+  git checkout -q "-" >/dev/null 2>&1 || true
+  git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 }
 
 # Print the repo-relative hook files that install-hooks manages when the
@@ -268,7 +312,13 @@ publish_replay_and_head() {
   local original_branch
   original_branch="$(git branch --show-current)"
 
-  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits >/dev/null; then
+  # The replay runs in the current shell (the checkout to the temp branch
+  # must survive); its stdout carries the applied commit SHAs. The caller's
+  # stdout stays clean for the final SHA list.
+  local applied_file
+  applied_file="$(mktemp)"
+  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits >"$applied_file"; then
+    rm -f "$applied_file"
     git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     return 1
   fi
@@ -278,6 +328,7 @@ publish_replay_and_head() {
   local_head="$(git rev-parse "$local_branch")"
 
   if ! check_tree_matches "$tmp_head" "$local_head"; then
+    rm -f "$applied_file"
     git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     git branch -D "$tmp_branch" >/dev/null 2>&1 || true
     return 1
@@ -286,6 +337,7 @@ publish_replay_and_head() {
   # Return to the original branch but leave the temp branch for the caller.
   git checkout -q "${original_branch}" >/dev/null 2>&1 || true
 
+  cat "$applied_file"
+  rm -f "$applied_file"
   printf -v "$out_branch_var" '%s' "$tmp_branch"
-  printf '%s\n' $public_commits | tr ' ' '\n' | grep -v '^$'
 }

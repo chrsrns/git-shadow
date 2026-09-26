@@ -114,15 +114,18 @@ EOF
   [[ "$output" != *"uncommitted changes"* ]]
 }
 
-@test "feature publish empty public commit names the failing sha" {
-  # Create an empty public commit. The replay on a temp branch fails with
-  # "nothing to commit", and the error must name the offending commit.
+@test "feature publish skips an empty public commit with a note" {
+  # An empty commit would replay as an empty pick; publish skips it with a
+  # git-shadow note and continues instead of failing.
   git commit --allow-empty -q -m "chore: empty note"
 
   run git shadow feature publish
-  [ "$status" -ne 0 ]
-  [[ "$output" != *"No publishable commits"* ]]
-  [[ "$output" == *"chore: empty note"* ]]
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Published"* ]]
+  [[ "$output" == *"empty"* ]]
+  # The empty commit is not replayed onto the public branch.
+  git checkout -q test-feature
+  ! git log --format='%s' | grep -q "chore: empty note"
 }
 
 @test "feature publish does not replay a stranded [SYNC] commit to the public branch" {

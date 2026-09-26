@@ -241,6 +241,30 @@ ensure_clean_repo() {
   fi
 }
 
+# Exit 0 when the installed git version is >= <major>.<minor>; unparseable
+# versions compare as too old.
+git_version_at_least() {
+  local want_major="$1" want_minor="$2"
+  local ver major minor
+  ver="$(git --version 2>/dev/null | sed -n 's/^git version \([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1 \2/p')"
+  set -- $ver
+  major="${1:-}"
+  minor="${2:-}"
+  if [[ -z "$major" || -z "$minor" ]]; then
+    return 1
+  fi
+  if (( major > want_major )); then
+    return 0
+  fi
+  if (( major < want_major )); then
+    return 1
+  fi
+  if (( minor >= want_minor )); then
+    return 0
+  fi
+  return 1
+}
+
 # Detect the location of the Git hooks file according to core.hooksPath and Husky conventions
 detect_hook_file() {
   local hook_name="${1:-pre-commit}"

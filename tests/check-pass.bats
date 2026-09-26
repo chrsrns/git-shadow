@@ -266,6 +266,46 @@ teardown() {
   [[ "$output" == *"file.txt"* ]]
 }
 
+@test "replay skips an initially-empty commit" {
+  git checkout -q main@local
+  git commit -q --allow-empty -m "public: empty commit"
+  empty_sha="$(git rev-parse HEAD)"
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  out_var="unset"
+  shas_file="$TEST_DIR/empty-shas.txt"
+  notes_file="$TEST_DIR/empty-notes.txt"
+  publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" out_var \
+    >"$shas_file" 2>"$notes_file"
+  # A git-shadow note is emitted and the empty commit is not published.
+  grep -q "empty" "$notes_file"
+  ! grep -q "$empty_sha" "$shas_file"
+  git branch -D "$out_var" >/dev/null 2>&1 || true
+}
+
+@test "replay skips a commit that becomes empty on the replay base" {
+  git checkout -q main@local
+  # A [MEMORY] commit (subject-filtered, never replayed) rewrites a public
+  # file; the following public commit restores it to the checkpoint base
+  # content, so the pick's result equals the replay state and is empty.
+  echo "local only" > file.txt
+  git add file.txt
+  git commit -q -m "[MEMORY] modify public file"
+  git checkout -q "HEAD~1" -- file.txt
+  git commit -q -m "public: restore file"
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
+  [ "$status" -eq 0 ]
+  # No raw git cherry-pick error text leaks.
+  [[ "$output" != *"The previous cherry-pick"* ]]
+  git branch -D __shadow_check_tmp__ >/dev/null 2>&1 || true
+}
+
 @test "check_tree_matches flags hook-path divergence when hooksPath is unset" {
   git branch husky-base
   git branch husky-base@local

@@ -52,12 +52,18 @@ while IFS= read -r ref; do
   names+=("$name")
 done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}" | sort)
 
+# The field reports only a dedicated worktree; a pair checked out in the
+# main worktree shows -.
+main_worktree="$(git rev-parse --show-toplevel)"
+
 json_items=()
 for name in "${names[@]}"; do
   local_ref="${name}${LOCAL_SUFFIX}"
 
-  worktree_path="$(worktree_find_for_branch "$local_ref" 2>/dev/null)" || worktree_path="-"
-  [[ -z "$worktree_path" ]] && worktree_path="-"
+  worktree_path="$(worktree_find_for_branch "$local_ref" 2>/dev/null)" || worktree_path=""
+  if [[ -z "$worktree_path" || "$worktree_path" == "$main_worktree" ]]; then
+    worktree_path="-"
+  fi
 
   cp="$(checkpoint_latest "$local_ref")"
   if [[ -z "$cp" ]]; then

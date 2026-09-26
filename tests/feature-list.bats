@@ -43,10 +43,19 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" == "["* ]]
   [[ "$output" == *'"name":"feat-a"'* ]]
-  # The just-started pair is checked out in the main worktree.
-  [[ "$output" == *"\"worktree\":\"$TEST_DIR\""* ]]
+  # Checked out in the main worktree: the dedicated-worktree field is -.
+  [[ "$output" == *'"worktree":"-"'* ]]
   [[ "$output" == *'"checkpoint":"[CHECKPOINT] public:'* ]]
   [[ "$output" == *'"publishable":0'* ]]
+}
+
+@test "feature list reports the dedicated worktree path" {
+  run git shadow feature start feat-w --worktree-dir "$TEST_DIR/feat-wt"
+  [ "$status" -eq 0 ]
+
+  run git shadow feature list --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"worktree\":\"$TEST_DIR/feat-wt\""* ]]
 }
 
 @test "feature list reports - for a pair with no worktree and no checkpoint" {

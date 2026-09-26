@@ -241,7 +241,10 @@ EOF
   local_head="$(git rev-parse "$local_branch")"
 
   if [[ "$cp_public" == "$public_head" ]]; then
-    _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+    # Public branch has not moved since the checkpoint: writing a new
+    # checkpoint here would pair the unchanged public head with the current
+    # local head and mark unpublished commits as published. Keep the prior
+    # checkpoint so the publishable backlog survives.
     ui_ok "$label '$local_branch' is already up to date with '$public_branch'."
     return 0
   fi
@@ -268,7 +271,11 @@ EOF
     fi
 
     if [[ "$new_ancestor" == "$public_head" ]]; then
-      _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+      # The rewritten public branch matches the checkpoint content, so the
+      # checkpointed public SHA is stale and must be re-pointed — but at the
+      # prior local pointer, never at the current local head, so unpublished
+      # commits stay publishable.
+      _new_checkpoint="$(checkpoint_create "$public_head" "$cp_local" $cp_pids)"
       ui_ok "$label '$local_branch' is already up to date with '$public_branch' (recovered)."
       return 0
     fi

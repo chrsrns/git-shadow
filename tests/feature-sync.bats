@@ -256,3 +256,76 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"finish"* ]]
 }
+
+@test "feature sync up-to-date keeps checkpoint and publishable backlog" {
+  git checkout -q "feature-foo@local"
+  before_cps="$(git log --format=%H --grep='^\[CHECKPOINT\]' | wc -l)"
+
+  run git shadow feature sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"up to date"* ]]
+
+  # No new checkpoint was written on the up-to-date path.
+  after_cps="$(git log --format=%H --grep='^\[CHECKPOINT\]' | wc -l)"
+  [ "$before_cps" = "$after_cps" ]
+
+  # The unpublished commit is still publishable.
+  run git shadow status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"publishable  : 1"* ]]
+
+  # Publish still delivers the commit to the public branch.
+  run git shadow feature publish
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Published"* ]]
+  git checkout -q feature-foo
+  [[ "$(cat app.ts)" == *"v2"* ]]
+}
+
+@test "feature sync --recover up-to-date keeps unpublished work publishable" {
+  git checkout -q "feature-foo@local"
+  echo "v2" >> app.ts
+  git add app.ts
+  git commit -q -m "feat: app update"
+  git shadow feature publish
+
+  # A further local commit that is not published yet.
+  echo "v3" >> app.ts
+  git add app.ts
+  git commit -q -m "feat: another update"
+
+  # Rewrite the public branch so recovery is needed; the whole public
+  # history matches, so recovery lands on the up-to-date path.
+  git checkout -q feature-foo
+  GIT_SHADOW=1 git commit -q --amend -m "feat: app update (amended)"
+  git checkout -q "feature-foo@local"
+
+  run git shadow feature sync --recover
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already up to date"* ]]
+
+  # The unpublished commit must still be publishable.
+  run git shadow status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"publishable  : 1"* ]]
+
+  run git shadow feature publish
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Published"* ]]
+}
+
+@test "feature publish warns and fails when range is empty but the tree diverged" {
+  git checkout -q "feature-foo@local"
+  # Publish the setup commit first so nothing is pending.
+  git shadow feature publish
+
+  # A [MEMORY] commit that touches a public-tracked file: publish range is
+  # empty (subject-filtered) yet the @local tree differs from the public one.
+  echo "memory change" > app.ts
+  git add app.ts
+  GIT_SHADOW=1 git commit -qm "[MEMORY] modify public file"
+
+  run git shadow feature publish
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"differ"* ]]
+}

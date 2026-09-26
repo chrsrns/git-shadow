@@ -280,6 +280,24 @@ git shadow feature sync --abort
 
 ---
 
+# List open features
+
+```bash
+git shadow feature list
+
+# or as JSON for scripting:
+git shadow feature list --json
+```
+
+Read-only inventory of every open feature pair — a public `<name>` with its
+`<name>@local` — excluding the local base pair and orphan `@local` branches
+whose public counterpart is gone. Each entry shows the feature name, its
+dedicated worktree path (`-` when the pair lives in the main checkout), the
+latest `[CHECKPOINT]` summary (`-` when none), and the publishable-commit
+count. Pairs print in ascending name order.
+
+---
+
 # Finish a feature
 
 After the MR is merged :

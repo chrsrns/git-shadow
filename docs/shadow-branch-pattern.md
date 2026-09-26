@@ -201,6 +201,9 @@ git shadow push feature/login
 git shadow feature finish            # removes a feature worktree, if any
 git shadow feature finish feature/login --keep-worktree   # keep it instead
 git shadow push main
+
+# at any point — inventory of open feature pairs:
+git shadow feature list [--json]
 ```
 
 The tool handles:
@@ -209,6 +212,7 @@ The tool handles:
 * `[MEMORY]` commit filtering
 * commit publication
 * checkpoint-based net-diff synchronization
+* read-only inventory of open feature pairs (`feature list`)
 
 ---
 

@@ -198,6 +198,12 @@ If `<base>` has advanced while your feature is still open, catch up manually.
 
 Never force-push a public branch that already exists on a remote unless your repository's policy allows it and you bypass the pre-push hook with `GIT_SHADOW=1`.
 
+Manually merging `<base>@local` into `<name>@local` pulls base content into the
+feature's publish range where it cannot replay: `feature publish` excludes
+merge commits and commits already reachable from `<base>@local`, so that base
+content stays unpublishable. If you merged the local base in, rebase it back
+out with the steps above instead of leaving the merge in place.
+
 After the PR is merged:
 
 ```bash

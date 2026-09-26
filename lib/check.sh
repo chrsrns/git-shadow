@@ -12,6 +12,9 @@
 
 # Print the public commit SHAs between a checkpoint and a local branch head,
 # in chronological order.  [MEMORY] and [CHECKPOINT] commits are skipped.
+# On feature branches (any @local branch other than the local base), merge
+# commits and commits reachable from the local base are excluded too — they
+# already live on the public base and cannot replay onto the feature base.
 check_public_commits() {
   local local_branch="$1"
   local checkpoint_local="$2"
@@ -22,12 +25,32 @@ check_public_commits() {
     return 1
   fi
 
-  local sha subject
+  local local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+  local exclude_feature=1 base_local_exists=0
+  if [[ "$local_branch" == "$local_base" ]]; then
+    exclude_feature=0
+  elif git show-ref --verify --quiet "refs/heads/$local_base"; then
+    base_local_exists=1
+  fi
+
+  local sha subject parents
   for sha in $revlist; do
     subject="$(git log -1 --format='%s' "$sha")"
-    if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
-      printf '%s\n' "$sha"
+    if [[ "$subject" == "[MEMORY]"* || "$subject" == "[CHECKPOINT]"* || "$subject" == "[SYNC]"* ]]; then
+      continue
     fi
+    if [[ $exclude_feature -eq 1 ]]; then
+      # Merge commits cannot be cherry-picked without -m.
+      parents="$(git show -s --format=%P "$sha")"
+      [[ "$parents" == *" "* ]] && continue
+      # Commits reachable from the local base are base content; replaying
+      # them onto the feature public branch fails (missing base keeps the
+      # merge exclusion but cannot test reachability).
+      if [[ $base_local_exists -eq 1 ]] && git merge-base --is-ancestor "$sha" "$local_base" 2>/dev/null; then
+        continue
+      fi
+    fi
+    printf '%s\n' "$sha"
   done
 }
 

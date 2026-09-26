@@ -306,6 +306,77 @@ teardown() {
   git branch -D __shadow_check_tmp__ >/dev/null 2>&1 || true
 }
 
+@test "check_public_commits excludes merge commits on a feature branch" {
+  git checkout -q main@local
+  git checkout -q -b feat@local
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  git checkout -q -b side
+  echo side > side.txt
+  git add side.txt
+  git commit -qm "feat: side work"
+  git checkout -q feat@local
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: main work"
+  git merge -q --no-ff side -m "merge side"
+  merge_sha="$(git rev-parse HEAD)"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$merge_sha"* ]]
+}
+
+@test "check_public_commits excludes commits reachable from base@local" {
+  git checkout -q main@local
+  echo base2 > base.txt
+  git add base.txt
+  git commit -qm "public: base work"
+  git checkout -q -b feat@local
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: work"
+  # Advance the local base, then manually merge it into the feature.
+  git checkout -q main@local
+  echo base3 > base3.txt
+  git add base3.txt
+  git commit -qm "public: more base work"
+  base_sha="$(git rev-parse main@local)"
+  git checkout -q feat@local
+  git merge -q --no-ff "main@local" -m "merge base into feature"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$base_sha"* ]]
+}
+
+@test "check_public_commits keeps merge exclusion when base@local is missing" {
+  git checkout -q main@local
+  git checkout -q -b feat@local
+  git branch -D main@local >/dev/null 2>&1
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  git checkout -q -b side
+  echo side > side.txt
+  git add side.txt
+  git commit -qm "feat: side work"
+  git checkout -q feat@local
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: main work"
+  git merge -q --no-ff side -m "merge side"
+  merge_sha="$(git rev-parse HEAD)"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$merge_sha"* ]]
+}
+
 @test "check_tree_matches flags hook-path divergence when hooksPath is unset" {
   git branch husky-base
   git branch husky-base@local

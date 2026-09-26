@@ -107,7 +107,7 @@ doctor_checkpoint_summary() {
   public_head="$(git rev-parse "$public_branch")"
   local_head="$(git rev-parse "$local_branch")"
 
-  if ! publishable="$(check_publishable_count "$local_head" "$cp_local" 2>/dev/null)"; then
+  if ! publishable="$(check_publishable_count "$local_branch" "$cp_local" 2>/dev/null)"; then
     publishable=0
   fi
 

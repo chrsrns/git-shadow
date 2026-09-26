@@ -86,3 +86,18 @@ teardown() {
   ! grep -qE "TOOLKIT_ROOT|/run/media|lib/common\.sh|lib/guard\.sh" .git/hooks/pre-commit
   grep -q "guard_staged_files ()" .git/hooks/pre-commit
 }
+
+@test "guard_staged_files accepts /// doc directives in *.d.ts" {
+  printf '/// <reference types="vite/client" />\n' > vite-env.d.ts
+  git add vite-env.d.ts
+  run guard_staged_files
+  [ "$status" -eq 0 ]
+}
+
+@test "guard_tree accepts /// doc directives in *.d.ts" {
+  printf '/// <reference types="vite/client" />\n' > vite-env.d.ts
+  git add vite-env.d.ts
+  git commit -qm "add d.ts"
+  run guard_tree HEAD
+  [ "$status" -eq 0 ]
+}

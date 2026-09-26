@@ -191,6 +191,51 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Doc-comment directive check
+# ---------------------------------------------------------------------------
+
+@test "doctor warns on doc-comment directives in a public branch tree" {
+  git checkout -q test-feature
+  printf 'public\n/// <reference types="node" />\n' > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "feat: add directive"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"doc-directives"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "doctor warns on staged doc-comment directives" {
+  printf 'public\n/// <summary>Doc</summary>\n' > notes.txt
+  git add notes.txt
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"doc-directives"* ]]
+  [[ "$output" == *"notes.txt"* ]]
+}
+
+@test "doctor does not warn on ordinary /// annotations" {
+  printf '/// my local note\n' > notes.txt
+  git add notes.txt
+  GIT_SHADOW=1 git commit -qm "[MEMORY] local note"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"contains a /// doc-comment directive"* ]]
+}
+
+@test "doctor honors LOCAL_COMMENT_EXCLUDE for doc-comment directives" {
+  git checkout -q test-feature
+  printf '/// <reference types="vite/client" />\n' > vite-env.d.ts
+  git add vite-env.d.ts
+  GIT_SHADOW=1 git commit -qm "feat: add dts"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"contains a /// doc-comment directive"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Unpromoted files check
 # ---------------------------------------------------------------------------
 

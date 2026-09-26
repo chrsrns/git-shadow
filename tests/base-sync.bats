@@ -236,3 +236,20 @@ EOF
   [ "$status" -ne 0 ]
   [[ "$output" == *"finish"* ]]
 }
+
+@test "base sync up-to-date refreshes the checkpoint for feature inheritance" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+  # Advance the local base without touching the public branch.
+  echo "local base work" > base-notes.txt
+  git add base-notes.txt
+  git commit -qm "[MEMORY] base local work"
+
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"up to date"* ]]
+
+  # A feature started from the refreshed base inherits the local work.
+  git shadow feature start inherits-base >/dev/null
+  git log --oneline "inherits-base@local" | grep -q "\[MEMORY\] base local work"
+}

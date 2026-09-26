@@ -389,7 +389,6 @@ patches_check() {
 patches_strip() {
   local sidecar relpath
   local -a strip_relpaths=()
-  local -a strip_sidecars=()
 
   while IFS= read -r -d '' sidecar; do
     relpath="$(patches_relpath_from_sidecar "$sidecar")"
@@ -406,20 +405,25 @@ patches_strip() {
       continue
     fi
 
-    if ! git apply -R --check < "$sidecar" 2>/dev/null; then
+    # Reverse-check against the worktree file itself as the base content.
+    if ! _patches_apply_ladder "$relpath" worktree "$relpath" check-reverse; then
       ui_warn "patches_strip: cannot reverse-apply patch for '$relpath'."
       return 1
     fi
 
     strip_relpaths+=("$relpath")
-    strip_sidecars+=("$sidecar")
   done < <(find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
 
-  local i
-  for i in "${!strip_relpaths[@]}"; do
-    relpath="${strip_relpaths[$i]}"
-    sidecar="${strip_sidecars[$i]}"
-    git apply -R < "$sidecar"
+  local out_file
+  for relpath in "${strip_relpaths[@]}"; do
+    out_file="$(mktemp)"
+    if ! _patches_apply_ladder "$relpath" worktree "$relpath" apply-reverse "$out_file"; then
+      rm -f "$out_file"
+      ui_warn "patches_strip: cannot reverse-apply patch for '$relpath'."
+      return 1
+    fi
+    cp "$out_file" "$relpath"
+    rm -f "$out_file"
     printf '%s\n' "$relpath"
   done
 }

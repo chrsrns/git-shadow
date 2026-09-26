@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.4.0] — 2026-09-26
+
+### Added
+
+- `git shadow feature list [--json]` — read-only inventory of open feature pairs: name, dedicated worktree path (`-` when the pair lives in the main checkout), checkpoint summary, and publishable count. Registered in the help text and in bash/zsh/fish completions.
+
+### Fixed
+
+- `feature start --worktree` now cleans up after a failed worktree creation: the leftover worktree (directory and registration) is force-removed and both feature branches created by that run are deleted together, instead of leaving the user manual `git branch -D` recovery steps.
+
+### Changed
+
+- `lib/patches.sh`: all sidecar check/apply/reverse paths share one internal apply ladder; `patches_strip` included.
+- `lib/check.sh`: publishable-commit counting centralized in one helper used by `status`, `doctor`, and `feature list`; the publish check returns its temporary branch via a caller-named variable instead of encoding it on stdout.
+- CI: shellcheck gate now covers `install.sh` and `completions/git-shadow.bash`; completion `COMPREPLY` assignments use `mapfile` (SC2207).
+- `package.json`: dropped the stale `scripts/` entry from `files`.
+
+
 ## [1.3.5] — 2026-09-10
 
 ### Fixed

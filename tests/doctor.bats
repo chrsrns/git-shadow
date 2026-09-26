@@ -236,6 +236,56 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Base-drift check
+# ---------------------------------------------------------------------------
+
+@test "doctor warns on base drift without a patch sidecar" {
+  git checkout -q main@local
+  echo "drift" >> file.txt
+  git add file.txt
+  git commit -qm "chore: drift on base"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"base-drift"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "doctor ignores base@local additions" {
+  git checkout -q main@local
+  echo "local note" > notes.txt
+  git add notes.txt
+  git commit -qm "[MEMORY] base local note"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"without a patch sidecar"* ]]
+}
+
+@test "doctor accepts base drift covered by a patch sidecar" {
+  git checkout -q main@local
+  echo "overlay" >> file.txt
+  git shadow local add file.txt >/dev/null 2>&1
+  # Drop the working-tree overlay so check public stays clean; the sidecar
+  # remains committed in the base@local tree.
+  git checkout -q -- file.txt
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"without a patch sidecar"* ]]
+}
+
+@test "doctor skips base-drift when the local base is missing" {
+  git checkout -q main@local
+  git checkout -q "test-feature@local"
+  git branch -D main@local >/dev/null 2>&1
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"base-drift"* ]]
+  [[ "$output" == *"skipped"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Unpromoted files check
 # ---------------------------------------------------------------------------
 

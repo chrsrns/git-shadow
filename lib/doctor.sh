@@ -301,6 +301,54 @@ doctor_annotations_check() {
   return 0
 }
 
+# Warn on committed public-file drift between the public base and the local
+# base that is not carried as a patch sidecar — such drift blocks every
+# feature publish. The sidecar oracle is the base@local tree, not the
+# working tree; base@local additions are exempt.
+doctor_base_drift_check() {
+  local public_base="${PUBLIC_BASE_BRANCH:-main}"
+  local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
+
+  if ! git show-ref --verify --quiet "refs/heads/$local_base"; then
+    ui_info "base-drift: skipped (no '$local_base')"
+    return 0
+  fi
+
+  local -A covered=()
+  local sidecar rel
+  while IFS= read -r sidecar; do
+    [[ -z "$sidecar" ]] && continue
+    rel="${sidecar#.git-shadow/patches/}"
+    rel="${rel%.patch}"
+    covered["$rel"]=1
+  done < <(git ls-tree -r --name-only "$local_base" -- .git-shadow/patches/)
+
+  local diff_output diff_status
+  diff_output="$(git diff-tree --no-renames -r "$public_base" "$local_base" 2>/dev/null)"
+  diff_status=$?
+  if [[ $diff_status -ne 0 ]]; then
+    ui_warn "base-drift: cannot compare trees '$public_base' and '$local_base'"
+    return 1
+  fi
+
+  local issues=0 line status path
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    status="$(printf '%s\n' "$line" | awk '{print $5}')"
+    [[ "$status" == "A" ]] && continue
+    path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
+    if [[ -z "${covered[$path]:-}" ]]; then
+      ui_warn "base-drift: '$path' differs between '$public_base' and '$local_base' without a patch sidecar"
+      issues=1
+    fi
+  done < <(printf '%s\n' "$diff_output")
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "base-drift: clean"
+  fi
+  return $issues
+}
+
 # Warn when .git-shadow/patches/ sidecars cannot be applied to HEAD.
 # The oracle is the committed HEAD content, not the working tree: an
 # applied overlay is the normal state and must not warn.
@@ -430,6 +478,7 @@ doctor_run() {
     _doctor_tally doctor_unpromoted_files "$ref"
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
+  _doctor_tally doctor_base_drift_check
   _doctor_tally doctor_gitattributes_check
   _doctor_tally doctor_annotations_check
   _doctor_tally doctor_patches_check

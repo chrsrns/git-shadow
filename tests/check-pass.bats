@@ -219,3 +219,68 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot list base tree"* ]]
 }
+
+@test "check_tree_matches ignores husky-managed hook files" {
+  git config core.hooksPath .husky/_
+  # Hook files tracked on the public side, guard block added on the @local
+  # side — the husky divergence scenario.
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-push
+  git add .husky/pre-commit .husky/pre-push
+  git commit -qm "add husky hooks"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-push hook\n' > .husky/pre-push
+  git add .husky/pre-commit .husky/pre-push
+  git commit -qm "install guard into hooks"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -eq 0 ]
+}
+
+@test "check_tree_matches still fails on non-hook divergence with husky hooks" {
+  git config core.hooksPath .husky/_
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "add husky pre-commit"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "install guard"
+  echo "local change" >> file.txt
+  git add file.txt
+  git commit -qm "public: change file"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "check_tree_matches flags hook-path divergence when hooksPath is unset" {
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "add husky pre-commit"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "install guard"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".husky/pre-commit"* ]]
+}

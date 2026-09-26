@@ -148,6 +148,31 @@ check_replay_public() {
   printf '%s\n' "$tmp_branch"
 }
 
+# Print the repo-relative hook files that install-hooks manages when the
+# hooks dir is a working-tree (tracked) directory — e.g. .husky/pre-commit
+# and .husky/pre-push. When core.hooksPath is unset the hooks live under the
+# git dir and are never part of a tracked tree, so nothing is printed.
+# Absolute hooks paths that cannot be expressed repo-relative are skipped.
+_hook_tree_excluded_paths() {
+  local hooks_path
+  hooks_path="$(git config --get core.hooksPath || true)"
+  hooks_path="${hooks_path%/}"
+  [[ -z "$hooks_path" ]] && return 0
+
+  local hook_name hook_path
+  for hook_name in pre-commit pre-push; do
+    hook_path="$(detect_hook_file "$hook_name")"
+    case "$hook_path" in
+      .git/*) continue ;;
+    esac
+    if [[ "$hook_path" == /* ]]; then
+      hook_path="${hook_path#$PWD/}"
+      [[ "$hook_path" == /* ]] && continue
+    fi
+    printf '%s\n' "${hook_path#./}"
+  done
+}
+
 # Compare two tree-ishs.  For every file in <expected_tree>, the same file must
 # exist in <actual_tree> with the same blob.  Local-only additions are ignored.
 # Returns 0 if the public-tracked files match, 1 otherwise.
@@ -163,8 +188,17 @@ check_tree_matches() {
     ui_error "check_tree_matches: cannot compare trees $expected_tree and $actual_tree"
     return 1
   fi
+
+  # Hook files install-hooks manages in a working-tree hooks dir may differ
+  # between the trees without being a publication problem.
+  local -a excluded=()
+  local excl
+  while IFS= read -r excl; do
+    [[ -n "$excl" ]] && excluded+=("$excl")
+  done < <(_hook_tree_excluded_paths)
+
   local result=0
-  local line status path
+  local line status path e
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     # diff-tree --no-renames -r output format:
@@ -174,6 +208,9 @@ check_tree_matches() {
     status="$(printf '%s\n' "$line" | awk '{print $5}')"
     path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
     if [[ "$status" != "A" ]]; then
+      for e in "${excluded[@]}"; do
+        [[ "$path" == "$e" ]] && continue 2
+      done
       ui_error "Check pass: public tree differs at '$path' (status $status)."
       result=1
     fi

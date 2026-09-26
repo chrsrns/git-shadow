@@ -653,3 +653,113 @@ _subcommands_for() {
     return 1
   }
 }
+
+# ---------------------------------------------------------------------------
+# Help tokens (uniform -h/--help contract)
+# ---------------------------------------------------------------------------
+
+@test "bash completion offers help -h --help at the top-level position" {
+  run _bash_complete 1 git-shadow ''
+  [ "$status" -eq 0 ]
+  [[ " $output " == *" help "* ]]
+  [[ " $output " == *" -h "* ]]
+  [[ " $output " == *" --help "* ]]
+}
+
+@test "bash completion offers help at every group subcommand position" {
+  local grp
+  for grp in feature base config annotations local check completion; do
+    run _bash_complete 2 git-shadow "$grp" ''
+    [ "$status" -eq 0 ] || return 1
+    if [[ " $output " != *" help "* ]]; then
+      echo "FAIL $grp: 'help' not offered" >&2
+      return 1
+    fi
+    if [[ " $output " != *" -h "* || " $output " != *" --help "* ]]; then
+      echo "FAIL $grp: -h/--help not offered" >&2
+      return 1
+    fi
+  done
+}
+
+@test "bash completion offers -h/--help but not literal help at leaf positions" {
+  local leaf words nwords
+  while IFS= read -r leaf; do
+    words="$(tr '/' ' ' <<< "$leaf")"
+    nwords="$(wc -w <<< "$words")"
+    run _bash_complete $((1 + nwords)) git-shadow $words ''
+    [ "$status" -eq 0 ] || return 1
+    if [[ " $output " != *" -h "* && " $output " != *" --help "* ]]; then
+      echo "FAIL $leaf: -h/--help not offered: $output" >&2
+      return 1
+    fi
+    if [[ " $output " == *" help "* ]]; then
+      echo "FAIL $leaf: literal 'help' offered at leaf position" >&2
+      return 1
+    fi
+  done < <(for f in "$REPO_ROOT"/commands/*.sh "$REPO_ROOT"/commands/*/*.sh; do
+             f="${f#"$REPO_ROOT"/commands/}"; printf '%s\n' "${f%.sh}"; done)
+}
+
+@test "bash completion offers no help candidates at option-value positions" {
+  # -m/--message, --worktree-dir, --mark-applied take a value.
+  run _bash_complete 3 git-shadow commit -m ''
+  [ "$status" -eq 0 ]
+  [[ " $output " != *" -h "* ]]
+  [[ " $output " != *" --help "* ]]
+  [[ " $output " != *" help "* ]]
+  run _bash_complete 3 git-shadow commit --message ''
+  [ "$status" -eq 0 ]
+  [[ " $output " != *"--help"* ]]
+  run _bash_complete 4 git-shadow feature finish --mark-applied ''
+  [ "$status" -eq 0 ]
+  [[ " $output " != *"--help"* ]]
+  run _bash_complete 4 git-shadow feature start --worktree-dir ''
+  [ "$status" -eq 0 ]
+  [[ " $output " != *"--help"* ]]
+}
+
+@test "bash completion still offers an operand branch literally named help" {
+  git branch -f help >/dev/null 2>&1 || skip "cannot create test branch"
+  run _bash_complete 2 git-shadow push ''
+  [ "$status" -eq 0 ]
+  [[ " $output " == *" help "* ]]
+  git branch -D help >/dev/null 2>&1 || true
+}
+
+@test "zsh completion declares help and -h/--help in command and leaf positions" {
+  command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
+  local body
+  body="$(zsh -c "source '$COMPLETION_ZSH' 2>/dev/null; typeset -f _git_shadow_commands")"
+  [[ "$body" == *"help:"* ]]
+  local grp
+  for grp in feature base config annotations local check completion; do
+    body="$(zsh -c "source '$COMPLETION_ZSH' 2>/dev/null; typeset -f _git_shadow_${grp}_subcommands" 2>/dev/null)"
+    if [[ "$body" != *"help:"* ]]; then
+      echo "FAIL zsh ${grp}_subcommands lacks help" >&2
+      return 1
+    fi
+  done
+  body="$(zsh -c "source '$COMPLETION_ZSH' 2>/dev/null; typeset -f _git_shadow")"
+  [[ "$body" == *"--help"* ]]
+}
+
+@test "fish completion offers help at top and group positions" {
+  command -v fish >/dev/null 2>&1 || skip "fish not installed"
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow '"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"help"* ]]
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow feature '"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"help"* ]]
+}
+
+@test "fish completion offers no help candidates at option-value positions" {
+  command -v fish >/dev/null 2>&1 || skip "fish not installed"
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow commit -m '"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"help"* ]]
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow feature finish --mark-applied '"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"help"* ]]
+}

@@ -156,3 +156,32 @@ complete -c git-shadow -n "__fish_seen_subcommand_from completion; and not __fis
 # ---------------------------------------------------------------------------
 
 complete -c git-shadow -n "__fish_seen_subcommand_from re-anchor push" -a "(git branch --format='%(refname:short)' 2>/dev/null)" -d "branch"
+
+# ---------------------------------------------------------------------------
+# Help tokens: literal 'help' only at top-level and group positions;
+# -h/--help at every position except right after an option that takes a value.
+# ---------------------------------------------------------------------------
+
+# True when the previous complete token is an option that consumes a value
+# (-m/--message, --worktree-dir, --mark-applied) — no help candidates there.
+function __git_shadow_expecting_value
+  set -l tokens (commandline -poc)
+  if string match -qr '\s$' -- "$(commandline -p)"
+    contains -- $tokens[-1] -m --message --worktree-dir --mark-applied
+  else
+    set -l n (count $tokens)
+    test $n -ge 2; and contains -- $tokens[-2] -m --message --worktree-dir --mark-applied
+  end
+end
+
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds help" -a help -d "show command help"
+
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from base; and not __fish_seen_subcommand_from $base_subcmds help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from check; and not __fish_seen_subcommand_from public help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from config; and not __fish_seen_subcommand_from $config_subcmds help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and not __fish_seen_subcommand_from $annotations_subcmds help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds help" -a help -d "show group help"
+complete -c git-shadow -n "__fish_seen_subcommand_from completion; and not __fish_seen_subcommand_from install help" -a help -d "show group help"
+
+complete -c git-shadow -n "not __git_shadow_expecting_value" -s h -l help -d "show usage"

@@ -9,6 +9,12 @@ set -euo pipefail
 
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$LIB_DIR/help.sh"
+if gs_help_requested -- "$@"; then
+  echo "Usage: git shadow config set [<KEY>[=<VALUE>] [<VALUE>]] [--project-config|--user-config] [<ignored>...]"
+  exit 0
+fi
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$LIB_DIR/config-utils.sh"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$LIB_DIR/ui.sh"

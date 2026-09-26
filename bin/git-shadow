@@ -17,32 +17,12 @@ unset _gs_script _gs_dir _gs_target
 COMMAND="${1:-}"
 shift || true
 
-# --- Two-level dispatch: git shadow <group> <subcommand> ---
-# If commands/<COMMAND>/ is a directory, treat the next arg as a subcommand.
-if [[ -n "$COMMAND" && -d "$TOOL_ROOT/commands/$COMMAND" ]]; then
-  SUBCOMMAND="${1:-}"
-  if [[ -z "$SUBCOMMAND" ]]; then
-    echo "❌ Missing subcommand for '$COMMAND'. Try: git shadow $COMMAND <subcommand>" >&2
-    exit 1
-  fi
-  script="$TOOL_ROOT/commands/$COMMAND/$SUBCOMMAND.sh"
-  if [[ -f "$script" ]]; then
-    shift
-    exec "$script" "$@"
-  fi
-  echo "❌ Unknown subcommand '$SUBCOMMAND' for '$COMMAND'." >&2
-  echo "   Run 'git shadow help' for usage." >&2
-  exit 1
-fi
-
-# --- One-level dispatch: git shadow <command> ---
-if [[ -n "$COMMAND" && -f "$TOOL_ROOT/commands/$COMMAND.sh" ]]; then
-  exec "$TOOL_ROOT/commands/$COMMAND.sh" "$@"
-fi
-
+# --- Reserved tokens, resolved before any filesystem lookup -----------
+# help/-h/--help and the --version/-V aliases apply only at this first
+# dispatcher token position; leaf argv is forwarded unchanged.
 case "$COMMAND" in
   --version|-V)
-    exec "$TOOL_ROOT/commands/version.sh"
+    exec "$TOOL_ROOT/commands/version.sh" "$@"
     ;;
   help|-h|--help|"")
     cat <<EOF
@@ -51,32 +31,32 @@ git-shadow
 Diff-sync utilities for public/@local branch pairs.
 
 Commands:
-  version
-  install-hooks
-  doctor [--fix]
-  status [--json]
-  commit -m <message>
-  show --with-annotations <file>
-  annotations reapply [path]
-  local add <path>
-  local rm [--revert] <path>
-  local diff [path]
-  local apply
-  completion install
-  feature start <name> [--worktree|--worktree-dir <path>]
-  feature list [--json]
-  feature publish
-  feature sync [--recover] [--continue|--abort]
-  feature finish [<name>] [--no-pull] [--keep-branches] [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
-  base sync [--recover] [--continue|--abort]
-  re-anchor <branch@local>
-  push <branch>
-  check public <branch>
-  config list [--json]
-  config show [--json]
-  config get <KEY> [--json]
-  config set <KEY>=<VALUE>|<KEY> <VALUE> [--project-config|--user-config]
-  config unset <KEY> [--project-config|--user-config]
+  git shadow version [<ignored>...]
+  git shadow install-hooks [<ignored>...]
+  git shadow doctor [--fix]
+  git shadow status [--json]
+  git shadow commit (-m <message>|-m<message>|--message <message>|<message>)
+  git shadow show --with-annotations <file> [--color]
+  git shadow annotations reapply [path] [<ignored>...]
+  git shadow local add <path> [<ignored>...]
+  git shadow local rm [--revert] <path> [<ignored>...]
+  git shadow local diff [path] [<ignored>...]
+  git shadow local apply [<ignored>...]
+  git shadow completion install [<ignored>...]
+  git shadow feature start [<name> [--worktree|--worktree-dir <path>]]
+  git shadow feature list [--json]
+  git shadow feature publish [<ignored>...]
+  git shadow feature sync [--recover] [--continue|--abort]
+  git shadow feature finish ([<name>]|--continue|--abort|--mark-applied <sha>) [--no-pull] [--keep-branches] [--keep-worktree]
+  git shadow base sync [--recover] [--continue|--abort]
+  git shadow re-anchor [<branch@local>] [<ignored>...]
+  git shadow push <branch> [<ignored>...]
+  git shadow check public [<public-branch>] [<ignored>...]
+  git shadow config list [--json] [<ignored>...]
+  git shadow config show [--json] [<ignored>...]
+  git shadow config get <KEY> [--json] [<ignored>...]
+  git shadow config set [<KEY>[=<VALUE>] [<VALUE>]] [--project-config|--user-config] [<ignored>...]
+  git shadow config unset <KEY> [--project-config|--user-config] [<ignored>...]
 
 Examples:
   git shadow commit -m "add user model"
@@ -94,10 +74,44 @@ Examples:
   git shadow config set LOCAL_SUFFIX=@mine --project-config
   git shadow config unset LOCAL_SUFFIX --project-config
 EOF
-    ;;
-  *)
-    echo "❌ Unknown command: $COMMAND" >&2
-    echo "   Run 'git shadow help' for usage." >&2
-    exit 1
+    exit 0
     ;;
 esac
+
+# --- Two-level dispatch: git shadow <group> <subcommand> ---
+# If commands/<COMMAND>/ is a directory, treat the next arg as a subcommand.
+if [[ -n "$COMMAND" && -d "$TOOL_ROOT/commands/$COMMAND" ]]; then
+  SUBCOMMAND="${1:-}"
+  case "$SUBCOMMAND" in
+    help|-h|--help)
+      # Group usage = one Usage: line per leaf, delegated to leaf handlers.
+      for _gs_leaf in "$TOOL_ROOT/commands/$COMMAND"/*.sh; do
+        "$_gs_leaf" --help
+      done
+      unset _gs_leaf
+      exit 0
+      ;;
+    "")
+      echo "❌ Missing subcommand for '$COMMAND'." >&2
+      echo "   Run 'git shadow $COMMAND --help' for usage." >&2
+      exit 1
+      ;;
+  esac
+  shift
+  script="$TOOL_ROOT/commands/$COMMAND/$SUBCOMMAND.sh"
+  if [[ -f "$script" ]]; then
+    exec "$script" "$@"
+  fi
+  echo "❌ Unknown subcommand '$SUBCOMMAND' for '$COMMAND'." >&2
+  echo "   Run 'git shadow help' for usage." >&2
+  exit 1
+fi
+
+# --- One-level dispatch: git shadow <command> ---
+if [[ -n "$COMMAND" && -f "$TOOL_ROOT/commands/$COMMAND.sh" ]]; then
+  exec "$TOOL_ROOT/commands/$COMMAND.sh" "$@"
+fi
+
+echo "❌ Unknown command: $COMMAND" >&2
+echo "   Run 'git shadow help' for usage." >&2
+exit 1

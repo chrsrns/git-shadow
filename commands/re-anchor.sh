@@ -8,8 +8,16 @@ set -euo pipefail
 # Usage: git shadow re-anchor [<branch@local>]
 # -------------------------------------------------------------------
 
+_GS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
+source "$_GS_LIB/help.sh"
+if gs_help_requested -- "$@"; then
+  echo "Usage: git shadow re-anchor [<branch@local>] [<ignored>...]"
+  exit 0
+fi
+
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/common.sh"
 
 enter_project '.'
 

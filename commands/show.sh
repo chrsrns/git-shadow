@@ -7,8 +7,16 @@ set -euo pipefail
 #          touching the working tree.
 # -------------------------------------------------------------------
 
+_GS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
+source "$_GS_LIB/help.sh"
+if gs_help_requested -- "$@"; then
+  echo "Usage: git shadow show --with-annotations <file> [--color]"
+  exit 0
+fi
+
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/common.sh"
 
 enter_project '.'
 

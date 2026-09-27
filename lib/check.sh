@@ -145,7 +145,7 @@ check_replay_public() {
 
   git checkout -q -b "$tmp_branch" "$checkpoint_public" >/dev/null 2>&1
 
-  local sha pick_output conflicted before_tree
+  local sha conflicted before_tree
   for sha in "$@"; do
     # Initially-empty commits (tree == parent) have nothing to replay and
     # would fail as empty picks; skip them up front.
@@ -154,15 +154,15 @@ check_replay_public() {
       continue
     fi
 
-    before_tree="$(git rev-parse HEAD^{tree})"
+    before_tree="$(git rev-parse "HEAD^{tree}")"
     if git_version_at_least 2 45; then
       # --empty=drop silently drops picks that become empty on the base.
-      if ! pick_output="$(git cherry-pick --quiet --empty=drop "$sha" 2>&1 >/dev/null)"; then
+      if ! git cherry-pick --quiet --empty=drop "$sha" >/dev/null 2>&1; then
         _check_replay_fail "$sha" "$tmp_branch"
         return 1
       fi
     else
-      if ! pick_output="$(git cherry-pick --quiet "$sha" 2>&1 >/dev/null)"; then
+      if ! git cherry-pick --quiet "$sha" >/dev/null 2>&1; then
         # A stopped pick with no staged or unstaged changes is an empty pick
         # (content already present); skip it instead of failing. Detected via
         # CHERRY_PICK_HEAD + empty diffs, not message text (localizable).
@@ -183,7 +183,7 @@ check_replay_public() {
     fi
     # --empty=drop gives no signal, so compare trees: an unchanged tree means
     # the pick was dropped as empty. Only applied commits are printed.
-    if [[ "$(git rev-parse HEAD^{tree})" != "$before_tree" ]]; then
+    if [[ "$(git rev-parse "HEAD^{tree}")" != "$before_tree" ]]; then
       printf '%s\n' "$sha"
     else
       ui_info "Check pass: skipping empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2

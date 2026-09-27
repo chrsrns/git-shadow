@@ -31,6 +31,9 @@ jobs:
         run: |
           git config --global user.name "CI"
           git config --global user.email "ci@example.com"
+          # Detached auto-maintenance can write .git/ after a test finishes
+          # and races teardown's rm -rf of the temp repo.
+          git config --global maintenance.auto false
 
       - name: Shellcheck
         run: |

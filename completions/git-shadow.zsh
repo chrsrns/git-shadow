@@ -13,6 +13,7 @@ _git_shadow() {
   typeset -A opt_args
 
   _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_commands' \
     '*:: :->args'
 
@@ -23,14 +24,15 @@ _git_shadow() {
         base)       _git_shadow_base ;;
         check)      _git_shadow_check ;;
         config)     _git_shadow_config ;;
-        doctor)     _arguments '--fix[apply mechanical repairs: prune stale worktrees, refresh stale hooks]' ;;
-        status)     _arguments '--json[output as JSON]' ;;
-        commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' ;;
-        show)       _arguments '--with-annotations[render the annotated view]' ;;
+        doctor)     _arguments '--fix[apply mechanical repairs: prune stale worktrees, refresh stale hooks]' '(-h --help)'{-h,--help}'[show usage]' ;;
+        status)     _arguments '--json[output as JSON]' '(-h --help)'{-h,--help}'[show usage]' ;;
+        commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' '(-h --help)'{-h,--help}'[show usage]' ;;
+        show)       _arguments '--with-annotations[render the annotated view]' '--color[accepted no-op]' '(-h --help)'{-h,--help}'[show usage]' ;;
         annotations) _git_shadow_annotations ;;
         local)      _git_shadow_local ;;
-        completion) _arguments '1: :_git_shadow_completion_subcommands' ;;
-        push|re-anchor) _arguments '*:branch:__git_refs2' ;;
+        completion) _arguments '1: :_git_shadow_completion_subcommands' '(-h --help)'{-h,--help}'[show usage]' ;;
+        push|re-anchor) _arguments '*:branch:__git_refs2' '(-h --help)'{-h,--help}'[show usage]' ;;
+        version|install-hooks) _arguments '(-h --help)'{-h,--help}'[show usage]' ;;
       esac
       ;;
   esac
@@ -54,6 +56,7 @@ _git_shadow_commands() {
     'push:push a public branch with GIT_SHADOW=1'
     'check:audit a public branch'
     'config:manage git-shadow configuration'
+    'help:show command help'
   )
   _describe 'command' commands
 }
@@ -62,6 +65,7 @@ _git_shadow_feature() {
   local context state line
 
   _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_feature_subcommands' \
     '*:: :->args'
 
@@ -72,16 +76,19 @@ _git_shadow_feature() {
           _arguments \
             '--recover[recover after public history rewrite]' \
             '--continue[resume after manual conflict resolution]' \
-            '--abort[abort the sync]'
+            '--abort[abort the sync]' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
         start)
           _arguments \
             '--worktree[create a worktree under WORKTREE_ROOT for <name>@local]' \
-            '--worktree-dir[create the feature worktree at the given path]:path:_files -/'
+            '--worktree-dir[create the feature worktree at the given path]:path:_files -/' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
         list)
           _arguments \
-            '--json[print the feature pairs as a JSON array]'
+            '--json[print the feature pairs as a JSON array]' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
         finish)
           _arguments \
@@ -90,7 +97,12 @@ _git_shadow_feature() {
             '--keep-worktree[keep the feature worktree and <name>@local]' \
             '--continue[resume after manual conflict resolution]' \
             '--abort[abort the finish]' \
-            '--mark-applied[record a [MEMORY] sha as already applied]:sha'
+            '--mark-applied[record a [MEMORY] sha as already applied]:sha' \
+            '(-h --help)'{-h,--help}'[show usage]'
+          ;;
+        publish)
+          _arguments \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
       esac
       ;;
@@ -105,6 +117,7 @@ _git_shadow_feature_subcommands() {
     'finish:finalize the feature and integrate [MEMORY] commits'
     'sync:apply public net diff onto the @local feature branch'
     'list:list open feature pairs'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
@@ -113,6 +126,7 @@ _git_shadow_base() {
   local context state line
 
   _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_base_subcommands' \
     '*:: :->args'
 
@@ -123,7 +137,8 @@ _git_shadow_base() {
           _arguments \
             '--recover[recover after public history rewrite]' \
             '--continue[resume after manual conflict resolution]' \
-            '--abort[abort the sync]'
+            '--abort[abort the sync]' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
       esac
       ;;
@@ -134,6 +149,7 @@ _git_shadow_base_subcommands() {
   local subcommands
   subcommands=(
     'sync:sync the public/@local base pair'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
@@ -148,6 +164,7 @@ _git_shadow_config() {
   local context state line
 
   _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_config_subcommands' \
     '*:: :->args'
 
@@ -157,16 +174,18 @@ _git_shadow_config() {
         get)
           _arguments \
             '1: :_git_shadow_config_keys' \
-            '--json[output as JSON]'
+            '--json[output as JSON]' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
         set|unset)
           _arguments \
             '1: :_git_shadow_config_keys' \
             '--project-config[save to project-level config (.git-shadow.env)]' \
-            '--user-config[save to user-level config (~/.config/git-shadow/config.env)]'
+            '--user-config[save to user-level config (~/.config/git-shadow/config.env)]' \
+            '(-h --help)'{-h,--help}'[show usage]'
           ;;
         show|list)
-          _arguments '--json[output as JSON]'
+          _arguments '--json[output as JSON]' '(-h --help)'{-h,--help}'[show usage]'
           ;;
       esac
       ;;
@@ -181,19 +200,21 @@ _git_shadow_config_subcommands() {
     'get:get a single configuration value'
     'set:set a configuration value'
     'unset:remove a configuration value'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
 
 _git_shadow_annotations() {
-  _arguments \
+  _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_annotations_subcommands' \
     '*:: :->args'
 
   case $state in
     args)
       case $line[1] in
-        reapply) _arguments '*:path:_path_files' ;;
+        reapply) _arguments '*:path:_path_files' '(-h --help)'{-h,--help}'[show usage]' ;;
       esac
       ;;
   esac
@@ -203,20 +224,23 @@ _git_shadow_annotations_subcommands() {
   local subcommands
   subcommands=(
     'reapply:write stored markers into the working tree'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
 
 _git_shadow_local() {
   _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
     '1: :_git_shadow_local_subcommands' \
     '*:: :->args'
 
   case $state in
     args)
       case $line[1] in
-        add|diff) _arguments '*:path:_path_files' ;;
-        rm)       _arguments '--revert[reverse-apply overlay before removing sidecar]' '*:path:_path_files' ;;
+        add|diff) _arguments '*:path:_path_files' '(-h --help)'{-h,--help}'[show usage]' ;;
+        apply)    _arguments '(-h --help)'{-h,--help}'[show usage]' ;;
+        rm)       _arguments '--revert[reverse-apply overlay before removing sidecar]' '*:path:_path_files' '(-h --help)'{-h,--help}'[show usage]' ;;
       esac
       ;;
   esac
@@ -229,18 +253,23 @@ _git_shadow_local_subcommands() {
     'rm:remove a local patch sidecar'
     'diff:print stored local patch sidecars'
     'apply:re-apply all stored local patch sidecars'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
 
 _git_shadow_check() {
-  _arguments '1: :_git_shadow_check_subcommands' '*:branch:__git_refs2'
+  _arguments -C \
+    '(-h --help)'{-h,--help}'[show usage]' \
+    '1: :_git_shadow_check_subcommands' \
+    '*:branch:__git_refs2'
 }
 
 _git_shadow_check_subcommands() {
   local subcommands
   subcommands=(
     'public:audit a public branch for unpromoted files'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }
@@ -249,6 +278,7 @@ _git_shadow_completion_subcommands() {
   local subcommands
   subcommands=(
     'install:install shell completion into your shell config'
+    'help:show group help'
   )
   _describe 'subcommand' subcommands
 }

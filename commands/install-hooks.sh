@@ -9,6 +9,12 @@ set -euo pipefail
 # Environment setup
 TOOLKIT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$TOOLKIT_ROOT/lib/help.sh"
+if gs_help_requested -- "$@"; then
+  echo "Usage: git shadow install-hooks [<ignored>...]"
+  exit 0
+fi
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$TOOLKIT_ROOT/lib/common.sh"
 
 # Install hooks in current repository only

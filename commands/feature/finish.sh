@@ -9,12 +9,20 @@ set -euo pipefail
 #          [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
 # -------------------------------------------------------------------
 
+_GS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)/common.sh"
+source "$_GS_LIB/help.sh"
+if gs_help_requested --mark-applied -- "$@"; then
+  echo "Usage: git shadow feature finish ([<name>]|--continue|--abort|--mark-applied <sha>) [--no-pull] [--keep-branches] [--keep-worktree]"
+  exit 0
+fi
+
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/common.sh"
 
 usage() {
   cat <<'EOF'
-Usage: git shadow feature finish [<name>] [--no-pull] [--keep-branches] [--keep-worktree] [--continue|--abort] [--mark-applied <sha>]
+Usage: git shadow feature finish ([<name>]|--continue|--abort|--mark-applied <sha>) [--no-pull] [--keep-branches] [--keep-worktree]
 EOF
 }
 

@@ -21,94 +21,119 @@ _git_shadow() {
   local subcmd="${COMP_WORDS[$((offset + 1))]:-}"
   local pos=$(( COMP_CWORD - offset ))
 
+  # Options that take a value consume the next word: no help candidates there.
+  if [[ $pos -ge 1 ]]; then
+    local prev="${COMP_WORDS[$((COMP_CWORD - 1))]:-}"
+    case "$prev" in
+      --worktree-dir)
+        mapfile -t COMPREPLY < <(compgen -d -- "$cur")
+        return
+        ;;
+      -m|--message|--mark-applied)
+        COMPREPLY=()
+        return
+        ;;
+    esac
+  fi
+
   local branches
   branches="$(git branch --format='%(refname:short)' 2>/dev/null)"
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    mapfile -t COMPREPLY < <(compgen -W "version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config" -- "$cur")
+    mapfile -t COMPREPLY < <(compgen -W "version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config help -h --help" -- "$cur")
     return
   fi
 
   case "$cmd" in
     feature)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "start publish finish sync list" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "start publish finish sync list help -h --help" -- "$cur")
       else
         case "$subcmd" in
-          sync)   mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort" -- "$cur") ;;
-          start)  mapfile -t COMPREPLY < <(compgen -W "--worktree --worktree-dir" -- "$cur") ;;
-          list)   mapfile -t COMPREPLY < <(compgen -W "--json" -- "$cur") ;;
-          finish) mapfile -t COMPREPLY < <(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied" -- "$cur") ;;
+          sync)    mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort -h --help" -- "$cur") ;;
+          start)   mapfile -t COMPREPLY < <(compgen -W "--worktree --worktree-dir -h --help" -- "$cur") ;;
+          list)    mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur") ;;
+          finish)  mapfile -t COMPREPLY < <(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied -h --help" -- "$cur") ;;
+          publish) mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur") ;;
         esac
       fi
       ;;
     base)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "sync" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "sync help -h --help" -- "$cur")
       else
         case "$subcmd" in
-          sync) mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort" -- "$cur") ;;
+          sync) mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort -h --help" -- "$cur") ;;
         esac
       fi
       ;;
     config)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "list show get set unset" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "list show get set unset help -h --help" -- "$cur")
       elif [[ $pos -eq 2 ]]; then
         case "$subcmd" in
           get|set|unset)
             local keys
             keys="$(git-shadow config list 2>/dev/null | awk '{print $1}')"
-            mapfile -t COMPREPLY < <(compgen -W "$keys" -- "$cur")
+            mapfile -t COMPREPLY < <(compgen -W "$keys -h --help" -- "$cur")
             ;;
-          show|list) mapfile -t COMPREPLY < <(compgen -W "--json" -- "$cur") ;;
+          show|list) mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur") ;;
         esac
       else
         case "$subcmd" in
-          show|get|list) mapfile -t COMPREPLY < <(compgen -W "--json" -- "$cur") ;;
-          set|unset)     mapfile -t COMPREPLY < <(compgen -W "--project-config --user-config" -- "$cur") ;;
+          show|get|list) mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur") ;;
+          set|unset)     mapfile -t COMPREPLY < <(compgen -W "--project-config --user-config -h --help" -- "$cur") ;;
         esac
       fi
       ;;
     doctor)
-      mapfile -t COMPREPLY < <(compgen -W "--fix" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--fix -h --help" -- "$cur")
       ;;
     status)
-      mapfile -t COMPREPLY < <(compgen -W "--json" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur")
       ;;
     commit)
-      mapfile -t COMPREPLY < <(compgen -W "-m --message" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "-m --message -h --help" -- "$cur")
       ;;
     show)
-      mapfile -t COMPREPLY < <(compgen -W "--with-annotations" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "--with-annotations --color -h --help" -- "$cur")
       ;;
     annotations)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "reapply" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "reapply help -h --help" -- "$cur")
+      else
+        mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur")
       fi
       ;;
     local)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "add rm diff apply" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "add rm diff apply help -h --help" -- "$cur")
       elif [[ $pos -eq 2 && "$subcmd" == "rm" ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "--revert" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "--revert -h --help" -- "$cur")
+      else
+        mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur")
       fi
       ;;
     check)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "public" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "public help -h --help" -- "$cur")
       else
-        mapfile -t COMPREPLY < <(compgen -W "$branches" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "$branches -h --help" -- "$cur")
       fi
       ;;
     completion)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "install" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "install help -h --help" -- "$cur")
+      else
+        mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur")
       fi
       ;;
     push|re-anchor)
-      mapfile -t COMPREPLY < <(compgen -W "$branches" -- "$cur")
+      mapfile -t COMPREPLY < <(compgen -W "$branches -h --help" -- "$cur")
+      ;;
+    version|install-hooks)
+      mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur")
       ;;
   esac
 }

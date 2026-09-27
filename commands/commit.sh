@@ -7,8 +7,16 @@ set -euo pipefail
 #          sidecar containing .git-shadow/annotations/ records.
 # -------------------------------------------------------------------
 
+_GS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/common.sh"
+source "$_GS_LIB/help.sh"
+if gs_help_requested -m --message -- "$@"; then
+  echo "Usage: git shadow commit (-m <message>|-m<message>|--message <message>|<message>)"
+  exit 0
+fi
+
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/common.sh"
 
 enter_project '.'
 

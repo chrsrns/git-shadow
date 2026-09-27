@@ -241,7 +241,16 @@ EOF
   local_head="$(git rev-parse "$local_branch")"
 
   if [[ "$cp_public" == "$public_head" ]]; then
-    _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+    if [[ "$mode" == "base" ]]; then
+      # Base sync refreshes the checkpoint to the current local base head so
+      # `feature start` inherits the latest base@local state. There is no
+      # base publish path, so no publishable backlog can be swallowed.
+      _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+    fi
+    # Feature sync: writing a checkpoint here would pair the unchanged public
+    # head with the current local head and mark unpublished commits as
+    # published. Keep the prior checkpoint so the publishable backlog
+    # survives.
     ui_ok "$label '$local_branch' is already up to date with '$public_branch'."
     return 0
   fi
@@ -268,7 +277,15 @@ EOF
     fi
 
     if [[ "$new_ancestor" == "$public_head" ]]; then
-      _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+      # The rewritten public branch matches the checkpoint content, so the
+      # checkpointed public SHA is stale and must be re-pointed. Base mode
+      # points at the current local head (feature inheritance); feature mode
+      # keeps the prior local pointer so unpublished commits stay publishable.
+      if [[ "$mode" == "base" ]]; then
+        _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
+      else
+        _new_checkpoint="$(checkpoint_create "$public_head" "$cp_local" $cp_pids)"
+      fi
       ui_ok "$label '$local_branch' is already up to date with '$public_branch' (recovered)."
       return 0
     fi

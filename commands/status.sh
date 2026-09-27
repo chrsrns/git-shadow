@@ -127,7 +127,7 @@ LOCAL_HEAD="$(git rev-parse "$SHADOW_BRANCH")"
 
 # Publishable public commits on shadow since checkpoint local. A failed
 # range listing reports 0, matching the previous inline loop's behavior.
-if ! PUBLISHABLE="$(check_publishable_count "$LOCAL_HEAD" "$CP_LOCAL" 2>/dev/null)"; then
+if ! PUBLISHABLE="$(check_publishable_count "$SHADOW_BRANCH" "$CP_LOCAL" 2>/dev/null)"; then
   PUBLISHABLE=0
 fi
 

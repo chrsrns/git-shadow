@@ -80,6 +80,13 @@ _feature_publish_body() {
   rm -f "$shas_file"
 
   if [[ -z "$public_commits" ]]; then
+    # Nothing to publish. When the public-tree content still differs between
+    # the public branch head and the @local head, a checkpoint may have
+    # swallowed a backlog — warn and fail instead of silently exiting 0.
+    if ! check_tree_matches "$PUBLIC_HEAD" "$LOCAL_HEAD_BEFORE"; then
+      ui_warn "No publishable commits but the public tree differs from '$CURRENT_BRANCH' — the checkpoint may have skipped unpublished work. Run 'git shadow feature sync'."
+      exit 1
+    fi
     ui_info "No publishable commits. '$PUBLIC_BRANCH' is already up to date."
     return 0
   fi

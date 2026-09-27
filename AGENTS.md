@@ -198,6 +198,12 @@ If `<base>` has advanced while your feature is still open, catch up manually.
 
 Never force-push a public branch that already exists on a remote unless your repository's policy allows it and you bypass the pre-push hook with `GIT_SHADOW=1`.
 
+Manually merging `<base>@local` into `<name>@local` pulls base content into the
+feature's publish range where it cannot replay: `feature publish` excludes
+merge commits and commits already reachable from `<base>@local`, so that base
+content stays unpublishable. If you merged the local base in, rebase it back
+out with the steps above instead of leaving the merge in place.
+
 After the PR is merged:
 
 ```bash
@@ -245,7 +251,7 @@ If you are asked to finalize work, prefer publication through git shadow rather 
 - Run `git shadow check public <branch>` to audit a public branch for unpromoted files or leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers and rejects staged paths that have a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, doc-comment directives in public trees or the staged index, base/base@local drift without a patch sidecar, unpromoted files, `SPEC.md merge=union` in `.gitattributes`, orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
 
 ## Git shadow configuration
 

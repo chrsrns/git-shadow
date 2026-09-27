@@ -191,6 +191,101 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# Doc-comment directive check
+# ---------------------------------------------------------------------------
+
+@test "doctor warns on doc-comment directives in a public branch tree" {
+  git checkout -q test-feature
+  printf 'public\n/// <reference types="node" />\n' > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "feat: add directive"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"doc-directives"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "doctor warns on staged doc-comment directives" {
+  printf 'public\n/// <summary>Doc</summary>\n' > notes.txt
+  git add notes.txt
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"doc-directives"* ]]
+  [[ "$output" == *"notes.txt"* ]]
+}
+
+@test "doctor does not warn on ordinary /// annotations" {
+  printf '/// my local note\n' > notes.txt
+  git add notes.txt
+  GIT_SHADOW=1 git commit -qm "[MEMORY] local note"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"contains a /// doc-comment directive"* ]]
+}
+
+@test "doctor honors LOCAL_COMMENT_EXCLUDE for doc-comment directives" {
+  git checkout -q test-feature
+  printf '/// <reference types="vite/client" />\n' > vite-env.d.ts
+  git add vite-env.d.ts
+  GIT_SHADOW=1 git commit -qm "feat: add dts"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"contains a /// doc-comment directive"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Base-drift check
+# ---------------------------------------------------------------------------
+
+@test "doctor warns on base drift without a patch sidecar" {
+  git checkout -q main@local
+  echo "drift" >> file.txt
+  git add file.txt
+  git commit -qm "chore: drift on base"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"base-drift"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "doctor ignores base@local additions" {
+  git checkout -q main@local
+  echo "local note" > notes.txt
+  git add notes.txt
+  git commit -qm "[MEMORY] base local note"
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"without a patch sidecar"* ]]
+}
+
+@test "doctor accepts base drift covered by a patch sidecar" {
+  git checkout -q main@local
+  echo "overlay" >> file.txt
+  git shadow local add file.txt >/dev/null 2>&1
+  # Drop the working-tree overlay so check public stays clean; the sidecar
+  # remains committed in the base@local tree.
+  git checkout -q -- file.txt
+  git checkout -q "test-feature@local"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"without a patch sidecar"* ]]
+}
+
+@test "doctor skips base-drift when the local base is missing" {
+  git checkout -q main@local
+  git checkout -q "test-feature@local"
+  git branch -D main@local >/dev/null 2>&1
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"base-drift"* ]]
+  [[ "$output" == *"skipped"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # Unpromoted files check
 # ---------------------------------------------------------------------------
 

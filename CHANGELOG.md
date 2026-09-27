@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+
+- `feature sync` no longer rewrites the checkpoint on the up-to-date path: the prior checkpoint's local pointer is kept, so unpublished commits stay publishable instead of being silently marked published.
+- `feature publish` now warns and exits 1 when the publish range is empty yet the public tree differs from the `@local` head, instead of silently reporting "No publishable commits".
+- TypeScript declaration files (`*.d.ts`) are excluded from the triple-slash marker scan by default, so `/// <reference ...>` directives no longer block the commit guard or publish.
+- Publish replay skips empty cherry-picks (initially-empty commits and commits whose content already exists on the replay base) with a note instead of aborting on the raw git error; version-gated `--empty=drop` handling on git ≥ 2.45.
+- The publish range excludes merge commits and commits reachable from `<public_base>@local` on feature branches, so base-derived commits no longer fail replay.
+- `git shadow doctor` warns on doc-comment directives (e.g. `/// <reference`, `/// <summary`) in public trees or the staged index that are not covered by `LOCAL_COMMENT_EXCLUDE`, and warns on committed base/base@local drift without a patch sidecar.
+- Tree comparison ignores the hook files `install-hooks` manages when the hooks dir is a working-tree directory (husky repos): `.husky/pre-commit` and `.husky/pre-push` divergence no longer blocks publish.
+
 ## [1.4.0] — 2026-09-26
 
 ### Added

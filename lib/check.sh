@@ -12,6 +12,9 @@
 
 # Print the public commit SHAs between a checkpoint and a local branch head,
 # in chronological order.  [MEMORY] and [CHECKPOINT] commits are skipped.
+# On feature branches (any @local branch other than the local base), merge
+# commits and commits reachable from the local base are excluded too — they
+# already live on the public base and cannot replay onto the feature base.
 check_public_commits() {
   local local_branch="$1"
   local checkpoint_local="$2"
@@ -22,12 +25,32 @@ check_public_commits() {
     return 1
   fi
 
-  local sha subject
+  local local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+  local exclude_feature=1 base_local_exists=0
+  if [[ "$local_branch" == "$local_base" ]]; then
+    exclude_feature=0
+  elif git show-ref --verify --quiet "refs/heads/$local_base"; then
+    base_local_exists=1
+  fi
+
+  local sha subject parents
   for sha in $revlist; do
     subject="$(git log -1 --format='%s' "$sha")"
-    if [[ "$subject" != "[MEMORY]"* && "$subject" != "[CHECKPOINT]"* && "$subject" != "[SYNC]"* ]]; then
-      printf '%s\n' "$sha"
+    if [[ "$subject" == "[MEMORY]"* || "$subject" == "[CHECKPOINT]"* || "$subject" == "[SYNC]"* ]]; then
+      continue
     fi
+    if [[ $exclude_feature -eq 1 ]]; then
+      # Merge commits cannot be cherry-picked without -m.
+      parents="$(git show -s --format=%P "$sha")"
+      [[ "$parents" == *" "* ]] && continue
+      # Commits reachable from the local base are base content; replaying
+      # them onto the feature public branch fails (missing base keeps the
+      # merge exclusion but cannot test reachability).
+      if [[ $base_local_exists -eq 1 ]] && git merge-base --is-ancestor "$sha" "$local_base" 2>/dev/null; then
+        continue
+      fi
+    fi
+    printf '%s\n' "$sha"
   done
 }
 
@@ -112,8 +135,9 @@ check_missing_paths() {
 }
 
 # Create a temporary branch from <checkpoint_public> and cherry-pick the given
-# public commits onto it.  Prints the temp branch name, or returns 1 on failure
-# after emitting an error naming the offending commit and involved paths.
+# public commits onto it.  Prints the applied commit SHAs (one per line) —
+# empty commits are skipped with a note and never printed.  Returns 1 on
+# failure after emitting an error naming the offending commit and paths.
 check_replay_public() {
   local checkpoint_public="$1"
   local tmp_branch="$2"
@@ -121,31 +145,99 @@ check_replay_public() {
 
   git checkout -q -b "$tmp_branch" "$checkpoint_public" >/dev/null 2>&1
 
-  local sha pick_output conflicted
+  local sha conflicted before_tree
   for sha in "$@"; do
-    if ! pick_output="$(git cherry-pick --quiet "$sha" 2>&1 >/dev/null)"; then
-      ui_error "Check pass: failed to replay public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))."
-      [[ -n "$pick_output" ]] && printf '%s\n' "$pick_output" >&2
-      # Unmerged paths cover real conflicts; an empty pick leaves none, so
-      # fall back to the paths the offending commit itself touches.
-      conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
-      if [[ -z "$conflicted" ]]; then
-        local conflicted_out conflicted_status
-        conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
-        conflicted_status=$?
-        if [[ $conflicted_status -eq 0 ]]; then
-          conflicted="$conflicted_out"
-        fi
+    # Initially-empty commits (tree == parent) have nothing to replay and
+    # would fail as empty picks; skip them up front.
+    if git diff-tree -r --no-commit-id --quiet "$sha" >/dev/null 2>&1; then
+      ui_info "Check pass: skipping initially-empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
+      continue
+    fi
+
+    before_tree="$(git rev-parse "HEAD^{tree}")"
+    if git_version_at_least 2 45; then
+      # --empty=drop silently drops picks that become empty on the base.
+      if ! git cherry-pick --quiet --empty=drop "$sha" >/dev/null 2>&1; then
+        _check_replay_fail "$sha" "$tmp_branch"
+        return 1
       fi
-      [[ -n "$conflicted" ]] && ui_error "Check pass: path(s) involved: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
-      git cherry-pick --abort >/dev/null 2>&1 || true
-      git checkout -q "-" >/dev/null 2>&1 || true
-      git branch -D "$tmp_branch" >/dev/null 2>&1 || true
-      return 1
+    else
+      if ! git cherry-pick --quiet "$sha" >/dev/null 2>&1; then
+        # A stopped pick with no staged or unstaged changes is an empty pick
+        # (content already present); skip it instead of failing. Detected via
+        # CHERRY_PICK_HEAD + empty diffs, not message text (localizable).
+        if [[ -f "$(git rev-parse --git-path CHERRY_PICK_HEAD)" ]] \
+           && git diff --quiet && git diff --cached --quiet; then
+          ui_info "Check pass: skipping empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
+          if git_version_at_least 2 33; then
+            git cherry-pick --skip >/dev/null 2>&1 || true
+          else
+            git cherry-pick --quit >/dev/null 2>&1 || true
+            git reset --hard HEAD >/dev/null 2>&1
+          fi
+          continue
+        fi
+        _check_replay_fail "$sha" "$tmp_branch"
+        return 1
+      fi
+    fi
+    # --empty=drop gives no signal, so compare trees: an unchanged tree means
+    # the pick was dropped as empty. Only applied commits are printed.
+    if [[ "$(git rev-parse "HEAD^{tree}")" != "$before_tree" ]]; then
+      printf '%s\n' "$sha"
+    else
+      ui_info "Check pass: skipping empty public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))." >&2
     fi
   done
+}
 
-  printf '%s\n' "$tmp_branch"
+# Emit the replay failure diagnostic for <sha> and clean up the temp branch.
+# Raw git cherry-pick output is never printed.
+_check_replay_fail() {
+  local sha="$1"
+  local tmp_branch="$2"
+  ui_error "Check pass: failed to replay public commit $sha ($(git log -1 --format='%s' "$sha" 2>/dev/null))."
+  # Unmerged paths cover real conflicts; an empty pick leaves none, so
+  # fall back to the paths the offending commit itself touches.
+  local conflicted
+  conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
+  if [[ -z "$conflicted" ]]; then
+    local conflicted_out conflicted_status
+    conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
+    conflicted_status=$?
+    if [[ $conflicted_status -eq 0 ]]; then
+      conflicted="$conflicted_out"
+    fi
+  fi
+  [[ -n "$conflicted" ]] && ui_error "Check pass: path(s) involved: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+  git cherry-pick --abort >/dev/null 2>&1 || true
+  git checkout -q "-" >/dev/null 2>&1 || true
+  git branch -D "$tmp_branch" >/dev/null 2>&1 || true
+}
+
+# Print the repo-relative hook files that install-hooks manages when the
+# hooks dir is a working-tree (tracked) directory — e.g. .husky/pre-commit
+# and .husky/pre-push. When core.hooksPath is unset the hooks live under the
+# git dir and are never part of a tracked tree, so nothing is printed.
+# Absolute hooks paths that cannot be expressed repo-relative are skipped.
+_hook_tree_excluded_paths() {
+  local hooks_path
+  hooks_path="$(git config --get core.hooksPath || true)"
+  hooks_path="${hooks_path%/}"
+  [[ -z "$hooks_path" ]] && return 0
+
+  local hook_name hook_path
+  for hook_name in pre-commit pre-push; do
+    hook_path="$(detect_hook_file "$hook_name")"
+    case "$hook_path" in
+      .git/*) continue ;;
+    esac
+    if [[ "$hook_path" == /* ]]; then
+      hook_path="${hook_path#$PWD/}"
+      [[ "$hook_path" == /* ]] && continue
+    fi
+    printf '%s\n' "${hook_path#./}"
+  done
 }
 
 # Compare two tree-ishs.  For every file in <expected_tree>, the same file must
@@ -163,8 +255,17 @@ check_tree_matches() {
     ui_error "check_tree_matches: cannot compare trees $expected_tree and $actual_tree"
     return 1
   fi
+
+  # Hook files install-hooks manages in a working-tree hooks dir may differ
+  # between the trees without being a publication problem.
+  local -a excluded=()
+  local excl
+  while IFS= read -r excl; do
+    [[ -n "$excl" ]] && excluded+=("$excl")
+  done < <(_hook_tree_excluded_paths)
+
   local result=0
-  local line status path
+  local line status path e
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     # diff-tree --no-renames -r output format:
@@ -174,6 +275,9 @@ check_tree_matches() {
     status="$(printf '%s\n' "$line" | awk '{print $5}')"
     path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
     if [[ "$status" != "A" ]]; then
+      for e in "${excluded[@]}"; do
+        [[ "$path" == "$e" ]] && continue 2
+      done
       ui_error "Check pass: public tree differs at '$path' (status $status)."
       result=1
     fi
@@ -231,7 +335,13 @@ publish_replay_and_head() {
   local original_branch
   original_branch="$(git branch --show-current)"
 
-  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits >/dev/null; then
+  # The replay runs in the current shell (the checkout to the temp branch
+  # must survive); its stdout carries the applied commit SHAs. The caller's
+  # stdout stays clean for the final SHA list.
+  local applied_file
+  applied_file="$(mktemp)"
+  if ! check_replay_public "$checkpoint_public" "$tmp_branch" $public_commits >"$applied_file"; then
+    rm -f "$applied_file"
     git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     return 1
   fi
@@ -241,6 +351,7 @@ publish_replay_and_head() {
   local_head="$(git rev-parse "$local_branch")"
 
   if ! check_tree_matches "$tmp_head" "$local_head"; then
+    rm -f "$applied_file"
     git checkout -q "${original_branch}" >/dev/null 2>&1 || true
     git branch -D "$tmp_branch" >/dev/null 2>&1 || true
     return 1
@@ -249,6 +360,7 @@ publish_replay_and_head() {
   # Return to the original branch but leave the temp branch for the caller.
   git checkout -q "${original_branch}" >/dev/null 2>&1 || true
 
+  cat "$applied_file"
+  rm -f "$applied_file"
   printf -v "$out_branch_var" '%s' "$tmp_branch"
-  printf '%s\n' $public_commits | tr ' ' '\n' | grep -v '^$'
 }

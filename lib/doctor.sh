@@ -107,7 +107,7 @@ doctor_checkpoint_summary() {
   public_head="$(git rev-parse "$public_branch")"
   local_head="$(git rev-parse "$local_branch")"
 
-  if ! publishable="$(check_publishable_count "$local_head" "$cp_local" 2>/dev/null)"; then
+  if ! publishable="$(check_publishable_count "$local_branch" "$cp_local" 2>/dev/null)"; then
     publishable=0
   fi
 
@@ -172,6 +172,81 @@ doctor_hooks_check() {
   return $issues
 }
 
+# Doc-comment directives (C# XML doc / TypeScript triple-slash tags) that
+# look like local `///` annotations but are regular documentation. Hardcoded
+# so the false-positive scan stays stable and reviewable.
+DOCTOR_DOC_DIRECTIVE_RE='^///[[:space:]]*<(reference|summary|remarks|param|returns|typeparam|exception|value|example|see|seealso|include|inheritdoc|permission)([[:space:]>]|$)'
+
+# Warn when a `///` line in a public tree or the staged index matches a known
+# doc-comment directive and its path is not covered by LOCAL_COMMENT_EXCLUDE.
+# Local-annotation markers (`///` without a directive tag) never warn.
+doctor_doc_directives_check() {
+  local issues=0 ref
+
+  # Public-branch trees: every public branch with an @local pair.
+  while IFS= read -r ref; do
+    [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
+    git show-ref --verify --quiet "refs/heads/${ref}${LOCAL_SUFFIX}" || continue
+    _doctor_doc_directives_in_ref "$ref" "$ref" || issues=1
+  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
+
+  # Staged index: only files staged since HEAD; committed @local content
+  # legitimately carries `///` markers and must not warn.
+  _doctor_doc_directives_staged || issues=1
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "doc-directives: clean"
+  fi
+  return $issues
+}
+
+# Scan one tree ref (public branch head) for doc-comment directives.
+_doctor_doc_directives_in_ref() {
+  local label="$1"
+  local ref="$2"
+  local hits path line hit issues=0
+  hits="$(git grep -I -n -E "$DOCTOR_DOC_DIRECTIVE_RE" "$ref" 2>/dev/null)" || return 0
+  while IFS= read -r hit; do
+    [[ -z "$hit" ]] && continue
+    # git grep on a ref prints 'ref:path:line:content'; strip the ref prefix.
+    hit="${hit#"$ref":}"
+    path="${hit%%:*}"
+    case "$path" in
+      .git-shadow/annotations/* | .git-shadow/patches/*) continue ;;
+    esac
+    if annotations_triple_excluded "$path"; then
+      continue
+    fi
+    line="${hit#*:}"
+    line="${line%%:*}"
+    ui_warn "doc-directives: '$label:$path' contains a /// doc-comment directive (line $line)"
+    issues=1
+  done <<< "$hits"
+  return $issues
+}
+
+# Scan files staged since HEAD for doc-comment directives.
+_doctor_doc_directives_staged() {
+  local list
+  list="$(git diff --cached --name-only --diff-filter=ACMRT -z 2>/dev/null || true)"
+  [[ -z "$list" ]] && return 0
+  local path issues=0
+  while IFS= read -r -d '' path; do
+    [[ -z "$path" ]] && continue
+    case "$path" in
+      .git-shadow/annotations/* | .git-shadow/patches/*) continue ;;
+    esac
+    if annotations_triple_excluded "$path"; then
+      continue
+    fi
+    if git show ":$path" 2>/dev/null | grep -InE "$DOCTOR_DOC_DIRECTIVE_RE" >/dev/null; then
+      ui_warn "doc-directives: staged '$path' contains a /// doc-comment directive"
+      issues=1
+    fi
+  done < <(printf '%s' "$list")
+  return $issues
+}
+
 # Run `git shadow check public <branch>` and report results (V99).
 doctor_unpromoted_files() {
   local public_branch="$1"
@@ -224,6 +299,54 @@ doctor_annotations_check() {
   fi
   ui_ok "annotations: no orphan records"
   return 0
+}
+
+# Warn on committed public-file drift between the public base and the local
+# base that is not carried as a patch sidecar — such drift blocks every
+# feature publish. The sidecar oracle is the base@local tree, not the
+# working tree; base@local additions are exempt.
+doctor_base_drift_check() {
+  local public_base="${PUBLIC_BASE_BRANCH:-main}"
+  local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
+
+  if ! git show-ref --verify --quiet "refs/heads/$local_base"; then
+    ui_info "base-drift: skipped (no '$local_base')"
+    return 0
+  fi
+
+  local -A covered=()
+  local sidecar rel
+  while IFS= read -r sidecar; do
+    [[ -z "$sidecar" ]] && continue
+    rel="${sidecar#.git-shadow/patches/}"
+    rel="${rel%.patch}"
+    covered["$rel"]=1
+  done < <(git ls-tree -r --name-only "$local_base" -- .git-shadow/patches/)
+
+  local diff_output diff_status
+  diff_output="$(git diff-tree --no-renames -r "$public_base" "$local_base" 2>/dev/null)"
+  diff_status=$?
+  if [[ $diff_status -ne 0 ]]; then
+    ui_warn "base-drift: cannot compare trees '$public_base' and '$local_base'"
+    return 1
+  fi
+
+  local issues=0 line status path
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    status="$(printf '%s\n' "$line" | awk '{print $5}')"
+    [[ "$status" == "A" ]] && continue
+    path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
+    if [[ -z "${covered[$path]:-}" ]]; then
+      ui_warn "base-drift: '$path' differs between '$public_base' and '$local_base' without a patch sidecar"
+      issues=1
+    fi
+  done < <(printf '%s\n' "$diff_output")
+
+  if [[ $issues -eq 0 ]]; then
+    ui_ok "base-drift: clean"
+  fi
+  return $issues
 }
 
 # Warn when .git-shadow/patches/ sidecars cannot be applied to HEAD.
@@ -346,6 +469,7 @@ doctor_run() {
   fi
 
   _doctor_tally doctor_hooks_check
+  _doctor_tally doctor_doc_directives_check
 
   # Unpromoted files for every public branch with a local counterpart (V99).
   while IFS= read -r ref; do
@@ -354,6 +478,7 @@ doctor_run() {
     _doctor_tally doctor_unpromoted_files "$ref"
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
+  _doctor_tally doctor_base_drift_check
   _doctor_tally doctor_gitattributes_check
   _doctor_tally doctor_annotations_check
   _doctor_tally doctor_patches_check

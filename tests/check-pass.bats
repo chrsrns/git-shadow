@@ -219,3 +219,179 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"cannot list base tree"* ]]
 }
+
+@test "check_tree_matches ignores husky-managed hook files" {
+  git config core.hooksPath .husky/_
+  # Hook files tracked on the public side, guard block added on the @local
+  # side — the husky divergence scenario.
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-push
+  git add .husky/pre-commit .husky/pre-push
+  git commit -qm "add husky hooks"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-push hook\n' > .husky/pre-push
+  git add .husky/pre-commit .husky/pre-push
+  git commit -qm "install guard into hooks"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -eq 0 ]
+}
+
+@test "check_tree_matches still fails on non-hook divergence with husky hooks" {
+  git config core.hooksPath .husky/_
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "add husky pre-commit"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "install guard"
+  echo "local change" >> file.txt
+  git add file.txt
+  git commit -qm "public: change file"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "replay skips an initially-empty commit" {
+  git checkout -q main@local
+  git commit -q --allow-empty -m "public: empty commit"
+  empty_sha="$(git rev-parse HEAD)"
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  out_var="unset"
+  shas_file="$TEST_DIR/empty-shas.txt"
+  notes_file="$TEST_DIR/empty-notes.txt"
+  publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" out_var \
+    >"$shas_file" 2>"$notes_file"
+  # A git-shadow note is emitted and the empty commit is not published.
+  grep -q "empty" "$notes_file"
+  ! grep -q "$empty_sha" "$shas_file"
+  git branch -D "$out_var" >/dev/null 2>&1 || true
+}
+
+@test "replay skips a commit that becomes empty on the replay base" {
+  git checkout -q main@local
+  # A [MEMORY] commit (subject-filtered, never replayed) rewrites a public
+  # file; the following public commit restores it to the checkpoint base
+  # content, so the pick's result equals the replay state and is empty.
+  echo "local only" > file.txt
+  git add file.txt
+  git commit -q -m "[MEMORY] modify public file"
+  git checkout -q "HEAD~1" -- file.txt
+  git commit -q -m "public: restore file"
+  latest="$(checkpoint_latest main@local)"
+  cp_public="$(checkpoint_public "$latest")"
+  cp_local="$(checkpoint_local "$latest")"
+
+  run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
+  [ "$status" -eq 0 ]
+  # No raw git cherry-pick error text leaks.
+  [[ "$output" != *"The previous cherry-pick"* ]]
+  git branch -D __shadow_check_tmp__ >/dev/null 2>&1 || true
+}
+
+@test "check_public_commits excludes merge commits on a feature branch" {
+  git checkout -q main@local
+  git checkout -q -b feat@local
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  git checkout -q -b side
+  echo side > side.txt
+  git add side.txt
+  git commit -qm "feat: side work"
+  git checkout -q feat@local
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: main work"
+  git merge -q --no-ff side -m "merge side"
+  merge_sha="$(git rev-parse HEAD)"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$merge_sha"* ]]
+}
+
+@test "check_public_commits excludes commits reachable from base@local" {
+  git checkout -q main@local
+  echo base2 > base.txt
+  git add base.txt
+  git commit -qm "public: base work"
+  git checkout -q -b feat@local
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: work"
+  # Advance the local base, then manually merge it into the feature.
+  git checkout -q main@local
+  echo base3 > base3.txt
+  git add base3.txt
+  git commit -qm "public: more base work"
+  base_sha="$(git rev-parse main@local)"
+  git checkout -q feat@local
+  git merge -q --no-ff "main@local" -m "merge base into feature"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$base_sha"* ]]
+}
+
+@test "check_public_commits keeps merge exclusion when base@local is missing" {
+  git checkout -q main@local
+  git checkout -q -b feat@local
+  git branch -D main@local >/dev/null 2>&1
+  _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse feat@local)")"
+  git checkout -q -b side
+  echo side > side.txt
+  git add side.txt
+  git commit -qm "feat: side work"
+  git checkout -q feat@local
+  echo feat > feat.txt
+  git add feat.txt
+  git commit -qm "feat: main work"
+  git merge -q --no-ff side -m "merge side"
+  merge_sha="$(git rev-parse HEAD)"
+
+  latest="$(checkpoint_latest feat@local)"
+  cp_local="$(checkpoint_local "$latest")"
+  run check_public_commits "feat@local" "$cp_local"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"$merge_sha"* ]]
+}
+
+@test "check_tree_matches flags hook-path divergence when hooksPath is unset" {
+  git branch husky-base
+  git branch husky-base@local
+  git checkout -q husky-base
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "add husky pre-commit"
+  git checkout -q husky-base@local
+  mkdir -p .husky
+  printf '#!/bin/sh\n# husky original\n# git-shadow pre-commit hook\n' > .husky/pre-commit
+  git add .husky/pre-commit
+  git commit -qm "install guard"
+
+  run check_tree_matches husky-base husky-base@local
+  [ "$status" -ne 0 ]
+  [[ "$output" == *".husky/pre-commit"* ]]
+}

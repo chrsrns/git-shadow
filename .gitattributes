@@ -2,4 +2,3 @@
 *.sh text eol=lf
 bin/git-shadow text eol=lf
 config/defaults.env text eol=lf
-SPEC.md merge=union

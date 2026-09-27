@@ -22,7 +22,7 @@ source "$_GS_LIB/common.sh"
 enter_project '.'
 
 # Guard: do not re-anchor while a git-shadow sync is in progress.
-if [[ -f "$(sync_state_file)" ]]; then
+if state_active "$(sync_state_file)"; then
   ui_error "A git-shadow sync is in progress. Resolve it before re-anchoring."
   exit 1
 fi

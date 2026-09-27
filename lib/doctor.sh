@@ -54,7 +54,7 @@ doctor_state_check() {
   sync_file="$(sync_state_file)"
   finish_file="$(finish_state_file)"
 
-  if [[ -f "$sync_file" ]]; then
+  if state_active "$sync_file"; then
     local mode="" pub="" loc=""
     if sync_load_state; then
       mode="${SYNC_MODE:-?}"
@@ -64,7 +64,7 @@ doctor_state_check() {
     ui_warn "state: sync in progress ($sync_file, mode=${mode:-?}, $loc <- $pub); resume with 'git shadow ${mode:-feature} sync --continue' or abort with 'git shadow ${mode:-feature} sync --abort'"
     found=1
   fi
-  if [[ -f "$finish_file" ]]; then
+  if state_active "$finish_file"; then
     local phase="" local_base=""
     if finish_load_state; then
       phase="${FINISH_PHASE:-?}"

@@ -8,16 +8,9 @@
 SYNC_STATE_FILE_NAME="git-shadow-sync"
 
 # The sync state file lives in the common .git dir so a paused sync is
-# visible from every worktree. --git-path would resolve unknown names to
-# the per-worktree admin dir; --git-common-dir is required.
+# visible from every worktree.
 sync_state_file() {
-  local git_dir
-  git_dir="$(git rev-parse --git-common-dir 2>/dev/null)" || true
-  if [[ -z "$git_dir" ]]; then
-    printf '%s\n' ".git/$SYNC_STATE_FILE_NAME"
-  else
-    printf '%s/%s\n' "$git_dir" "$SYNC_STATE_FILE_NAME"
-  fi
+  state_file "$SYNC_STATE_FILE_NAME"
 }
 
 sync_has_conflicts() {
@@ -193,50 +186,23 @@ sync_recover_ancestor() {
 # <diff_start> is the actual start of the applied net diff; it equals
 # <checkpoint_public> unless --recover found a new-ancestor.
 sync_save_state() {
-  local file
-  file="$(sync_state_file)"
-  {
-    echo "mode=$1"
-    echo "public_branch=$2"
-    echo "local_branch=$3"
-    echo "checkpoint_public=$4"
-    echo "checkpoint_local=$5"
-    echo "diff_start=$6"
-    echo "target_public=$7"
-    echo "local_head=$8"
-    echo "pids=$9"
-  } > "$file"
+  state_save "$(sync_state_file)" \
+    "mode=$1" \
+    "public_branch=$2" \
+    "local_branch=$3" \
+    "checkpoint_public=$4" \
+    "checkpoint_local=$5" \
+    "diff_start=$6" \
+    "target_public=$7" \
+    "local_head=$8" \
+    "pids=$9"
 }
 
-# Load the sync state file into shell variables.
+# Load the sync state file into SYNC_* shell variables.
 sync_load_state() {
-  local file
-  file="$(sync_state_file)"
-  if [[ ! -f "$file" ]]; then
-    return 1
-  fi
-  local var
-  while IFS='=' read -r key value; do
-    [[ -z "$key" || "$key" =~ ^# ]] && continue
-    var=""
-    case "$key" in
-      mode)               var=SYNC_MODE ;;
-      public_branch)      var=SYNC_PUBLIC_BRANCH ;;
-      local_branch)       var=SYNC_LOCAL_BRANCH ;;
-      checkpoint_public)  var=SYNC_CHECKPOINT_PUBLIC ;;
-      checkpoint_local)   var=SYNC_CHECKPOINT_LOCAL ;;
-      diff_start)         var=SYNC_DIFF_START ;;
-      target_public)      var=SYNC_TARGET_PUBLIC ;;
-      local_head)         var=SYNC_LOCAL_HEAD ;;
-      pids)               var=SYNC_PIDS ;;
-    esac
-    [[ -n "$var" ]] && printf -v "$var" '%s' "$value"
-  done < "$file"
-  return 0
+  state_load "$(sync_state_file)" SYNC
 }
 
 sync_clear_state() {
-  local file
-  file="$(sync_state_file)"
-  rm -f "$file"
+  state_clear "$(sync_state_file)"
 }

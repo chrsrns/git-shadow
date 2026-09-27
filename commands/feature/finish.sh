@@ -457,7 +457,7 @@ enter_project '.'
 trap 'if [[ -n "${FINISH_TMP_DIR:-}" ]]; then rm -rf "$FINISH_TMP_DIR"; fi' EXIT
 
 # V88: all feature finish modes refuse while a git-shadow sync is in progress.
-if [[ -f "$(sync_state_file)" ]]; then
+if state_active "$(sync_state_file)"; then
   ui_error "A git-shadow sync is in progress. Resolve it before running 'git shadow feature finish'."
   exit 1
 fi

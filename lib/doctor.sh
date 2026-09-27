@@ -263,19 +263,44 @@ doctor_unpromoted_files() {
   return 1
 }
 
-# Warn when SPEC.md exists but .gitattributes does not declare
-# `SPEC.md merge=union` (V100).
-doctor_gitattributes_check() {
+# Warn on duplicate ^V<n>: / ^| T<n> | / ^| B<n> | row IDs in SPEC.md,
+# and when the SPEC.md merge driver resolves to `union` — the driver that
+# silently concatenates same-row edits. Driver resolution goes through
+# `git check-attr` from the repo toplevel (wildcard patterns, attribute-list
+# position, and .git/info/attributes included; comments excluded). Skipped
+# entirely when SPEC.md is absent.
+doctor_spec_integrity_check() {
   if [[ ! -f "SPEC.md" ]]; then
-    ui_info "gitattributes: skipped (no SPEC.md)"
+    ui_info "spec-integrity: skipped (no SPEC.md)"
     return 0
   fi
-  if [[ -f ".gitattributes" ]] && grep -qE '^SPEC\.md[[:space:]]+merge=union' .gitattributes; then
-    ui_ok "gitattributes: SPEC.md merge=union declared"
-    return 0
+
+  local warned=0 dups id
+  dups="$( {
+    grep -oE '^V[0-9]+:' SPEC.md | tr -d ':'
+    grep -oE '^\| [TB][0-9]+ \|' SPEC.md | tr -d '| '
+  } | sort | uniq -d )"
+  while IFS= read -r id; do
+    if [[ -n "$id" ]]; then
+      ui_warn "spec-integrity: duplicate ID '$id' in SPEC.md"
+      warned=1
+    fi
+  done <<< "$dups"
+
+  local toplevel driver
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  driver="$(git -C "$toplevel" check-attr merge -- SPEC.md 2>/dev/null)"
+  driver="${driver##*: }"
+  if [[ "$driver" == "union" ]]; then
+    ui_warn "spec-integrity: SPEC.md merge driver resolves to 'union'"
+    warned=1
   fi
-  ui_warn "gitattributes: SPEC.md exists but .gitattributes lacks 'SPEC.md merge=union'"
-  return 1
+
+  if [[ $warned -eq 1 ]]; then
+    return 1
+  fi
+  ui_ok "spec-integrity: clean"
+  return 0
 }
 
 # Warn when .git-shadow/annotations/ sidecars contain records marked
@@ -479,7 +504,7 @@ doctor_run() {
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
   _doctor_tally doctor_base_drift_check
-  _doctor_tally doctor_gitattributes_check
+  _doctor_tally doctor_spec_integrity_check
   _doctor_tally doctor_annotations_check
   _doctor_tally doctor_patches_check
   _doctor_tally doctor_worktree_root_check

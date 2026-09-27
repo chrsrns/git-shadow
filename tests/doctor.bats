@@ -308,26 +308,107 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# .gitattributes union-merge check
+# SPEC.md integrity check
 # ---------------------------------------------------------------------------
 
-@test "doctor warns when SPEC.md exists without merge=union" {
-  echo "# spec" > SPEC.md
+@test "doctor spec-integrity check skips when SPEC.md absent" {
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"skip"* ]]
+}
+
+@test "doctor accepts a clean SPEC.md" {
+  cat > SPEC.md <<'EOF'
+# spec
+V1: first invariant
+V2: second invariant
+| T1 | . | first task |
+EOF
+  git add SPEC.md
+  git commit -qm "spec: add"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"spec-integrity: clean"* ]]
+}
+
+@test "doctor flags duplicate row IDs in SPEC.md" {
+  cat > SPEC.md <<'EOF'
+# spec
+V1: first invariant
+V1: reused ID
+| T1 | . | task |
+| T1 | . | duplicate task |
+EOF
   git add SPEC.md
   git commit -qm "spec: add"
   run git shadow doctor
   [ "$status" -eq 1 ]
-  [[ "$output" == *"gitattributes"* ]]
-  [[ "$output" == *"merge=union"* ]]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"V1"* ]]
+  [[ "$output" == *"T1"* ]]
 }
 
-@test "doctor accepts SPEC.md with merge=union declared" {
-  echo "# spec" > SPEC.md
-  echo "SPEC.md merge=union" > .gitattributes
-  git add SPEC.md .gitattributes
-  git commit -qm "spec: add with union"
+@test "doctor ignores a lone tombstone row in SPEC.md" {
+  cat > SPEC.md <<'EOF'
+# spec
+V1: (retired — old rule; see V2)
+V2: current rule
+EOF
+  git add SPEC.md
+  git commit -qm "spec: add"
   run git shadow doctor
   [ "$status" -eq 0 ]
+  [[ "$output" == *"spec-integrity: clean"* ]]
+}
+
+@test "doctor flags duplicate IDs in a conflict-marker SPEC.md" {
+  cat > SPEC.md <<'EOF'
+# spec
+<<<<<<< HEAD
+| T1 | . | left row |
+=======
+| T1 | . | right row |
+>>>>>>> branch
+EOF
+  git add SPEC.md
+  git commit -qm "spec: add conflicted"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"T1"* ]]
+}
+
+@test "doctor warns when a wildcard resolves the SPEC.md merge driver to union" {
+  echo "# spec" > SPEC.md
+  echo "*.md merge=union" > .gitattributes
+  git add SPEC.md .gitattributes
+  git commit -qm "spec: add with wildcard union"
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"union"* ]]
+}
+
+@test "doctor warns when .git/info/attributes resolves the SPEC.md merge driver to union" {
+  echo "# spec" > SPEC.md
+  git add SPEC.md
+  git commit -qm "spec: add"
+  echo "SPEC.md merge=union" > .git/info/attributes
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"union"* ]]
+}
+
+@test "doctor ignores a commented merge=union attribute line" {
+  echo "# spec" > SPEC.md
+  echo "# SPEC.md merge=union" > .gitattributes
+  git add SPEC.md .gitattributes
+  git commit -qm "spec: add with commented union"
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"spec-integrity: clean"* ]]
 }
 
 # ---------------------------------------------------------------------------

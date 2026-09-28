@@ -169,9 +169,11 @@ EOF
     # shellcheck disable=SC2034  # read by lib/patches.sh during the transaction
     PATCHES_REAPPLY_PAUSE=1
     if ! patches_transaction _sync_continue_body; then
-      sync_save_state "$mode" "$SYNC_PUBLIC_BRANCH" "$SYNC_LOCAL_BRANCH" \
-        "$SYNC_CHECKPOINT_PUBLIC" "$SYNC_CHECKPOINT_LOCAL" "$SYNC_DIFF_START" \
-        "$SYNC_TARGET_PUBLIC" "$(git rev-parse "$SYNC_LOCAL_BRANCH")" "$SYNC_PIDS"
+      sync_save_state "mode=$mode" "public_branch=$SYNC_PUBLIC_BRANCH" \
+        "local_branch=$SYNC_LOCAL_BRANCH" "checkpoint_public=$SYNC_CHECKPOINT_PUBLIC" \
+        "checkpoint_local=$SYNC_CHECKPOINT_LOCAL" "diff_start=$SYNC_DIFF_START" \
+        "target_public=$SYNC_TARGET_PUBLIC" "local_head=$(git rev-parse "$SYNC_LOCAL_BRANCH")" \
+        "pids=$SYNC_PIDS"
       ui_error "Cannot re-apply local patch sidecars after resolving sync conflicts."
       ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
       ui_info "Or run: git shadow $mode sync --abort"
@@ -304,7 +306,9 @@ EOF
     local _tx_status=$?
     local conflicted
     conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
-    sync_save_state "$mode" "$public_branch" "$local_branch" "$cp_public" "$cp_local" "$diff_start" "$public_head" "$local_head" "$SYNC_PIDS"
+    sync_save_state "mode=$mode" "public_branch=$public_branch" "local_branch=$local_branch" \
+      "checkpoint_public=$cp_public" "checkpoint_local=$cp_local" "diff_start=$diff_start" \
+      "target_public=$public_head" "local_head=$local_head" "pids=$SYNC_PIDS"
     ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
     [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $conflicted"
     ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"

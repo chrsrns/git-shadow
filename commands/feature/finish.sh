@@ -289,10 +289,12 @@ finish_memory_replay() {
 
     # Write state before the apply so --continue is self-contained.
     finish_save_state \
-      "$feature_public" "$feature_local" "$local_base" \
-      "$pre_finish_head" "memory-replay" "$sha" \
-      "${remaining[*]}" "$range_start" "$range_end" "$pids_base" \
-      "$KEEP_WORKTREE" "$KEEP_BRANCHES"
+      "feature_public=$feature_public" "feature_local=$feature_local" \
+      "local_base=$local_base" "pre_finish_head=$pre_finish_head" \
+      "phase=memory-replay" "conflicted_sha=$sha" \
+      "remaining_shas=${remaining[*]}" "range_start=$range_start" \
+      "range_end=$range_end" "pids=$pids_base" \
+      "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
 
     if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git apply --3way --allow-empty; then
       local conflicted
@@ -338,10 +340,12 @@ finish_base_diff_apply() {
   local pids_base="$8" remaining_shas="$9"
 
   finish_save_state \
-    "$feature_public" "$feature_local" "$local_base" \
-    "$pre_finish_head" "base-diff" "" \
-    "$remaining_shas" "$range_start" "$range_end" "$pids_base" \
-    "$KEEP_WORKTREE" "$KEEP_BRANCHES"
+    "feature_public=$feature_public" "feature_local=$feature_local" \
+    "local_base=$local_base" "pre_finish_head=$pre_finish_head" \
+    "phase=base-diff" "conflicted_sha=" \
+    "remaining_shas=$remaining_shas" "range_start=$range_start" \
+    "range_end=$range_end" "pids=$pids_base" \
+    "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
 
   if ! sync_apply_and_commit "$local_base" "$public_base" "$range_start" "$range_end" "$feature_public" >/dev/null; then
     local conflicted
@@ -564,10 +568,12 @@ if [[ -n "$MARK_APPLIED" ]]; then
       [[ "${FINISH_KEEP_BRANCHES:-0}" == "1" ]] && keep_br=1
       [[ "$KEEP_BRANCHES" -eq 1 ]] && keep_br=1
       finish_save_state \
-        "$FINISH_FEATURE_PUBLIC" "$FINISH_FEATURE_LOCAL" "$local_base" \
-        "$new_sha" "$FINISH_PHASE" "$conflicted" \
-        "${remaining[*]}" "$FINISH_RANGE_START" "$FINISH_RANGE_END" "$FINISH_PIDS" \
-        "$keep_wt" "$keep_br"
+        "feature_public=$FINISH_FEATURE_PUBLIC" "feature_local=$FINISH_FEATURE_LOCAL" \
+        "local_base=$local_base" "pre_finish_head=$new_sha" \
+        "phase=$FINISH_PHASE" "conflicted_sha=$conflicted" \
+        "remaining_shas=${remaining[*]}" "range_start=$FINISH_RANGE_START" \
+        "range_end=$FINISH_RANGE_END" "pids=$FINISH_PIDS" \
+        "keep_worktree=$keep_wt" "keep_branches=$keep_br"
       ui_ok "Recorded provenance for $target_sha and updated paused finish state."
     else
       ui_ok "Recorded provenance for $target_sha on '$local_base'."

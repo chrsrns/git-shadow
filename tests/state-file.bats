@@ -98,7 +98,10 @@ teardown() {
 }
 
 @test "sync_save_state writes the documented key set and sync_load_state restores it" {
-  sync_save_state feature pub loc cp_pub cp_loc ds tp lh "p1 p2"
+  # Keys passed out of declared order on purpose — the key=value interface is order-free.
+  sync_save_state pids="p1 p2" mode=feature local_head=lh public_branch=pub \
+    checkpoint_local=cp_loc diff_start=ds target_public=tp \
+    local_branch=loc checkpoint_public=cp_pub
   local file
   file="$(sync_state_file)"
   grep -qx 'mode=feature' "$file"
@@ -131,7 +134,11 @@ teardown() {
 # --- finish_* wrappers delegate ----------------------------------------------
 
 @test "finish_save_state writes all twelve keys and finish_load_state restores them" {
-  finish_save_state fpub floc lbase prehead memory-replay csha "r1 r2" rs re "p1" 1 0
+  # Keys passed out of declared order on purpose — the key=value interface is order-free.
+  finish_save_state keep_branches=0 feature_public=fpub phase=memory-replay \
+    range_end=re conflicted_sha=csha local_base=lbase \
+    pids=p1 pre_finish_head=prehead feature_local=floc \
+    remaining_shas="r1 r2" keep_worktree=1 range_start=rs
   local file
   file="$(finish_state_file)"
   [ "$file" = "$(git rev-parse --git-common-dir)/git-shadow-finish" ]

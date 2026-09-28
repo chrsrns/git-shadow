@@ -179,23 +179,10 @@ sync_recover_ancestor() {
   return 1
 }
 
-# Write the sync state file.
-#
-# Arguments: <mode> <public_branch> <local_branch> <checkpoint_public>
-#            <checkpoint_local> <diff_start> <target_public> <local_head> <pids>
-# <diff_start> is the actual start of the applied net diff; it equals
-# <checkpoint_public> unless --recover found a new-ancestor.
+# Write the sync state file. Arguments are `key=value` pairs forwarded
+# verbatim to state_save; the key set is named at the call site.
 sync_save_state() {
-  state_save "$(sync_state_file)" \
-    "mode=$1" \
-    "public_branch=$2" \
-    "local_branch=$3" \
-    "checkpoint_public=$4" \
-    "checkpoint_local=$5" \
-    "diff_start=$6" \
-    "target_public=$7" \
-    "local_head=$8" \
-    "pids=$9"
+  state_save "$(sync_state_file)" "$@"
 }
 
 # Load the sync state file into SYNC_* shell variables.

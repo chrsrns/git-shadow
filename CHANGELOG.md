@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-09-28
+
+### Added
+
+- `-h`/`--help` is now a uniform contract across every command: leaf commands print their usage line before configuration is loaded, value-taking options (e.g. `-m`, `--worktree-dir`, `--mark-applied`) do not swallow a help token, and bash/zsh/fish completions are consistent with the contract.
+- `git shadow doctor` reports `SPEC.md` integrity: duplicate `^V<n>:` / `^| T<n> |` / `^| B<n> |` row IDs, and a warning when the `SPEC.md` merge driver resolves to `union` via `git check-attr`. This replaces the former `.gitattributes` `merge=union` check.
+
+### Changed
+
+- `sync_save_state` and `finish_save_state` take `key=value` arguments forwarded verbatim to `state_save`, so call sites are self-describing and new state keys no longer require signature changes.
+- `commands/feature/finish.sh` internal helpers read a single named finish context (script globals) instead of receiving the same values through long positional argument lists; only per-call varying data is passed as arguments.
+- Paused-op state files (`git-shadow-sync`, `git-shadow-finish`) share one implementation in `lib/state-file.sh` (`state_file`, `state_save`, `state_load`, `state_clear`, `state_active`).
+
 ### Fixed
 
 - `feature sync` no longer rewrites the checkpoint on the up-to-date path: the prior checkpoint's local pointer is kept, so unpublished commits stay publishable instead of being silently marked published.

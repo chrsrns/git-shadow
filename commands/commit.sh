@@ -121,7 +121,7 @@ declare -a ANNOTATION_PATHS=()
 _is_binary() {
   local path="$1"
   local first_line
-  first_line="$(git diff --cached --numstat -- "$path" | head -1)"
+  first_line="$(git -C "$REPO_ROOT" diff --cached --numstat -- "$path" | head -1)"
   [[ "$first_line" == $'-\t-'* ]]
 }
 
@@ -142,16 +142,16 @@ for path in "${STAGED[@]}"; do
     # sidecar is already tracked. The staged version wins for keys it
     # contains; committed-only records are kept.
     committed_ann="$TMP_DIR/committed_ann_${relpath////_}.md"
-    if [[ -f "$relpath" ]] && git show "HEAD:$relpath" > "$committed_ann" 2>/dev/null; then
+    if [[ -f "$REPO_ROOT/$relpath" ]] && git show "HEAD:$relpath" > "$committed_ann" 2>/dev/null; then
       staged_ann="$TMP_DIR/staged_ann_${relpath////_}.md"
       merged_ann="$TMP_DIR/merged_ann_${relpath////_}.md"
       git show ":$relpath" > "$staged_ann"
       if annotations_merge "$committed_ann" "$staged_ann" "$merged_ann" replace; then
-        cp "$merged_ann" "$relpath"
+        cp "$merged_ann" "$REPO_ROOT/$relpath"
       fi
     fi
     # Make sure it is not in the public index.
-    git reset -q HEAD -- "$relpath" 2>/dev/null || true
+    git -C "$REPO_ROOT" reset -q HEAD -- "$relpath" 2>/dev/null || true
     continue
   fi
 
@@ -204,8 +204,8 @@ for path in "${STAGED[@]}"; do
 
   existing_ann=""
   # If the user staged an annotation sidecar for this source, use it.
-  if [[ -f ".git-shadow/annotations/$relpath" ]]; then
-    existing_ann=".git-shadow/annotations/$relpath"
+  if [[ -f "$REPO_ROOT/.git-shadow/annotations/$relpath" ]]; then
+    existing_ann="$REPO_ROOT/.git-shadow/annotations/$relpath"
   # Otherwise, try the committed version and re-anchor it.
   elif git show "HEAD:.git-shadow/annotations/$relpath" > "$TMP_DIR/existing_${relpath////_}.md" 2>/dev/null; then
     reanchored_tmp="$TMP_DIR/reanchored_${relpath////_}.md"
@@ -252,11 +252,11 @@ for path in "${STAGED[@]}"; do
       # public commit deletes it, then commit the marker content in [MEMORY] as
       # a local-only file.  Do not write an empty public blob and do not store
       # the markers in .git-shadow/annotations (there is no public context).
-      git rm -q --cached "$relpath" 2>/dev/null || true
+      git -C "$REPO_ROOT" rm -q --cached "$relpath" 2>/dev/null || true
       MEMORY_PATHS+=("$relpath")
     else
       # Not public-tracked: remove from index, commit as-is in [MEMORY].
-      git reset -q HEAD -- "$relpath" 2>/dev/null || true
+      git -C "$REPO_ROOT" reset -q HEAD -- "$relpath" 2>/dev/null || true
       MEMORY_PATHS+=("$relpath")
     fi
     continue
@@ -265,14 +265,14 @@ for path in "${STAGED[@]}"; do
   if $public; then
     # Replace staged content with the clean version in the index.
     clean_blob="$(git hash-object -w -- "$clean_tmp")"
-    git update-index --add --cacheinfo 100644 "$clean_blob" "$relpath"
+    git -C "$REPO_ROOT" update-index --add --cacheinfo 100644 "$clean_blob" "$relpath"
     PUBLIC_PATHS+=("$relpath")
     CHECKOUT_PATHS+=("$relpath")
   else
     # Clean content is empty and not in HEAD: local-only, but not marker-only?
     # This should not happen because marker_only would be true when clean empty.
     # Treat as local-only and keep original staged content.
-    git reset -q HEAD -- "$relpath" 2>/dev/null || true
+    git -C "$REPO_ROOT" reset -q HEAD -- "$relpath" 2>/dev/null || true
     MEMORY_PATHS+=("$relpath")
     continue
   fi
@@ -280,8 +280,8 @@ for path in "${STAGED[@]}"; do
   if [[ "$record_count" -gt 0 ]]; then
     ann_path=".git-shadow/annotations/$relpath"
     ann_dir="$(dirname "$ann_path")"
-    mkdir -p "$ann_dir"
-    cp "$records_tmp" "$ann_path"
+    mkdir -p "$REPO_ROOT/$ann_dir"
+    cp "$records_tmp" "$REPO_ROOT/$ann_path"
     ANNOTATION_PATHS+=("$ann_path")
     MEMORY_PATHS+=("$ann_path")
   fi
@@ -295,7 +295,7 @@ for path in "${DELETED[@]}"; do
     # The [MEMORY] sidecar should record the deletion.
     MEMORY_PATHS+=("$relpath")
     # git reset the deletion so public commit does not delete it.
-    git reset -q HEAD -- "$relpath" 2>/dev/null || true
+    git -C "$REPO_ROOT" reset -q HEAD -- "$relpath" 2>/dev/null || true
   else
     PUBLIC_PATHS+=("$relpath")
   fi
@@ -322,9 +322,9 @@ if [[ ${#CHECKOUT_PATHS[@]} -gt 0 ]]; then
     staged_tmp="$TMP_DIR/staged_${relpath////_}"
     clean_tmp="$TMP_DIR/clean_${relpath////_}"
     merged_tmp="$TMP_DIR/merged_${relpath////_}"
-    if [[ -f "$staged_tmp" && -f "$clean_tmp" && -f "$relpath" ]]; then
-      if git merge-file -p "$relpath" "$staged_tmp" "$clean_tmp" > "$merged_tmp" 2>/dev/null; then
-        cp "$merged_tmp" "$relpath"
+    if [[ -f "$staged_tmp" && -f "$clean_tmp" && -f "$REPO_ROOT/$relpath" ]]; then
+      if git merge-file -p "$REPO_ROOT/$relpath" "$staged_tmp" "$clean_tmp" > "$merged_tmp" 2>/dev/null; then
+        cp "$merged_tmp" "$REPO_ROOT/$relpath"
       else
         ui_warn "Unstaged changes in $relpath conflict with marker removal; working tree left unchanged."
       fi

@@ -131,8 +131,9 @@ annotations_merge() {
 # Returns 0 after staging; the caller should check git diff --cached and
 # commit sidecar updates if any. Returns 1 if any re-anchor step fails.
 annotations_reanchor_all() {
-  local tmp_dir
+  local tmp_dir root
   tmp_dir="$(mktemp -d)"
+  root="$(git rev-parse --show-toplevel)"
   local -a changed=()
   local failed=0
 
@@ -169,8 +170,8 @@ annotations_reanchor_all() {
         fi
         if [[ ! -s "$new_tmp" ]]; then
           # Re-anchored sidecar is empty: remove it.
-          if [[ -e "$sidecar" ]]; then
-            if ! git rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$sidecar"; then
+          if [[ -e "$root/$sidecar" ]]; then
+            if ! git -C "$root" rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$root/$sidecar"; then
               ui_error "annotations_reanchor_all: cannot remove empty sidecar '$sidecar'"
               failed=1
               break
@@ -178,8 +179,8 @@ annotations_reanchor_all() {
           fi
           changed+=("$sidecar")
         elif ! diff -q "$ann_tmp" "$new_tmp" >/dev/null 2>&1; then
-          cp "$new_tmp" "$sidecar"
-          git add -f -- "$sidecar"
+          cp "$new_tmp" "$root/$sidecar"
+          git -C "$root" add -f -- "$sidecar"
           changed+=("$sidecar")
         fi
       else
@@ -191,8 +192,8 @@ annotations_reanchor_all() {
       fi
     else
       # Source file is gone: delete the orphaned sidecar.
-      if [[ -e "$sidecar" ]]; then
-        if ! git rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$sidecar"; then
+      if [[ -e "$root/$sidecar" ]]; then
+        if ! git -C "$root" rm -q -- "$sidecar" 2>/dev/null && ! rm -f "$root/$sidecar"; then
           ui_error "annotations_reanchor_all: cannot remove orphaned sidecar '$sidecar'"
           failed=1
           break
@@ -200,7 +201,7 @@ annotations_reanchor_all() {
       fi
       changed+=("$sidecar")
     fi
-  done < <(git ls-tree -r -z --name-only HEAD -- .git-shadow/annotations/)
+  done < <(git -C "$root" ls-tree -r -z --name-only HEAD -- .git-shadow/annotations/)
 
   rm -rf "$tmp_dir"
   return $failed

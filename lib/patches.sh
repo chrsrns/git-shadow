@@ -98,7 +98,17 @@ patches_require_no_paused_op() {
   fi
 }
 
-# Print the sidecar path for a repository-relative source path.
+# Print the worktree toplevel (absolute). Every filesystem access and git
+# pathspec in patch code anchors here so commands behave identically from
+# any subdirectory.
+patches_repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null
+}
+
+# Print the sidecar path for a repository-relative source path. The output
+# is repository-relative: it is a HEAD pathspec and a display string, not a
+# filesystem path — prefix it with patches_repo_root for filesystem access
+# or use patches_sidecar_abs.
 patches_sidecar_for() {
   local relpath="${1#./}"
   if [[ -n "$relpath" ]]; then
@@ -106,9 +116,24 @@ patches_sidecar_for() {
   fi
 }
 
-# Print the source relpath for a sidecar file path (or empty if not a sidecar).
+# Print the absolute sidecar path for a repository-relative source path.
+patches_sidecar_abs() {
+  local root sidecar
+  root="$(patches_repo_root)" || return 1
+  sidecar="$(patches_sidecar_for "$1")"
+  [[ -z "$sidecar" ]] && return 1
+  printf '%s/%s\n' "$root" "$sidecar"
+}
+
+# Print the source relpath for a sidecar file path (or empty if not a
+# sidecar). Accepts toplevel-relative and absolute sidecar paths.
 patches_relpath_from_sidecar() {
   local sidecar="$1"
+  local root
+  root="$(patches_repo_root)"
+  if [[ -n "$root" ]]; then
+    sidecar="${sidecar#"$root"/$PATCHES_DIR/}"
+  fi
   sidecar="${sidecar#./$PATCHES_DIR/}"
   sidecar="${sidecar#$PATCHES_DIR/}"
   if [[ -n "$sidecar" && "$sidecar" == *.patch ]]; then
@@ -116,13 +141,33 @@ patches_relpath_from_sidecar() {
   fi
 }
 
+# Normalize a user-supplied path to a toplevel-relative relpath. Absolute
+# paths and paths relative to the caller's cwd are accepted. Returns 1 when
+# the resolved path escapes the worktree toplevel (leading .., an absolute
+# path outside the worktree, or a symlink resolving outside).
+patches_normalize_path() {
+  local arg="${1#./}" root abs
+  [[ -z "$arg" ]] && return 1
+  root="$(patches_repo_root)" || return 1
+  case "$arg" in
+    /*) abs="$arg" ;;
+    *)  abs="$PWD/$arg" ;;
+  esac
+  abs="$(_worktree_abs "$abs")" || return 1
+  root="$(_worktree_abs "$root")" || return 1
+  [[ "$abs" == "$root/"* ]] || return 1
+  printf '%s\n' "${abs#"$root"/}"
+}
+
 # List all existing sidecar relpaths, one per line, sorted.
 patches_list_sidecars() {
-  if [[ ! -d "$PATCHES_DIR" ]]; then
+  local root
+  root="$(patches_repo_root)" || return 0
+  if [[ ! -d "$root/$PATCHES_DIR" ]]; then
     return 0
   fi
   local sidecar
-  find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null | \
+  find "$root/$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null | \
     while IFS= read -r -d '' sidecar; do
       patches_relpath_from_sidecar "$sidecar"
     done | sort
@@ -139,6 +184,19 @@ patches_store() {
     return 1
   fi
 
+  local root
+  root="$(patches_repo_root)" || return 1
+
+  # A normalized relpath must keep its sidecar inside .git-shadow/patches/ —
+  # an escaping path would write a sidecar invisible to the enumeration loops.
+  local sidecar sidecar_abs
+  sidecar="$(patches_sidecar_for "$relpath")"
+  sidecar_abs="$(_worktree_abs "$root/$sidecar")"
+  if [[ "$sidecar_abs" != "$(_worktree_abs "$root")/$PATCHES_DIR/"* ]]; then
+    ui_error "patches_store: '$relpath' escapes the worktree toplevel."
+    return 1
+  fi
+
   # The path must be public-tracked: present in HEAD and introduced by at
   # least one non-[MEMORY] commit. On @local, HEAD alone is not the oracle —
   # [MEMORY]-only files live there too and must be rejected.
@@ -148,41 +206,39 @@ patches_store() {
   fi
 
   local add_subjects
-  add_subjects="$(git log --diff-filter=A --format='%s' HEAD -- "$relpath" 2>/dev/null)"
+  add_subjects="$(git -C "$root" log --diff-filter=A --format='%s' HEAD -- "$relpath" 2>/dev/null)"
   if [[ -z "$add_subjects" ]] || ! grep -qv '^\[MEMORY\]' <<< "$add_subjects"; then
     ui_error "patches_store: '$relpath' exists only via [MEMORY] commits. [MEMORY] commits are for new local files."
     return 1
   fi
 
   # Reject deleted files.
-  if [[ ! -e "$relpath" ]]; then
+  if [[ ! -e "$root/$relpath" ]]; then
     ui_error "patches_store: '$relpath' has been deleted. Delete sidecars are not supported."
     return 1
   fi
 
   # Reject paths with staged changes.
-  if ! git diff --cached --quiet -- "$relpath" 2>/dev/null; then
+  if ! git -C "$root" diff --cached --quiet -- "$relpath" 2>/dev/null; then
     ui_error "patches_store: '$relpath' has staged changes. Stage only public work, then re-run."
     return 1
   fi
 
   # Reject binary files.
   local numstat
-  numstat="$(git diff --numstat HEAD -- "$relpath" 2>/dev/null | head -1)"
+  numstat="$(git -C "$root" diff --numstat HEAD -- "$relpath" 2>/dev/null | head -1)"
   set -- $numstat
   if [[ "$1" = "-" && "$2" = "-" ]]; then
     ui_error "patches_store: '$relpath' is binary. Binary patches are not supported."
     return 1
   fi
 
-  local sidecar
-  sidecar="$(patches_sidecar_for "$relpath")"
-  mkdir -p "$(dirname "$sidecar")"
+  mkdir -p "$(dirname "$sidecar_abs")"
 
-  git diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar"
-  if [[ ! -s "$sidecar" ]]; then
-    rm -f "$sidecar"
-    rmdir "$(dirname "$sidecar")" 2>/dev/null || true
+  git -C "$root" diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar_abs"
+  if [[ ! -s "$sidecar_abs" ]]; then
+    rm -f "$sidecar_abs"
+    rmdir "$(dirname "$sidecar_abs")" 2>/dev/null || true
     ui_error "patches_store: no working-tree delta for '$relpath'."
     return 1
   fi
@@ -212,6 +268,9 @@ _patches_apply_ladder() {
   local mode="$4"
   local out_file="${5:-}"
 
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
 
@@ -221,7 +280,7 @@ _patches_apply_ladder() {
   trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
 
   # Resolve the sidecar content.
-  local sidecar_file="$sidecar"
+  local sidecar_file="$root/$sidecar"
   if [[ ! -f "$sidecar_file" ]]; then
     if [[ "$sidecar_source" == "worktree-or-head" ]] && \
        git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
@@ -243,8 +302,14 @@ _patches_apply_ladder() {
     if ! git show "HEAD:$relpath" > "$base_file" 2>/dev/null; then
       return 3
     fi
-  elif [[ ! -f "$base_file" ]]; then
-    return 3
+  else
+    # A relative base path is toplevel-relative.
+    if [[ "$base_file" != /* ]]; then
+      base_file="$root/$base_file"
+    fi
+    if [[ ! -f "$base_file" ]]; then
+      return 3
+    fi
   fi
 
   mkdir -p "$tmp_dir/$(dirname "$relpath")"
@@ -270,6 +335,9 @@ _patches_apply_ladder() {
 _patches_path_is_applied_overlay() {
   local relpath="$1"
 
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local out_file
   out_file="$(mktemp)"
   # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
@@ -279,18 +347,23 @@ _patches_path_is_applied_overlay() {
     return 1
   fi
 
-  diff -q "$out_file" "$relpath" >/dev/null 2>&1
+  diff -q "$out_file" "$root/$relpath" >/dev/null 2>&1
 }
 
 # Return 0 iff every dirty tracked path has a stored sidecar and the file
 # content equals HEAD plus the patch applied. Staged changes and untracked
 # non-ignored files always return 1.
 patches_overlay_clean() {
-  local line status path
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    status="${line:0:2}"
-    path="${line:3}"
+  local root
+  root="$(patches_repo_root)" || return 1
+
+  # Porcelain records are NUL-delimited so paths with spaces, quotes, or
+  # non-ASCII bytes arrive unquoted and cannot merge into one record.
+  local rec status path
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    status="${rec:0:2}"
+    path="${rec:3}"
 
     # Untracked non-ignored file.
     if [[ "$status" == "??" ]]; then
@@ -303,7 +376,7 @@ patches_overlay_clean() {
       # A registered worktree directory looks like an untracked path in the
       # main checkout; it is not worktree dirt we care about here.
       local abs_path
-      abs_path="$(_worktree_abs "$path")"
+      abs_path="$(_worktree_abs "$root/$path")"
       if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
         continue
       fi
@@ -321,7 +394,7 @@ patches_overlay_clean() {
         return 1
       fi
     fi
-  done < <(git status --porcelain --untracked-files=all --no-renames 2>/dev/null)
+  done < <(git -C "$root" status --porcelain -z --untracked-files=all --no-renames 2>/dev/null)
 
   return 0
 }
@@ -338,11 +411,14 @@ patches_check() {
     shift
   fi
 
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local sidecar relpath
   local -a sidecars=()
   while IFS= read -r -d '' sidecar; do
     sidecars+=("$sidecar")
-  done < <(find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
+  done < <(find "$root/$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
 
   if [[ ${#sidecars[@]} -eq 0 ]]; then
     return 0
@@ -384,6 +460,9 @@ patches_check() {
 # Aborts (returns 1) if any sidecar is neither at HEAD nor can be
 # reverse-applied, leaving the working tree untouched.
 patches_strip() {
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local sidecar relpath
   local -a strip_relpaths=()
 
@@ -393,7 +472,7 @@ patches_strip() {
 
     # Skip sidecars for paths currently involved in a merge conflict; the
     # working tree content is not in a state we can reverse-apply from.
-    if [[ -n $(git ls-files -u "$relpath" 2>/dev/null) ]]; then
+    if [[ -n $(git -C "$root" ls-files -u -- "$relpath" 2>/dev/null) ]]; then
       continue
     fi
 
@@ -409,7 +488,7 @@ patches_strip() {
     fi
 
     strip_relpaths+=("$relpath")
-  done < <(find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
+  done < <(find "$root/$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
 
   local out_file
   for relpath in "${strip_relpaths[@]}"; do
@@ -419,7 +498,7 @@ patches_strip() {
       ui_warn "patches_strip: cannot reverse-apply patch for '$relpath'."
       return 1
     fi
-    cp "$out_file" "$relpath"
+    cp "$out_file" "$root/$relpath"
     rm -f "$out_file"
     printf '%s\n' "$relpath"
   done
@@ -432,6 +511,9 @@ patches_strip() {
 # the function returns 1 (for resumable operations to pause); otherwise an
 # orphan sidecar is restored to HEAD and warned.
 patches_reapply() {
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local sidecar relpath
   local -a rewritten=()
   local -a orphans=()
@@ -456,8 +538,8 @@ patches_reapply() {
     local pause="${PATCHES_REAPPLY_PAUSE:-0}"
 
     # Exact apply.
-    if git apply --check < "$sidecar" 2>/dev/null; then
-      git apply < "$sidecar"
+    if git -C "$root" apply --check < "$sidecar" 2>/dev/null; then
+      git -C "$root" apply < "$sidecar"
       applied=1
       method="exact"
     else
@@ -467,10 +549,10 @@ patches_reapply() {
       # worktree content the relaxed apply is meant to work against.
       local pre_3way
       pre_3way="$(mktemp)"
-      cp "$relpath" "$pre_3way" 2>/dev/null || true
+      cp "$root/$relpath" "$pre_3way" 2>/dev/null || true
 
-      if git apply --3way < "$sidecar" 2>/dev/null; then
-        if [[ -z $(git ls-files -u "$relpath" 2>/dev/null) ]]; then
+      if git -C "$root" apply --3way < "$sidecar" 2>/dev/null; then
+        if [[ -z $(git -C "$root" ls-files -u -- "$relpath" 2>/dev/null) ]]; then
           applied=1
           method="3way"
         elif [[ "$pause" -eq 1 ]]; then
@@ -480,12 +562,12 @@ patches_reapply() {
           continue
         else
           # 3-way conflict but not pausing: reset and fall through to relaxed.
-          git reset -q HEAD -- "$relpath" 2>/dev/null || true
-          cp "$pre_3way" "$relpath" 2>/dev/null || true
+          git -C "$root" reset -q HEAD -- "$relpath" 2>/dev/null || true
+          cp "$pre_3way" "$root/$relpath" 2>/dev/null || true
         fi
       else
-        git reset -q HEAD -- "$relpath" 2>/dev/null || true
-        cp "$pre_3way" "$relpath" 2>/dev/null || true
+        git -C "$root" reset -q HEAD -- "$relpath" 2>/dev/null || true
+        cp "$pre_3way" "$root/$relpath" 2>/dev/null || true
       fi
       rm -f "$pre_3way"
 
@@ -493,8 +575,8 @@ patches_reapply() {
       if [[ $applied -eq 0 ]]; then
         local ctx
         for ctx in 2 1; do
-          if git apply -C"$ctx" --check < "$sidecar" 2>/dev/null; then
-            git apply -C"$ctx" < "$sidecar"
+          if git -C "$root" apply -C"$ctx" --check < "$sidecar" 2>/dev/null; then
+            git -C "$root" apply -C"$ctx" < "$sidecar"
             applied=1
             method="relaxed -C$ctx"
             break
@@ -510,9 +592,9 @@ patches_reapply() {
       fi
       # Orphan: restore to HEAD, warn, keep the sidecar.
       ui_warn "patches_reapply: cannot reapply patch for '$relpath' (orphan). Restore with 'git shadow local add'."
-      if git checkout -q HEAD -- "$relpath" 2>/dev/null; then
+      if git -C "$root" checkout -q HEAD -- "$relpath" 2>/dev/null; then
         :
-      elif git show "HEAD:$relpath" > "$relpath" 2>/dev/null; then
+      elif git show "HEAD:$relpath" > "$root/$relpath" 2>/dev/null; then
         :
       fi
       continue
@@ -522,10 +604,10 @@ patches_reapply() {
     # checks and subtraction stay consistent against the new HEAD.
     if [[ "$method" != "exact" ]]; then
       ui_warn "patches_reapply: '$relpath' reapplied via degraded method ($method); sidecar refreshed."
-      git diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar"
+      git -C "$root" diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar"
       rewritten+=("$relpath")
     fi
-  done < <(find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
+  done < <(find "$root/$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null)
 
   if [[ ${#rewritten[@]} -gt 0 ]]; then
     patches_commit "[MEMORY] reapply local patches" "${rewritten[@]}"
@@ -621,16 +703,19 @@ patches_commit() {
     return 1
   fi
 
+  local root
+  root="$(patches_repo_root)" || return 1
+
   local relpath sidecar added=0
   for relpath in "$@"; do
     sidecar="$(patches_sidecar_for "$relpath")"
-    if [[ -f "$sidecar" ]]; then
-      git add -f -- "$sidecar"
+    if [[ -f "$root/$sidecar" ]]; then
+      git -C "$root" add -f -- "$sidecar"
       added=1
     else
       # Sidecar was deleted (e.g. local rm); stage the deletion if tracked.
-      if git ls-files --error-unmatch "$sidecar" >/dev/null 2>&1; then
-        git rm -q -- "$sidecar"
+      if git -C "$root" ls-files --error-unmatch -- "$sidecar" >/dev/null 2>&1; then
+        git -C "$root" rm -q -- "$sidecar"
         added=1
       fi
     fi
@@ -640,7 +725,7 @@ patches_commit() {
     return 1
   fi
 
-  if ! git diff --cached --quiet; then
-    env GIT_SHADOW=1 git commit -m "$msg" >/dev/null
+  if ! git -C "$root" diff --cached --quiet; then
+    env GIT_SHADOW=1 git -C "$root" commit -m "$msg" >/dev/null
   fi
 }

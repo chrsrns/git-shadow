@@ -20,6 +20,8 @@ source "$_GS_LIB/common.sh"
 
 enter_project '.'
 
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
@@ -155,7 +157,7 @@ for path in "${STAGED[@]}"; do
 
   if [[ "$relpath" == .git-shadow/patches/* ]]; then
     MEMORY_PATHS+=("$relpath")
-    git reset -q HEAD -- "$relpath" 2>/dev/null || true
+    git -C "$REPO_ROOT" reset -q HEAD -- "$relpath" 2>/dev/null || true
     continue
   fi
 
@@ -166,7 +168,7 @@ for path in "${STAGED[@]}"; do
   # If a local patch is stored for this path, subtract it from the staged
   # blob before marker extraction so the public commit contains clean source.
   work_tmp="$staged_tmp"
-  if [[ -f ".git-shadow/patches/$relpath.patch" ]] || \
+  if [[ -f "$REPO_ROOT/.git-shadow/patches/$relpath.patch" ]] || \
      git cat-file -e "HEAD:.git-shadow/patches/$relpath.patch" 2>/dev/null; then
     public_tmp="$TMP_DIR/public_${relpath////_}"
     if ! patches_subtract "$relpath" "$staged_tmp" "$public_tmp"; then
@@ -334,11 +336,11 @@ fi
 if [[ ${#MEMORY_PATHS[@]} -gt 0 ]]; then
   # Add annotation and marker-only files, ignoring .gitignore.
   for mp in "${MEMORY_PATHS[@]}"; do
-    if [[ -e "$mp" || -L "$mp" ]]; then
-      git add -f -- "$mp"
+    if [[ -e "$REPO_ROOT/$mp" || -L "$REPO_ROOT/$mp" ]]; then
+      git -C "$REPO_ROOT" add -f -- "$mp"
     elif [[ "$mp" == .git-shadow/annotations/* ]]; then
       # File was deleted; remove it from the index and working tree.
-      git rm -q -- "$mp" 2>/dev/null || true
+      git -C "$REPO_ROOT" rm -q -- "$mp" 2>/dev/null || true
     fi
   done
 
@@ -349,7 +351,7 @@ if [[ ${#MEMORY_PATHS[@]} -gt 0 ]]; then
   fi
 
   if ! git diff --cached --quiet; then
-    env GIT_SHADOW=1 git commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
+    env GIT_SHADOW=1 git -C "$REPO_ROOT" commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
     ui_shadow "Memory sidecar committed."
   else
     ui_info "No memory changes to commit."

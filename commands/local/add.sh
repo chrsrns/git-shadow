@@ -28,10 +28,9 @@ if [[ -z "$PATH_ARG" ]]; then
   exit 1
 fi
 
-# Normalize to a repository-relative path.
-RELPATH="${PATH_ARG#./}"
-if [[ -z "$RELPATH" ]]; then
-  ui_error "Invalid path: $PATH_ARG"
+# Normalize to a toplevel-relative path; reject paths escaping the worktree.
+if ! RELPATH="$(patches_normalize_path "$PATH_ARG")"; then
+  ui_error "Path escapes the worktree toplevel: $PATH_ARG"
   exit 1
 fi
 

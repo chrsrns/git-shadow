@@ -21,6 +21,8 @@ source "$_GS_LIB/common.sh"
 
 enter_project '.'
 
+REPO_ROOT="$(patches_repo_root)"
+
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then
   ui_error "Unable to determine current branch."
@@ -43,19 +45,25 @@ if [[ -n "$PATH_ARG" ]]; then
   # Normalize relative to repo root.
   if [[ "$PATH_ARG" == .git-shadow/annotations/* ]]; then
     TARGETS+=("${PATH_ARG#.git-shadow/annotations/}")
-  elif [[ -f ".git-shadow/annotations/$PATH_ARG" ]]; then
-    TARGETS+=("$PATH_ARG")
   else
-    ui_error "No annotation sidecar found for $PATH_ARG"
-    exit 1
+    PATH_ARG="$(patches_normalize_path "$PATH_ARG")" || {
+      ui_error "Path escapes the worktree: $1"
+      exit 1
+    }
+    if [[ -f "$REPO_ROOT/.git-shadow/annotations/$PATH_ARG" ]]; then
+      TARGETS+=("$PATH_ARG")
+    else
+      ui_error "No annotation sidecar found for $1"
+      exit 1
+    fi
   fi
 else
-  if [[ -d .git-shadow/annotations ]]; then
+  if [[ -d "$REPO_ROOT/.git-shadow/annotations" ]]; then
     while IFS= read -r ann_file; do
-      relpath="${ann_file#.git-shadow/annotations/}"
+      relpath="${ann_file#"$REPO_ROOT"/.git-shadow/annotations/}"
       relpath="${relpath#/}"
       [[ -n "$relpath" ]] && TARGETS+=("$relpath")
-    done < <(find .git-shadow/annotations -type f)
+    done < <(find "$REPO_ROOT/.git-shadow/annotations" -type f)
   fi
 fi
 
@@ -68,7 +76,7 @@ fi
 _has_non_marker_changes() {
   local relpath="$1"
   # No diff -> no changes.
-  if git diff --quiet -- "$relpath" 2>/dev/null; then
+  if git -C "$REPO_ROOT" diff --quiet -- "$relpath" 2>/dev/null; then
     return 1
   fi
 
@@ -78,8 +86,8 @@ _has_non_marker_changes() {
   clean_tmp="$TMP_DIR/clean_${relpath////_}"
   meta_tmp="$TMP_DIR/meta_${relpath////_}"
   head_tmp="$TMP_DIR/head_${relpath////_}"
-  if [[ -f "$relpath" ]]; then
-    cp "$relpath" "$wt_tmp"
+  if [[ -f "$REPO_ROOT/$relpath" ]]; then
+    cp "$REPO_ROOT/$relpath" "$wt_tmp"
   else
     # File missing from working tree but modified in index: treat as non-marker.
     return 0
@@ -99,7 +107,7 @@ _has_non_marker_changes() {
   fi
 
   # Subtract any local patch overlay from the marker-free working copy.
-  if [[ -f ".git-shadow/patches/$relpath.patch" ]]; then
+  if [[ -f "$REPO_ROOT/.git-shadow/patches/$relpath.patch" ]]; then
     if git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
       # Skip subtraction when the marker-free copy already matches HEAD,
       # meaning the patch overlay is not currently applied.
@@ -129,7 +137,7 @@ _annotations_reapply_body() {
   for relpath in "${TARGETS[@]}"; do
     ann_path=".git-shadow/annotations/$relpath"
 
-    if [[ ! -f "$ann_path" ]]; then
+    if [[ ! -f "$REPO_ROOT/$ann_path" ]]; then
       ui_warn "No annotation sidecar for $relpath"
       continue
     fi
@@ -147,7 +155,7 @@ _annotations_reapply_body() {
       continue
     fi
 
-    if ! annotations_reapply "$head_tmp" "$ann_path" "$relpath"; then
+    if ! annotations_reapply "$head_tmp" "$REPO_ROOT/$ann_path" "$REPO_ROOT/$relpath"; then
       ui_error "Failed to reapply annotations to $relpath"
       return 1
     fi

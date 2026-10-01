@@ -91,3 +91,49 @@ teardown() {
   # The patch sidecar is committed in the [MEMORY] commit.
   git log -1 --format='%s' HEAD | grep -q '^\[MEMORY\]'
 }
+
+@test "commit subtracts a local patch when run from a subdirectory" {
+  mkdir -p sub
+  printf 'X\nY\nZ\n' > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+
+  printf 'X\nY local\nZ\n' > sub/app.txt
+  git shadow local add sub/app.txt >/dev/null
+
+  git add sub/app.txt
+  cd sub
+  run git shadow commit -m "update sub file"
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+
+  run git show HEAD:sub/app.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *$'X\nY\nZ'* ]]
+}
+
+@test "commit routes a staged .git-shadow/patches sidecar to [MEMORY] from a subdirectory" {
+  mkdir -p sub
+  printf 'X\nY\nZ\n' > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+
+  printf 'X\nY local\nZ\n' > sub/app.txt
+  git shadow local add sub/app.txt >/dev/null
+
+  # Stage a modified sidecar plus a public change.
+  echo "# extra" >> .git-shadow/patches/sub/app.txt.patch
+  echo "pub" > sub/pub.txt
+  git add -f .git-shadow/patches/sub/app.txt.patch sub/pub.txt
+
+  cd sub
+  run git shadow commit -m "route sidecar"
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+
+  # The public commit's diff must not touch the patch sidecar.
+  public_sha="$(git log --format='%H %s' | awk '$2=="route" && $3=="sidecar" {print $1; exit}')"
+  [ -n "$public_sha" ]
+  run git show --name-only --format='' "$public_sha"
+  [[ "$output" != *".git-shadow/patches"* ]]
+}

@@ -270,15 +270,18 @@ doctor_unpromoted_files() {
 # position, and .git/info/attributes included; comments excluded). Skipped
 # entirely when SPEC.md is absent.
 doctor_spec_integrity_check() {
-  if [[ ! -f "SPEC.md" ]]; then
+  local toplevel driver
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+
+  if [[ ! -f "$toplevel/SPEC.md" ]]; then
     ui_info "spec-integrity: skipped (no SPEC.md)"
     return 0
   fi
 
   local warned=0 dups id
   dups="$( {
-    grep -oE '^V[0-9]+:' SPEC.md | tr -d ':'
-    grep -oE '^\| [TB][0-9]+ \|' SPEC.md | tr -d '| '
+    grep -oE '^V[0-9]+:' "$toplevel/SPEC.md" | tr -d ':'
+    grep -oE '^\| [TB][0-9]+ \|' "$toplevel/SPEC.md" | tr -d '| '
   } | sort | uniq -d )"
   while IFS= read -r id; do
     if [[ -n "$id" ]]; then
@@ -287,8 +290,6 @@ doctor_spec_integrity_check() {
     fi
   done <<< "$dups"
 
-  local toplevel driver
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
   driver="$(git -C "$toplevel" check-attr merge -- SPEC.md 2>/dev/null)"
   driver="${driver##*: }"
   if [[ "$driver" == "union" ]]; then
@@ -307,7 +308,9 @@ doctor_spec_integrity_check() {
 # '### orphan' — their ### search block could not be re-anchored, so the
 # annotation is no longer applied to the source.
 doctor_annotations_check() {
-  local dir=".git-shadow/annotations"
+  local toplevel
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  local dir="$toplevel/.git-shadow/annotations"
   if [[ ! -d "$dir" ]]; then
     ui_info "annotations: no sidecars"
     return 0
@@ -318,7 +321,7 @@ doctor_annotations_check() {
   if [[ -n "$orphans" ]]; then
     local f
     while IFS= read -r f; do
-      [[ -n "$f" ]] && ui_warn "annotations: orphan record(s) in '$f'"
+      [[ -n "$f" ]] && ui_warn "annotations: orphan record(s) in '${f#"$toplevel"/}'"
     done <<< "$orphans"
     return 1
   fi
@@ -339,6 +342,9 @@ doctor_base_drift_check() {
     return 0
   fi
 
+  local toplevel
+  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+
   local -A covered=()
   local sidecar rel
   while IFS= read -r sidecar; do
@@ -346,7 +352,7 @@ doctor_base_drift_check() {
     rel="${sidecar#.git-shadow/patches/}"
     rel="${rel%.patch}"
     covered["$rel"]=1
-  done < <(git ls-tree -r --name-only "$local_base" -- .git-shadow/patches/)
+  done < <(git -C "$toplevel" ls-tree -r --name-only "$local_base" -- .git-shadow/patches/)
 
   local diff_output diff_status
   diff_output="$(git diff-tree --no-renames -r "$public_base" "$local_base" 2>/dev/null)"

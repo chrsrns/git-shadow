@@ -22,17 +22,21 @@ enter_project '.'
 patches_require_no_paused_op
 
 PATH_ARG="${1:-}"
+REPO_ROOT="$(patches_repo_root)"
 
 if [[ -n "$PATH_ARG" ]]; then
-  RELPATH="${PATH_ARG#./}"
-  SIDECAR="$(patches_sidecar_for "$RELPATH")"
-  if [[ ! -f "$SIDECAR" ]]; then
+  if ! RELPATH="$(patches_normalize_path "$PATH_ARG")"; then
+    ui_error "Path escapes the worktree toplevel: $PATH_ARG"
+    exit 1
+  fi
+  SIDECAR_ABS="$REPO_ROOT/$(patches_sidecar_for "$RELPATH")"
+  if [[ ! -f "$SIDECAR_ABS" ]]; then
     ui_error "No sidecar found for '$RELPATH'."
     exit 1
   fi
-  cat "$SIDECAR"
+  cat "$SIDECAR_ABS"
 else
-  if [[ ! -d "$PATCHES_DIR" ]]; then
+  if [[ ! -d "$REPO_ROOT/$PATCHES_DIR" ]]; then
     ui_info "No local patches."
     exit 0
   fi
@@ -45,7 +49,7 @@ else
     relpath="$(patches_relpath_from_sidecar "$sidecar")"
     printf -- '--- %s ---\n' "$relpath"
     cat "$sidecar"
-  done < <(find "$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null | sort -z)
+  done < <(find "$REPO_ROOT/$PATCHES_DIR" -type f -name '*.patch' -print0 2>/dev/null | sort -z)
 
   if [[ $found -eq 0 ]]; then
     ui_info "No local patches."

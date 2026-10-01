@@ -154,3 +154,52 @@ teardown() {
   [[ "$output" == *"/// local note"* ]]
   [[ "$output" == *"public before"* ]]
 }
+
+@test "reapply: restores markers when run from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  printf 'public before\n/// local note\npublic after\n' > sub/app.js
+  git add sub/app.js
+  git shadow commit -q -m "add note"
+
+  cd sub
+  run git shadow annotations reapply
+  cd ..
+  [ "$status" -eq 0 ]
+  [[ "$(cat sub/app.js)" == *"/// local note"* ]]
+}
+
+@test "reapply: resolves a cwd-relative path argument" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  printf 'public before\n/// local note\npublic after\n' > sub/app.js
+  git add sub/app.js
+  git shadow commit -q -m "add note"
+
+  cd sub
+  run git shadow annotations reapply app.js
+  cd ..
+  [ "$status" -eq 0 ]
+  [[ "$(cat sub/app.js)" == *"/// local note"* ]]
+}
+
+@test "reanchor_all: updates sidecars when run from a subdirectory" {
+  git shadow feature start my-feature
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  # Change the source hunk so the committed sidecar must re-anchor.
+  printf 'public changed\npublic after\n' > file.txt
+  git add file.txt
+  git commit -qm "change source"
+
+  # shellcheck disable=SC1091
+  source "$TOOLKIT_ROOT/lib/common.sh"
+  mkdir -p subdir
+  cd subdir
+  run annotations_reanchor_all
+  cd ..
+  [ "$status" -eq 0 ]
+  git diff --cached --name-only | grep -q '.git-shadow/annotations/file.txt'
+}

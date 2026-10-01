@@ -75,7 +75,7 @@ guard_staged_files() {
     # A public-tracked file that has a patch sidecar carries a local
     # overlay; a plain commit would leak it. Force 'git shadow commit'
     # so the overlay is subtracted from the staged blob.
-    if [[ -f ".git-shadow/patches/$path.patch" ]] || \
+    if [[ -f "$(git rev-parse --show-toplevel)/.git-shadow/patches/$path.patch" ]] || \
        git cat-file -e "HEAD:.git-shadow/patches/$path.patch" 2>/dev/null; then
       echo "[git-shadow] Staged file $path has a local patch sidecar (.git-shadow/patches/$path.patch)." >&2
       echo "Run 'git shadow commit' to subtract the local overlay, or 'git shadow local rm $path' to drop it." >&2

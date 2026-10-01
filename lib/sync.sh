@@ -89,8 +89,10 @@ sync_patch_ids() {
 # warns "The following paths are ignored", and exits 1 (observed on git
 # 2.55.0). Stage everything, then unstage the env file instead.
 sync_stage_all() {
-  git add -A -- .
-  git reset -q -- .git-shadow.env 2>/dev/null || true
+  local root
+  root="$(git rev-parse --show-toplevel)"
+  git -C "$root" add -A -- .
+  git -C "$root" reset -q -- .git-shadow.env 2>/dev/null || true
 }
 
 # Apply the net diff from start..end to the current working tree using a
@@ -98,7 +100,9 @@ sync_stage_all() {
 sync_apply_range() {
   local start="$1"
   local end="$2"
-  git diff "$start".."$end" | git apply --3way
+  local root
+  root="$(git rev-parse --show-toplevel)"
+  git -C "$root" diff "$start".."$end" | git -C "$root" apply --3way
 }
 
 # Apply the net diff from start..end, stage the changes (excluding

@@ -329,3 +329,36 @@ EOF
   [ "$status" -eq 1 ]
   [[ "$output" == *"differ"* ]]
 }
+
+@test "feature sync works from a subdirectory with an applied local patch" {
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  # Publish so sub/app.txt exists on the public branch too; checkouts then
+  # keep the applied overlay in the working tree.
+  git shadow feature publish >/dev/null
+
+  # Add a new commit on the public feature branch (simulates colleague work).
+  git checkout -q feature-foo
+  echo "v3" > extra.ts
+  git add extra.ts
+  GIT_SHADOW=1 git commit -qm "feat: add extra module"
+
+  git checkout -q "feature-foo@local"
+  cd sub
+  run git shadow feature sync
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+
+  # The public diff landed, the overlay was reapplied, and the tree shows
+  # only the overlay itself as dirt.
+  [ -f extra.ts ]
+  [ "$(cat sub/app.txt)" = $'sub base\nlocal edit' ]
+  run git status --porcelain
+  [[ "$output" == *" M sub/app.txt"* || "$output" == *"M sub/app.txt"* || "$output" == *"M  sub/app.txt"* ]]
+  git log --format='%s' -3 | grep -q '^\[SYNC\]'
+}

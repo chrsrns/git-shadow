@@ -312,3 +312,169 @@ teardown() {
   grep -q "local" "$TOOLKIT_ROOT/completions/git-shadow.zsh"
   grep -q "local" "$TOOLKIT_ROOT/completions/git-shadow.fish"
 }
+
+@test "feature publish does not abort on an applied patch from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  cd sub
+  run git shadow feature publish
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Working tree contains uncommitted changes"* ]]
+  [ "$(git show my-feature:sub/app.txt)" = "sub base" ]
+}
+
+@test "feature publish does not abort on an applied patch for a path with a space" {
+  git shadow feature start my-feature
+  echo "base" > "my file.txt"
+  git add "my file.txt"
+  git commit -qm "add spaced file"
+  echo "local edit" >> "my file.txt"
+  git shadow local add "my file.txt"
+
+  run git shadow feature publish
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"Working tree contains uncommitted changes"* ]]
+  [ "$(git show 'my-feature:my file.txt')" = "base" ]
+}
+
+@test "local add resolves a cwd-relative path from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+
+  cd sub
+  run git shadow local add app.txt
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ -f .git-shadow/patches/sub/app.txt.patch ]
+}
+
+@test "local add accepts an absolute path inside the worktree" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+
+  cd sub
+  run git shadow local add "$TEST_DIR/sub/app.txt"
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ -f .git-shadow/patches/sub/app.txt.patch ]
+}
+
+@test "local diff prints the sidecar from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  cd sub
+  run git shadow local diff
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sub/app.txt"* ]]
+
+  cd sub
+  run git shadow local diff app.txt
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"local edit"* ]]
+}
+
+@test "local rm removes the sidecar from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  cd sub
+  run git shadow local rm app.txt
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ ! -f .git-shadow/patches/sub/app.txt.patch ]
+  [ "$(cat sub/app.txt)" = $'sub base\nlocal edit' ]
+}
+
+@test "local rm --revert restores the file from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  cd sub
+  run git shadow local rm --revert app.txt
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ ! -f .git-shadow/patches/sub/app.txt.patch ]
+  [ "$(cat sub/app.txt)" = "sub base" ]
+}
+
+@test "local apply reapplies sidecars from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+  echo "local edit" >> sub/app.txt
+  git shadow local add sub/app.txt
+
+  git checkout -q HEAD -- sub/app.txt
+  [ "$(cat sub/app.txt)" = "sub base" ]
+
+  cd sub
+  run git shadow local apply
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+  [ "$(cat sub/app.txt)" = $'sub base\nlocal edit' ]
+}
+
+@test "local add rejects a path escaping the worktree toplevel" {
+  git shadow feature start my-feature
+  run git shadow local add ../outside.txt
+  [ "$status" -ne 0 ]
+  [ ! -f .git-shadow/outside.txt.patch ]
+
+  run git shadow local add /etc/hostname
+  [ "$status" -ne 0 ]
+}
+
+@test "local rm and local diff reject a path escaping the worktree toplevel" {
+  git shadow feature start my-feature
+  run git shadow local diff ../outside.txt
+  [ "$status" -ne 0 ]
+  run git shadow local rm ../outside.txt
+  [ "$status" -ne 0 ]
+}
+
+@test "local add rejects a path resolving outside via symlink" {
+  git shadow feature start my-feature
+  OUTSIDE_DIR="$(mktemp -d)"
+  echo "x" > "$OUTSIDE_DIR/f.txt"
+  ln -s "$OUTSIDE_DIR" "$TEST_DIR/link"
+
+  run git shadow local add link/f.txt
+  [ "$status" -ne 0 ]
+
+  rm -rf "$OUTSIDE_DIR"
+}

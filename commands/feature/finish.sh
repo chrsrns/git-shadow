@@ -165,8 +165,8 @@ finish_merge_sidecars() {
     new_feature_ann="$tmp_dir/new_feature_${source_path////_}"
     merged_ann="$tmp_dir/merged_${source_path////_}"
 
-    if [[ -e "$source_path" ]]; then
-      cp "$source_path" "$source_tmp"
+    if [[ -e "$REPO_ROOT/$source_path" ]]; then
+      cp "$REPO_ROOT/$source_path" "$source_tmp"
 
       # Re-anchor the current base sidecar (if any).
       if git show "HEAD:$ann_path" > "$base_ann_tmp" 2>/dev/null; then
@@ -175,25 +175,26 @@ finish_merge_sidecars() {
         : > "$new_base_ann"
       fi
 
+      mkdir -p "$REPO_ROOT/$(dirname "$ann_path")"
       if [[ "$status" != "D" ]]; then
         # Re-anchor the feature sidecar and merge with the base sidecar.
         if git show "$sha:$ann_path" > "$feature_ann_tmp" 2>/dev/null; then
           annotations_reanchor "$source_tmp" "$feature_ann_tmp" "$new_feature_ann" 2>/dev/null || true
           annotations_merge "$new_base_ann" "$new_feature_ann" "$merged_ann" append --warn-differing
-          cp "$merged_ann" "$ann_path"
+          cp "$merged_ann" "$REPO_ROOT/$ann_path"
         else
           # Feature sidecar missing: keep the re-anchored base sidecar.
-          cp "$new_base_ann" "$ann_path"
+          cp "$new_base_ann" "$REPO_ROOT/$ann_path"
         fi
       else
         # Feature deleted its sidecar: keep the re-anchored base sidecar.
-        cp "$new_base_ann" "$ann_path"
+        cp "$new_base_ann" "$REPO_ROOT/$ann_path"
       fi
     else
       # Source file no longer exists on the base: the sidecar is stale.
-      rm -f "$ann_path"
+      rm -f "$REPO_ROOT/$ann_path"
     fi
-  done < <(git diff --name-status "$sha^" "$sha" -- .git-shadow/annotations/)
+  done < <(git -C "$REPO_ROOT" diff --name-status "$sha^" "$sha" -- .git-shadow/annotations/)
 }
 
 # Stage and commit the [MEMORY] replay, recording the source SHA and patch-id.
@@ -204,11 +205,11 @@ finish_commit_memory() {
   memory_pid="$(patch_id_for "$sha")"
 
   sync_stage_all
-  if [[ -d .git-shadow/annotations ]]; then
-    git add -f .git-shadow/annotations/
+  if [[ -d "$REPO_ROOT/.git-shadow/annotations" ]]; then
+    git -C "$REPO_ROOT" add -f .git-shadow/annotations/
   fi
-  if [[ -d .git-shadow/patches ]]; then
-    git add -f .git-shadow/patches/
+  if [[ -d "$REPO_ROOT/.git-shadow/patches" ]]; then
+    git -C "$REPO_ROOT" add -f .git-shadow/patches/
   fi
 
   local -a commit_args=(-m "$subject" -m "git-shadow-source-memory: $sha")
@@ -228,7 +229,7 @@ finish_memory_commit_sidecars() {
 
   # Patch sidecars are local-only whole-file sidecars: apply them separately
   # so they do not participate in the generic 3-way merge of source files.
-  if ! git diff "$sha^" "$sha" -- .git-shadow/patches/ | git apply --allow-empty; then
+  if ! git -C "$REPO_ROOT" diff "$sha^" "$sha" -- .git-shadow/patches/ | git -C "$REPO_ROOT" apply --allow-empty; then
     ui_error "Failed to apply patch sidecars from [MEMORY] commit $sha."
     return 1
   fi
@@ -291,7 +292,7 @@ finish_memory_replay() {
       "range_end=$RANGE_END" "pids=$PIDS_BASE" \
       "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
 
-    if ! git diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git apply --3way --allow-empty; then
+    if ! git -C "$REPO_ROOT" diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git -C "$REPO_ROOT" apply --3way --allow-empty; then
       local conflicted
       conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
       ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'."
@@ -438,6 +439,8 @@ if [[ -n "$FEATURE_NAME_ARG" && ( "$CONTINUE" -eq 1 || "$ABORT" -eq 1 || -n "$MA
 fi
 
 enter_project '.'
+
+REPO_ROOT="$(patches_repo_root)"
 
 # Clean FINISH_TMP_DIR on exit. Patch overlay reapply is handled by
 # `patches_transaction` around each mutating block; this trap must only

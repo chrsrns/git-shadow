@@ -360,3 +360,120 @@ teardown() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"not applied to working tree"* ]]
 }
+
+@test "patches_overlay_clean accepts an applied overlay from a subdirectory" {
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+
+  git checkout -q -b feature@local
+  echo "local edit" >> sub/app.txt
+  patches_store "sub/app.txt"
+
+  cd sub
+  run patches_overlay_clean
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+}
+
+@test "patches_overlay_clean accepts an applied overlay for a path with a space" {
+  echo "base" > "my file.txt"
+  git add "my file.txt"
+  git commit -qm "add spaced file"
+
+  git checkout -q -b feature@local
+  echo "local edit" >> "my file.txt"
+  patches_store "my file.txt"
+
+  run patches_overlay_clean
+  [ "$status" -eq 0 ]
+}
+
+@test "patches_overlay_clean accepts an applied overlay for a path with a quote" {
+  echo "base" > 'we"ird.txt'
+  git add 'we"ird.txt'
+  git commit -qm "add quoted file"
+
+  git checkout -q -b feature@local
+  echo "local edit" >> 'we"ird.txt'
+  patches_store 'we"ird.txt'
+
+  run patches_overlay_clean
+  [ "$status" -eq 0 ]
+}
+
+@test "patches_overlay_clean accepts an applied overlay for a non-ASCII path" {
+  echo "base" > "café.txt"
+  git add "café.txt"
+  git commit -qm "add non-ascii file"
+
+  git checkout -q -b feature@local
+  echo "local edit" >> "café.txt"
+  patches_store "café.txt"
+
+  run patches_overlay_clean
+  [ "$status" -eq 0 ]
+}
+
+@test "patches_overlay_clean keeps adjacent porcelain records separate" {
+  echo "a" > a.txt
+  echo "b" > b.txt
+  git add a.txt b.txt
+  git commit -qm "two files"
+
+  git checkout -q -b feature@local
+  echo "local a" >> a.txt
+  echo "local b" >> b.txt
+  patches_store "a.txt"
+  patches_store "b.txt"
+
+  run patches_overlay_clean
+  [ "$status" -eq 0 ]
+
+  echo "extra" >> a.txt
+  run patches_overlay_clean
+  [ "$status" -ne 0 ]
+}
+
+@test "patches_strip and patches_reapply work from a subdirectory" {
+  mkdir -p sub
+  echo "sub base" > sub/app.txt
+  git add sub/app.txt
+  git commit -qm "add sub file"
+
+  git checkout -q -b feature@local
+  echo "local edit" >> sub/app.txt
+  patches_store "sub/app.txt"
+
+  cd sub
+  run patches_strip
+  [ "$status" -eq 0 ]
+  cd "$TEST_DIR"
+  [ "$(cat sub/app.txt)" = "sub base" ]
+
+  cd sub
+  run patches_reapply
+  [ "$status" -eq 0 ]
+  cd "$TEST_DIR"
+  [ "$(cat sub/app.txt)" = $'sub base\nlocal edit' ]
+}
+
+@test "patches_overlay_clean exempts a registered worktree from a subdirectory" {
+  git checkout -q -b feature@local
+  git worktree add "$TEST_DIR/inner-wt" -b wt-branch >/dev/null 2>&1
+
+  mkdir -p sub
+  cd sub
+  run patches_overlay_clean
+  cd "$TEST_DIR"
+  [ "$status" -eq 0 ]
+}
+
+@test "patches_store rejects a relpath escaping the patches dir" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  run patches_store "../file.txt"
+  [ "$status" -ne 0 ]
+  [ ! -f .git-shadow/file.txt.patch ]
+}

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-10-01
+
+### Fixed
+
+- Local patch and annotation sidecar paths resolve against the worktree toplevel, so commands behave the same from a subdirectory as from the repository root: `feature sync` no longer creates a checkpoint without a `[SYNC]` commit and a dirty tree, `feature finish` no longer drops local patch sidecars or `[MEMORY]` content, and `annotations reapply` collects its targets instead of reporting "No annotation records to reapply".
+- `git shadow commit` writes annotation sidecars at the toplevel-relative path, refreshes the marker working tree, keeps local-only annotation sidecars out of the public commit, and no longer misclassifies a staged binary as text (which stripped marker-like bytes out of the committed blob) when run from a subdirectory.
+- `feature finish` creates the annotation sidecar's parent directory before writing it, so a nested sidecar is inherited instead of being silently dropped when the base lacks that directory.
+- `git shadow doctor` reports the same annotation-orphan, `SPEC.md` integrity, and base-drift results from any directory, instead of a false clean or a false drift warning.
+- `local add|rm|diff` and `annotations reapply [path]` accept a cwd-relative or absolute path, normalize it to the toplevel, and reject a path that escapes the worktree.
+- Patched paths containing spaces, quotes, or non-ASCII bytes are recognized by the clean-tree check (`git status --porcelain` is parsed NUL-delimited).
+
 ## [1.5.0] — 2026-09-28
 
 ### Added

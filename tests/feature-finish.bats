@@ -838,3 +838,47 @@ EOF
   run git branch --list "test-feature"
   [ -z "$output" ]
 }
+
+@test "feature finish from a subdirectory inherits patch sidecar and memory content" {
+  echo "local overlay" >> file.txt
+  git shadow local add file.txt >/dev/null 2>&1
+
+  mkdir -p subdir
+  cd subdir
+  run git shadow feature finish --no-pull
+  cd ..
+  [ "$status" -eq 0 ]
+
+  # The patch sidecar is inherited by the local base.
+  git cat-file -e "main@local:.git-shadow/patches/file.txt.patch"
+  # The transaction's reapply restored the working-tree overlay.
+  grep -q "local overlay" file.txt
+}
+
+@test "feature finish inherits a nested annotation sidecar when the base lacks its directory" {
+  # A source file that exists only on the local base gives the sidecar merge
+  # something to re-anchor against.
+  git checkout -q main@local
+  mkdir -p sub
+  printf 'base source\n' > sub/app.js
+  git add sub/app.js
+  git commit -qm "[MEMORY] base nested source"
+
+  git checkout -q "test-feature@local"
+  mkdir -p .git-shadow/annotations/sub
+  cat > .git-shadow/annotations/sub/app.js <<-'EOF2'
+## hunk k1
+### search
+base source
+### replace
+base source
+/// nested note
+EOF2
+  git add -f .git-shadow/annotations/sub/app.js
+  git commit -qm "[MEMORY] nested sidecar"
+
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+
+  git cat-file -e "main@local:.git-shadow/annotations/sub/app.js"
+}

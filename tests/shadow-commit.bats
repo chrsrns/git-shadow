@@ -242,3 +242,60 @@ teardown() {
   # No annotation sidecar for the excluded path.
   [ ! -f .git-shadow/annotations/.git-shadow/config.d/nested/example.md ]
 }
+
+@test "commit: from a subdirectory writes the sidecar at the toplevel-relative path" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  printf 'public before\n/// local note\npublic after\n' > sub/app.js
+  git add sub/app.js
+
+  cd sub
+  run git shadow commit -m "add note"
+  cd ..
+  [ "$status" -eq 0 ]
+
+  # Sidecar committed at the toplevel-relative path; no doubled nesting.
+  git cat-file -e "HEAD:.git-shadow/annotations/sub/app.js"
+  [ ! -e sub/.git-shadow ]
+
+  # Public commit carries clean source.
+  run git show "HEAD~1:sub/app.js"
+  [[ "$output" != *"/// local note"* ]]
+}
+
+@test "commit: staged annotation sidecar stays out of the public commit from a subdirectory" {
+  git shadow feature start my-feature
+  printf 'public before\n/// local note\npublic after\n' > file.txt
+  git add file.txt
+  git shadow commit -q -m "add note"
+
+  echo "more" >> file.txt
+  printf '## extra\n' >> .git-shadow/annotations/file.txt
+  git add file.txt .git-shadow/annotations/file.txt
+
+  mkdir -p sub
+  cd sub
+  run git shadow commit -m "update"
+  cd ..
+  [ "$status" -eq 0 ]
+
+  # The public commit touches file.txt only; the sidecar rode the [MEMORY] commit.
+  git diff-tree --no-commit-id --name-only -r HEAD~1 | grep -q '^file\.txt$'
+  ! git diff-tree --no-commit-id --name-only -r HEAD~1 | grep -q '.git-shadow'
+  git show "HEAD:.git-shadow/annotations/file.txt" | grep -q '## extra'
+}
+
+@test "commit: marker-bearing binary from a subdirectory lands byte-identical" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  printf 'bin\x00ary\n/// marker-looking line\nmore\x00data\n' > sub/blob.bin
+  git add sub/blob.bin
+
+  cd sub
+  run git shadow commit -m "add binary"
+  cd ..
+  [ "$status" -eq 0 ]
+
+  # Binary is public-only: the public commit is HEAD (no [MEMORY] on top).
+  git show "HEAD:sub/blob.bin" | cmp - sub/blob.bin
+}

@@ -569,3 +569,54 @@ EOF2
   [[ "$output" == *"orphan"* ]]
   [ -f .git-shadow/annotations/feature.txt ]
 }
+
+
+@test "doctor reports orphan annotation records from a subdirectory" {
+  mkdir -p .git-shadow/annotations
+  cat > .git-shadow/annotations/feature.txt <<'EOF2'
+## hunk abc123
+### search
+feature code
+### replace
+feature code
+/// lost note
+### orphan
+EOF2
+  mkdir -p subdir
+  cd subdir
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"orphan record(s) in '.git-shadow/annotations/feature.txt'"* ]]
+}
+
+@test "doctor reports duplicate SPEC.md IDs from a subdirectory" {
+  cat > SPEC.md <<'SPEC_EOF'
+# spec
+V1: first invariant
+V1: reused ID
+SPEC_EOF
+  git add SPEC.md
+  git commit -qm "spec: add"
+  mkdir -p subdir
+  cd subdir
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"spec-integrity"* ]]
+  [[ "$output" == *"V1"* ]]
+}
+
+@test "doctor accepts sidecar-covered base drift from a subdirectory" {
+  git checkout -q main@local
+  echo "drift" >> file.txt
+  git add file.txt
+  git commit -qm "chore: drift on base"
+  echo "overlay" >> file.txt
+  git shadow local add file.txt >/dev/null 2>&1
+  git checkout -q -- file.txt
+  git checkout -q "test-feature@local"
+  mkdir -p subdir
+  cd subdir
+  run git shadow doctor
+  [ "$status" -eq 0 ]
+  [[ "$output" != *"without a patch sidecar"* ]]
+}

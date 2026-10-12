@@ -177,3 +177,83 @@ teardown() {
   run finish_load_state
   [ "$status" -eq 1 ]
 }
+
+# --- finish_save_phase ---------------------------------------------------------
+
+@test "finish_save_phase writes the full V85 key set from the finish-context globals" {
+  FEATURE_PUBLIC_BRANCH="fpub"
+  FEATURE_LOCAL_BRANCH="floc"
+  LOCAL_BASE="lbase"
+  PRE_FINISH_HEAD="prehead"
+  RANGE_START="rs"
+  RANGE_END="re"
+  PIDS_BASE="p1 p2"
+  KEEP_WORKTREE="1"
+  KEEP_BRANCHES="0"
+
+  finish_save_phase memory-replay "csha" "r1 r2"
+
+  local file
+  file="$(finish_state_file)"
+  grep -qx 'feature_public=fpub' "$file"
+  grep -qx 'feature_local=floc' "$file"
+  grep -qx 'local_base=lbase' "$file"
+  grep -qx 'pre_finish_head=prehead' "$file"
+  grep -qx 'phase=memory-replay' "$file"
+  grep -qx 'conflicted_sha=csha' "$file"
+  grep -qx 'remaining_shas=r1 r2' "$file"
+  grep -qx 'range_start=rs' "$file"
+  grep -qx 'range_end=re' "$file"
+  grep -qx 'pids=p1 p2' "$file"
+  grep -qx 'keep_worktree=1' "$file"
+  grep -qx 'keep_branches=0' "$file"
+
+  finish_load_state
+  [ "$FINISH_PHASE" = "memory-replay" ]
+  [ "$FINISH_CONFLICTED_SHA" = "csha" ]
+  [ "$FINISH_REMAINING_SHAS" = "r1 r2" ]
+  [ "$FINISH_KEEP_WORKTREE" = "1" ]
+}
+
+@test "finish_save_phase defaults pre_finish_head to the context global and allows empty conflicted_sha" {
+  FEATURE_PUBLIC_BRANCH="fpub"
+  FEATURE_LOCAL_BRANCH="floc"
+  LOCAL_BASE="lbase"
+  PRE_FINISH_HEAD="ctxhead"
+  RANGE_START="rs"
+  RANGE_END="re"
+  PIDS_BASE=""
+  KEEP_WORKTREE="0"
+  KEEP_BRANCHES="0"
+
+  finish_save_phase base-diff "" "s1 s2 s3"
+
+  local file
+  file="$(finish_state_file)"
+  grep -qx 'pre_finish_head=ctxhead' "$file"
+  grep -qx 'phase=base-diff' "$file"
+  grep -qx 'conflicted_sha=' "$file"
+  grep -qx 'remaining_shas=s1 s2 s3' "$file"
+  grep -qx 'pids=' "$file"
+  grep -qx 'keep_worktree=0' "$file"
+  grep -qx 'keep_branches=0' "$file"
+}
+
+@test "finish_save_phase uses an explicit pre_finish_head argument over the context global" {
+  FEATURE_PUBLIC_BRANCH="fpub"
+  FEATURE_LOCAL_BRANCH="floc"
+  LOCAL_BASE="lbase"
+  PRE_FINISH_HEAD="ctxhead"
+  RANGE_START="rs"
+  RANGE_END="re"
+  PIDS_BASE="p1"
+  KEEP_WORKTREE="0"
+  KEEP_BRANCHES="1"
+
+  finish_save_phase base-diff "" "r1" "overridehead"
+
+  local file
+  file="$(finish_state_file)"
+  grep -qx 'pre_finish_head=overridehead' "$file"
+  grep -qx 'keep_branches=1' "$file"
+}

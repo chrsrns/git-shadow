@@ -133,7 +133,7 @@ EOF
       return 1
     fi
     local conflicted
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    conflicted="$(conflicted_paths | paste -sd' ' - || true)"
     if ! patches_transaction _sync_abort_body "$label" "$mode" "$conflicted"; then
       return 1
     fi
@@ -154,7 +154,7 @@ EOF
     fi
     if sync_has_conflicts; then
       local conflicted
-      conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+      conflicted="$(conflicted_paths | paste -sd' ' - || true)"
       ui_error "Working tree still has unresolved conflicts: $conflicted"
       ui_info "Sync of '$SYNC_LOCAL_BRANCH' from '$SYNC_PUBLIC_BRANCH' (${SYNC_DIFF_START:-?}..$SYNC_TARGET_PUBLIC)."
       ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
@@ -305,7 +305,7 @@ EOF
   if ! patches_transaction _sync_apply_body "$local_branch" "$public_branch" "$diff_start" "$public_head"; then
     local _tx_status=$?
     local conflicted
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    conflicted="$(conflicted_paths | paste -sd' ' - || true)"
     sync_save_state "mode=$mode" "public_branch=$public_branch" "local_branch=$local_branch" \
       "checkpoint_public=$cp_public" "checkpoint_local=$cp_local" "diff_start=$diff_start" \
       "target_public=$public_head" "local_head=$local_head" "pids=$SYNC_PIDS"

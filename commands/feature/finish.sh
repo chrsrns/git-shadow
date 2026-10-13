@@ -288,7 +288,7 @@ finish_memory_replay() {
 
     if ! git -C "$REPO_ROOT" diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git -C "$REPO_ROOT" apply --3way --allow-empty; then
       local conflicted
-      conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+      conflicted="$(conflicted_paths || true)"
       ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'."
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
@@ -329,7 +329,7 @@ finish_base_diff_apply() {
 
   if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
     local conflicted
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+    conflicted="$(conflicted_paths || true)"
     ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
     [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
     ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
@@ -450,7 +450,7 @@ if [[ "$ABORT" -eq 1 ]]; then
     ui_error "No finish in progress."
     exit 1
   fi
-  conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+  conflicted="$(conflicted_paths || true)"
 
   _finish_abort_body() {
     local conflicted="$1"
@@ -576,7 +576,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     exit 1
   fi
   if sync_has_conflicts; then
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    conflicted="$(conflicted_paths | paste -sd' ' - || true)"
     ui_error "Working tree still has unresolved conflicts: $conflicted"
     exit 1
   fi

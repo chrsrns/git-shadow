@@ -200,7 +200,7 @@ _check_replay_fail() {
   # Unmerged paths cover real conflicts; an empty pick leaves none, so
   # fall back to the paths the offending commit itself touches.
   local conflicted
-  conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
+  conflicted="$(conflicted_paths || true)"
   if [[ -z "$conflicted" ]]; then
     local conflicted_out conflicted_status
     conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"

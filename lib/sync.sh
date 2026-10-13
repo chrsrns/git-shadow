@@ -14,7 +14,9 @@ sync_state_file() {
 }
 
 sync_has_conflicts() {
-  git ls-files -u >/dev/null 2>&1 && [[ -n "$(git ls-files -u)" ]]
+  # Fail closed: a failed enumeration reports conflicts, never "clean".
+  conflicted_paths >/dev/null || return 0
+  [[ -n "$(conflicted_paths)" ]]
 }
 
 sync_tree_changed() {

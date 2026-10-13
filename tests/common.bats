@@ -98,3 +98,23 @@ f one.txt" ]
   [ "$output" = "dir/g.txt
 f one.txt" ]
 }
+
+@test "branch_exists returns 0 on an existing branch" {
+  git init -qb main repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  run branch_exists main
+  [ "$status" -eq 0 ]
+}
+
+@test "branch_exists returns 1 on a missing branch" {
+  git init -qb main repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  run branch_exists missing-branch
+  [ "$status" -eq 1 ]
+}

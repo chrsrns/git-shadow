@@ -29,7 +29,7 @@ check_public_commits() {
   local exclude_feature=1 base_local_exists=0
   if [[ "$local_branch" == "$local_base" ]]; then
     exclude_feature=0
-  elif git show-ref --verify --quiet "refs/heads/$local_base"; then
+  elif branch_exists "$local_base"; then
     base_local_exists=1
   fi
 
@@ -332,7 +332,7 @@ publish_replay_and_head() {
   tmp_branch="__shadow_check_tmp__"
 
   # Remove any leftover temp branch from an aborted previous run.
-  git show-ref --verify --quiet "refs/heads/$tmp_branch" && git branch -D "$tmp_branch" >/dev/null 2>&1 || true
+  branch_exists "$tmp_branch" && git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 
   local original_branch
   original_branch="$(git branch --show-current)"

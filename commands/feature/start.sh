@@ -42,12 +42,12 @@ if [[ $# -eq 0 ]]; then
   PUBLIC_BASE="$CURRENT_BRANCH"
   LOCAL_BASE="${CURRENT_BRANCH}${LOCAL_SUFFIX}"
 
-  if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BASE"; then
+  if ! branch_exists "$PUBLIC_BASE"; then
     ui_error "Public base branch does not exist: $PUBLIC_BASE"
     exit 1
   fi
 
-  if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BASE"; then
+  if ! branch_exists "$LOCAL_BASE"; then
     ui_info "Creating local base '$LOCAL_BASE' from '$PUBLIC_BASE'."
     git branch "$LOCAL_BASE" "$PUBLIC_BASE"
   fi
@@ -166,12 +166,12 @@ if [[ "$USE_WORKTREE" -eq 1 ]]; then
   worktree_validate_path "$WORKTREE_PATH" "$LOCAL_FEATURE" || exit 1
 fi
 
-if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BASE"; then
+if ! branch_exists "$PUBLIC_BASE"; then
   ui_error "Public base branch does not exist: $PUBLIC_BASE"
   exit 1
 fi
 
-if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BASE"; then
+if ! branch_exists "$LOCAL_BASE"; then
   ui_info "Local base branch '$LOCAL_BASE' not found, creating from '$PUBLIC_BASE'."
   git branch "$LOCAL_BASE" "$PUBLIC_BASE"
 fi
@@ -197,11 +197,11 @@ fi
 PUBLIC_CP="$(checkpoint_public "$LATEST_CP")"
 LOCAL_CP="$(checkpoint_local "$LATEST_CP")"
 
-if git show-ref --verify --quiet "refs/heads/$PUBLIC_FEATURE"; then
+if branch_exists "$PUBLIC_FEATURE"; then
   ui_error "Branch already exists: $PUBLIC_FEATURE"
   exit 1
 fi
-if git show-ref --verify --quiet "refs/heads/$LOCAL_FEATURE"; then
+if branch_exists "$LOCAL_FEATURE"; then
   ui_error "Branch already exists: $LOCAL_FEATURE"
   exit 1
 fi

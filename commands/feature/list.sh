@@ -56,7 +56,7 @@ while IFS= read -r ref; do
   [[ -z "$ref" ]] && continue
   name="${ref%${LOCAL_SUFFIX}}"
   [[ "$name" == "$PUBLIC_BASE" ]] && continue
-  git show-ref --verify --quiet "refs/heads/$name" || continue
+  branch_exists "$name" || continue
   names+=("$name")
 done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}" | sort)
 

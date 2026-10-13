@@ -54,7 +54,7 @@ fi
 
 PUBLIC_BRANCH="$(public_branch_from_any "$LOCAL_BRANCH")"
 
-if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
+if ! branch_exists "$PUBLIC_BRANCH"; then
   ui_error "Public branch does not exist: $PUBLIC_BRANCH"
   exit 1
 fi

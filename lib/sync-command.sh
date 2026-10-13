@@ -208,7 +208,7 @@ EOF
 
   local public_branch
   public_branch="$(public_branch_from_any "$local_branch")"
-  if ! git show-ref --verify --quiet "refs/heads/$public_branch"; then
+  if ! branch_exists "$public_branch"; then
     ui_error "Public branch does not exist: $public_branch"
     return 1
   fi

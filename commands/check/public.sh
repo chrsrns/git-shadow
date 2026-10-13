@@ -41,12 +41,12 @@ fi
 
 LOCAL_BRANCH="${PUBLIC_BRANCH}${LOCAL_SUFFIX}"
 
-if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
+if ! branch_exists "$PUBLIC_BRANCH"; then
   ui_error "Public branch does not exist: $PUBLIC_BRANCH"
   exit 1
 fi
 
-if ! git show-ref --verify --quiet "refs/heads/$LOCAL_BRANCH"; then
+if ! branch_exists "$LOCAL_BRANCH"; then
   ui_error "Shadow branch does not exist: $LOCAL_BRANCH"
   exit 1
 fi

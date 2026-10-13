@@ -98,7 +98,7 @@ doctor_checkpoint_summary() {
   cp_public="$(checkpoint_public "$cp")"
   cp_local="$(checkpoint_local "$cp")"
 
-  if ! git show-ref --verify --quiet "refs/heads/$public_branch"; then
+  if ! branch_exists "$public_branch"; then
     ui_warn "checkpoints: '$local_branch' public:${cp_public:0:7} local:${cp_local:0:7} — public branch '$public_branch' missing"
     return 1
   fi
@@ -186,7 +186,7 @@ doctor_doc_directives_check() {
   # Public-branch trees: every public branch with an @local pair.
   while IFS= read -r ref; do
     [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    git show-ref --verify --quiet "refs/heads/${ref}${LOCAL_SUFFIX}" || continue
+    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
     _doctor_doc_directives_in_ref "$ref" "$ref" || issues=1
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 
@@ -337,7 +337,7 @@ doctor_base_drift_check() {
   local public_base="${PUBLIC_BASE_BRANCH:-main}"
   local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
 
-  if ! git show-ref --verify --quiet "refs/heads/$local_base"; then
+  if ! branch_exists "$local_base"; then
     ui_info "base-drift: skipped (no '$local_base')"
     return 0
   fi
@@ -505,7 +505,7 @@ doctor_run() {
   # Unpromoted files for every public branch with a local counterpart (V99).
   while IFS= read -r ref; do
     [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    git show-ref --verify --quiet "refs/heads/${ref}${LOCAL_SUFFIX}" || continue
+    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
     _doctor_tally doctor_unpromoted_files "$ref"
   done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
 

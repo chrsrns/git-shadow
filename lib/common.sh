@@ -130,6 +130,12 @@ conflicted_paths() {
   git -C "$root" ls-files -u | cut -f2- | sort -u
 }
 
+# Return 0 iff local branch <name> exists. The single branch-existence
+# oracle; <name> is a short branch name, not a full ref.
+branch_exists() {
+  git show-ref --verify --quiet "refs/heads/$1"
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

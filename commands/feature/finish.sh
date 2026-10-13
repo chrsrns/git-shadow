@@ -698,7 +698,7 @@ else
 fi
 
 for branch in "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$PUBLIC_BASE" "$LOCAL_BASE"; do
-  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+  if ! branch_exists "$branch"; then
     ui_error "Branch does not exist locally: $branch"
     exit 1
   fi

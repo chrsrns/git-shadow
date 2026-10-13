@@ -284,13 +284,7 @@ finish_memory_replay() {
     remaining=("${shas[@]:$((i+1))}")
 
     # Write state before the apply so --continue is self-contained.
-    finish_save_state \
-      "feature_public=$FEATURE_PUBLIC_BRANCH" "feature_local=$FEATURE_LOCAL_BRANCH" \
-      "local_base=$LOCAL_BASE" "pre_finish_head=$PRE_FINISH_HEAD" \
-      "phase=memory-replay" "conflicted_sha=$sha" \
-      "remaining_shas=${remaining[*]}" "range_start=$RANGE_START" \
-      "range_end=$RANGE_END" "pids=$PIDS_BASE" \
-      "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
+    finish_save_phase memory-replay "$sha" "${remaining[*]}"
 
     if ! git -C "$REPO_ROOT" diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git -C "$REPO_ROOT" apply --3way --allow-empty; then
       local conflicted
@@ -331,13 +325,7 @@ finish_base_diff_commit() {
 finish_base_diff_apply() {
   local remaining_shas="$1"
 
-  finish_save_state \
-    "feature_public=$FEATURE_PUBLIC_BRANCH" "feature_local=$FEATURE_LOCAL_BRANCH" \
-    "local_base=$LOCAL_BASE" "pre_finish_head=$PRE_FINISH_HEAD" \
-    "phase=base-diff" "conflicted_sha=" \
-    "remaining_shas=$remaining_shas" "range_start=$RANGE_START" \
-    "range_end=$RANGE_END" "pids=$PIDS_BASE" \
-    "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
+  finish_save_phase base-diff "" "$remaining_shas"
 
   if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
     local conflicted

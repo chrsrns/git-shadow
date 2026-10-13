@@ -233,7 +233,9 @@ _hook_tree_excluded_paths() {
       .git/*) continue ;;
     esac
     if [[ "$hook_path" == /* ]]; then
-      hook_path="${hook_path#$PWD/}"
+      local _root
+      _root="$(repo_root)"
+      hook_path="${hook_path#"$_root"/}"
       [[ "$hook_path" == /* ]] && continue
     fi
     printf '%s\n' "${hook_path#./}"

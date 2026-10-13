@@ -39,7 +39,7 @@ if ! RELPATH="$(patches_normalize_path "$PATH_ARG")"; then
   exit 1
 fi
 
-REPO_ROOT="$(patches_repo_root)"
+REPO_ROOT="$(repo_root)"
 SIDECAR="$(patches_sidecar_for "$RELPATH")"
 SIDECAR_ABS="$REPO_ROOT/$SIDECAR"
 if [[ ! -f "$SIDECAR_ABS" ]]; then

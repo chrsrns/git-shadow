@@ -98,16 +98,9 @@ patches_require_no_paused_op() {
   fi
 }
 
-# Print the worktree toplevel (absolute). Every filesystem access and git
-# pathspec in patch code anchors here so commands behave identically from
-# any subdirectory.
-patches_repo_root() {
-  git rev-parse --show-toplevel 2>/dev/null
-}
-
 # Print the sidecar path for a repository-relative source path. The output
 # is repository-relative: it is a HEAD pathspec and a display string, not a
-# filesystem path — prefix it with patches_repo_root for filesystem access
+# filesystem path — prefix it with repo_root for filesystem access
 # or use patches_sidecar_abs.
 patches_sidecar_for() {
   local relpath="${1#./}"
@@ -119,7 +112,7 @@ patches_sidecar_for() {
 # Print the absolute sidecar path for a repository-relative source path.
 patches_sidecar_abs() {
   local root sidecar
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
   sidecar="$(patches_sidecar_for "$1")"
   [[ -z "$sidecar" ]] && return 1
   printf '%s/%s\n' "$root" "$sidecar"
@@ -130,7 +123,7 @@ patches_sidecar_abs() {
 patches_relpath_from_sidecar() {
   local sidecar="$1"
   local root
-  root="$(patches_repo_root)"
+  root="$(repo_root)"
   if [[ -n "$root" ]]; then
     sidecar="${sidecar#"$root"/$PATCHES_DIR/}"
   fi
@@ -148,7 +141,7 @@ patches_relpath_from_sidecar() {
 patches_normalize_path() {
   local arg="${1#./}" root abs
   [[ -z "$arg" ]] && return 1
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
   case "$arg" in
     /*) abs="$arg" ;;
     *)  abs="$PWD/$arg" ;;
@@ -162,7 +155,7 @@ patches_normalize_path() {
 # List all existing sidecar relpaths, one per line, sorted.
 patches_list_sidecars() {
   local root
-  root="$(patches_repo_root)" || return 0
+  root="$(repo_root)" || return 0
   if [[ ! -d "$root/$PATCHES_DIR" ]]; then
     return 0
   fi
@@ -185,7 +178,7 @@ patches_store() {
   fi
 
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   # A normalized relpath must keep its sidecar inside .git-shadow/patches/ —
   # an escaping path would write a sidecar invisible to the enumeration loops.
@@ -269,7 +262,7 @@ _patches_apply_ladder() {
   local out_file="${5:-}"
 
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
@@ -336,7 +329,7 @@ _patches_path_is_applied_overlay() {
   local relpath="$1"
 
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local out_file
   out_file="$(mktemp)"
@@ -355,7 +348,7 @@ _patches_path_is_applied_overlay() {
 # non-ignored files always return 1.
 patches_overlay_clean() {
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   # Porcelain records are NUL-delimited so paths with spaces, quotes, or
   # non-ASCII bytes arrive unquoted and cannot merge into one record.
@@ -412,7 +405,7 @@ patches_check() {
   fi
 
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local sidecar relpath
   local -a sidecars=()
@@ -461,7 +454,7 @@ patches_check() {
 # reverse-applied, leaving the working tree untouched.
 patches_strip() {
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local sidecar relpath
   local -a strip_relpaths=()
@@ -512,7 +505,7 @@ patches_strip() {
 # orphan sidecar is restored to HEAD and warned.
 patches_reapply() {
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local sidecar relpath
   local -a rewritten=()
@@ -704,7 +697,7 @@ patches_commit() {
   fi
 
   local root
-  root="$(patches_repo_root)" || return 1
+  root="$(repo_root)" || return 1
 
   local relpath sidecar added=0
   for relpath in "$@"; do

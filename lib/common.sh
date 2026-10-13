@@ -105,6 +105,20 @@ abs_path() {
   cd "$cwd"
 }
 
+# Print the worktree toplevel (absolute). The single
+# `git rev-parse --show-toplevel` oracle for toolkit code — every
+# filesystem access and git pathspec anchors here. Returns 1 outside a
+# worktree.
+repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null || return 1
+}
+
+# Print the worktree toplevel, else $PWD. For read-only checks that must
+# tolerate a missing toplevel (doctor scans).
+repo_root_or_pwd() {
+  repo_root || printf '%s\n' "$PWD"
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

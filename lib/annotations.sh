@@ -133,7 +133,7 @@ annotations_merge() {
 annotations_reanchor_all() {
   local tmp_dir root
   tmp_dir="$(mktemp -d)"
-  root="$(git rev-parse --show-toplevel)"
+  root="$(repo_root)"
   local -a changed=()
   local failed=0
 

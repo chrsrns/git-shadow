@@ -20,7 +20,7 @@ _doctor_tally() {
 # at the toplevel); skipped otherwise (V96).
 doctor_version_check() {
   local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  toplevel="$(repo_root || true)"
   if [[ -z "$toplevel" || ! -f "$toplevel/bin/git-shadow" \
      || ! -f "$toplevel/commands/version.sh" || ! -f "$toplevel/VERSION" ]]; then
     ui_info "version: skipped (not the git-shadow toolkit repo)"
@@ -271,7 +271,7 @@ doctor_unpromoted_files() {
 # entirely when SPEC.md is absent.
 doctor_spec_integrity_check() {
   local toplevel driver
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  toplevel="$(repo_root_or_pwd)"
 
   if [[ ! -f "$toplevel/SPEC.md" ]]; then
     ui_info "spec-integrity: skipped (no SPEC.md)"
@@ -309,7 +309,7 @@ doctor_spec_integrity_check() {
 # annotation is no longer applied to the source.
 doctor_annotations_check() {
   local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  toplevel="$(repo_root_or_pwd)"
   local dir="$toplevel/.git-shadow/annotations"
   if [[ ! -d "$dir" ]]; then
     ui_info "annotations: no sidecars"
@@ -343,7 +343,7 @@ doctor_base_drift_check() {
   fi
 
   local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s\n' "$PWD")"
+  toplevel="$(repo_root_or_pwd)"
 
   local -A covered=()
   local sidecar rel
@@ -446,7 +446,7 @@ doctor_worktree_check() {
   local public_base="${PUBLIC_BASE_BRANCH:-main}"
   local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
   local current_top
-  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")")"
+  current_top="$(_worktree_abs "$(repo_root_or_pwd)")"
 
   local orphans wt_path wt_branch
   orphans="$(worktree_orphans)"

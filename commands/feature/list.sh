@@ -61,8 +61,10 @@ while IFS= read -r ref; do
 done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}" | sort)
 
 # The field reports only a dedicated worktree; a pair checked out in the
-# main worktree shows -.
-main_worktree="$(git rev-parse --show-toplevel)"
+# main worktree shows -. Resolve the main checkout's toplevel through the
+# common git dir's parent — the invoking worktree's toplevel is wrong when
+# `feature list` runs inside a dedicated feature worktree.
+main_worktree="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")"
 
 json_items=()
 for name in "${names[@]}"; do

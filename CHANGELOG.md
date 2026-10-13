@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-10-13
+
+### Changed
+
+- The paused-`feature finish` state key set is owned by `finish_save_phase` in `lib/finish-state.sh`, which serializes all fields from the finish context; pause-point call sites pass only the values that vary (`phase`, `conflicted_sha`, `remaining_shas`, optional `pre_finish_head`). Adding or changing a persisted field now touches one function instead of every save site.
+
 ## [1.5.1] — 2026-10-01
 
 ### Fixed

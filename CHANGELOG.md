@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [1.5.3] — 2026-10-13
+
+### Changed
+
+- Repository-toplevel resolution is centralized behind `repo_root` / `repo_root_or_pwd` in `lib/common.sh`; call sites no longer re-roll `git rev-parse --show-toplevel` with divergent failure policies.
+- Unmerged-path enumeration is centralized behind `conflicted_paths`, which enumerates the whole index from the repository toplevel, preserves space-containing paths, and propagates enumeration failures; `sync_has_conflicts` now fails closed instead of treating a failed enumeration as a clean tree.
+- Local-branch existence checks go through `branch_exists`, replacing the repeated `git show-ref --verify refs/heads/` pipeline.
+
+### Fixed
+
+- `git shadow feature list` resolves the main checkout's toplevel from the shared Git directory instead of the invoking worktree, so a pair hosted in a dedicated worktree reports its path even when `feature list` runs inside that worktree.
+
 ## [1.5.2] — 2026-10-13
 
 ### Changed

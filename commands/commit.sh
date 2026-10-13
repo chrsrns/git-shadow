@@ -20,7 +20,7 @@ source "$_GS_LIB/common.sh"
 
 enter_project '.'
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
+REPO_ROOT="$(repo_root)"
 
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then

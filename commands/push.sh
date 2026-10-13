@@ -32,7 +32,7 @@ if [[ "$BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
   exit 1
 fi
 
-if ! git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+if ! branch_exists "$BRANCH"; then
   ui_error "Branch does not exist locally: $BRANCH"
   exit 1
 fi

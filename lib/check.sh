@@ -29,7 +29,7 @@ check_public_commits() {
   local exclude_feature=1 base_local_exists=0
   if [[ "$local_branch" == "$local_base" ]]; then
     exclude_feature=0
-  elif git show-ref --verify --quiet "refs/heads/$local_base"; then
+  elif branch_exists "$local_base"; then
     base_local_exists=1
   fi
 
@@ -200,7 +200,7 @@ _check_replay_fail() {
   # Unmerged paths cover real conflicts; an empty pick leaves none, so
   # fall back to the paths the offending commit itself touches.
   local conflicted
-  conflicted="$(git diff --name-only --diff-filter=U 2>/dev/null)"
+  conflicted="$(conflicted_paths || true)"
   if [[ -z "$conflicted" ]]; then
     local conflicted_out conflicted_status
     conflicted_out="$(git diff-tree --no-renames -r --name-only --no-commit-id "$sha" 2>/dev/null)"
@@ -233,7 +233,9 @@ _hook_tree_excluded_paths() {
       .git/*) continue ;;
     esac
     if [[ "$hook_path" == /* ]]; then
-      hook_path="${hook_path#$PWD/}"
+      local _root
+      _root="$(repo_root)"
+      hook_path="${hook_path#"$_root"/}"
       [[ "$hook_path" == /* ]] && continue
     fi
     printf '%s\n' "${hook_path#./}"
@@ -330,7 +332,7 @@ publish_replay_and_head() {
   tmp_branch="__shadow_check_tmp__"
 
   # Remove any leftover temp branch from an aborted previous run.
-  git show-ref --verify --quiet "refs/heads/$tmp_branch" && git branch -D "$tmp_branch" >/dev/null 2>&1 || true
+  branch_exists "$tmp_branch" && git branch -D "$tmp_branch" >/dev/null 2>&1 || true
 
   local original_branch
   original_branch="$(git branch --show-current)"

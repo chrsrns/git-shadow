@@ -21,7 +21,7 @@ source "$_GS_LIB/common.sh"
 
 enter_project '.'
 
-REPO_ROOT="$(patches_repo_root)"
+REPO_ROOT="$(repo_root)"
 
 CURRENT_BRANCH="$(current_branch)"
 if [[ -z "$CURRENT_BRANCH" ]]; then

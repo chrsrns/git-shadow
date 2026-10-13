@@ -130,3 +130,26 @@ teardown() {
   after="$(git for-each-ref --format='%(refname) %(objectname)' refs/heads/)"
   [ "$before" = "$after" ]
 }
+
+@test "feature list inside a dedicated worktree reports the hosted pair's path" {
+  run git shadow feature start feat-w --worktree-dir "$TEST_DIR/feat-wt"
+  [ "$status" -eq 0 ]
+
+  cd "$TEST_DIR/feat-wt"
+  run git shadow feature list --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"name\":\"feat-w\",\"worktree\":\"$TEST_DIR/feat-wt\""* ]]
+}
+
+@test "feature list inside a dedicated worktree still reports - for a main-worktree pair" {
+  run git shadow feature start feat-w --worktree-dir "$TEST_DIR/feat-wt"
+  [ "$status" -eq 0 ]
+  run git shadow feature start feat-m
+  [ "$status" -eq 0 ]
+
+  cd "$TEST_DIR/feat-wt"
+  run git shadow feature list --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"\"name\":\"feat-w\",\"worktree\":\"$TEST_DIR/feat-wt\""* ]]
+  [[ "$output" == *"\"name\":\"feat-m\",\"worktree\":\"-\""* ]]
+}

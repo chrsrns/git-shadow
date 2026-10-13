@@ -105,6 +105,37 @@ abs_path() {
   cd "$cwd"
 }
 
+# Print the worktree toplevel (absolute). The single
+# `git rev-parse --show-toplevel` oracle for toolkit code — every
+# filesystem access and git pathspec anchors here. Returns 1 outside a
+# worktree.
+repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null || return 1
+}
+
+# Print the worktree toplevel, else $PWD. For read-only checks that must
+# tolerate a missing toplevel (doctor scans).
+repo_root_or_pwd() {
+  repo_root || printf '%s\n' "$PWD"
+}
+
+# Print the unmerged paths in the index, one per line, toplevel-relative,
+# sorted and deduplicated. The single "which paths are conflicted" oracle;
+# runs from the toplevel so the whole index is enumerated from any cwd.
+# Stderr is propagated and a failed enumeration returns non-zero — an
+# error must not look like an empty conflict set.
+conflicted_paths() {
+  local root
+  root="$(repo_root)" || return 1
+  git -C "$root" ls-files -u | cut -f2- | sort -u
+}
+
+# Return 0 iff local branch <name> exists. The single branch-existence
+# oracle; <name> is a short branch name, not a full ref.
+branch_exists() {
+  git show-ref --verify --quiet "refs/heads/$1"
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

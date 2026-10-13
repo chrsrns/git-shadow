@@ -68,7 +68,7 @@ if [[ "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
   PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
 else
   candidate="${CURRENT_BRANCH}${LOCAL_SUFFIX}"
-  if git show-ref --verify --quiet "refs/heads/$candidate"; then
+  if branch_exists "$candidate"; then
     BRANCH_TYPE="public"
     PUBLIC_BRANCH="$CURRENT_BRANCH"
     SHADOW_BRANCH="$candidate"
@@ -85,7 +85,7 @@ if [[ "$BRANCH_TYPE" == "unknown" ]]; then
 fi
 
 # If the public branch does not exist, report missing.
-if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
+if ! branch_exists "$PUBLIC_BRANCH"; then
   if [[ "$JSON" -eq 1 ]]; then
     printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","publishable":0,"public_ahead":0,"diverged":false,"status":"public branch missing"}\n' \
       "$CURRENT_BRANCH" "$BRANCH_TYPE" "$PUBLIC_BRANCH" "$SHADOW_BRANCH"

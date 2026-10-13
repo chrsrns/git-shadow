@@ -43,7 +43,7 @@ _in_linked_worktree() {
 finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
-  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel)")"
+  current_top="$(_worktree_abs "$(repo_root)")"
   local path held
   while IFS=$'\t' read -r path held; do
     [[ -z "$path" ]] && continue
@@ -65,7 +65,7 @@ finish_resolve_worktree() {
   FINISH_WORKTREE=""
   local wt current_top
   wt="$(worktree_find_for_branch "$FEATURE_LOCAL_BRANCH")" || return 0
-  current_top="$(_worktree_abs "$(git rev-parse --show-toplevel)")"
+  current_top="$(_worktree_abs "$(repo_root)")"
   if [[ "$wt" != "$current_top" ]]; then
     FINISH_WORKTREE="$wt"
   fi
@@ -288,7 +288,7 @@ finish_memory_replay() {
 
     if ! git -C "$REPO_ROOT" diff "$sha^" "$sha" -- . ':!.git-shadow/annotations/' ':!.git-shadow/patches/' | git -C "$REPO_ROOT" apply --3way --allow-empty; then
       local conflicted
-      conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+      conflicted="$(conflicted_paths || true)"
       ui_error "Conflict applying [MEMORY] commit $sha to '$LOCAL_BASE'."
       [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
       ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
@@ -329,7 +329,7 @@ finish_base_diff_apply() {
 
   if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
     local conflicted
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+    conflicted="$(conflicted_paths || true)"
     ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
     [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
     ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
@@ -428,7 +428,7 @@ fi
 
 enter_project '.'
 
-REPO_ROOT="$(patches_repo_root)"
+REPO_ROOT="$(repo_root)"
 
 # Clean FINISH_TMP_DIR on exit. Patch overlay reapply is handled by
 # `patches_transaction` around each mutating block; this trap must only
@@ -450,7 +450,7 @@ if [[ "$ABORT" -eq 1 ]]; then
     ui_error "No finish in progress."
     exit 1
   fi
-  conflicted="$(git ls-files -u | awk '{print $4}' | sort -u)"
+  conflicted="$(conflicted_paths || true)"
 
   _finish_abort_body() {
     local conflicted="$1"
@@ -576,7 +576,7 @@ if [[ "$CONTINUE" -eq 1 ]]; then
     exit 1
   fi
   if sync_has_conflicts; then
-    conflicted="$(git ls-files -u | awk '{print $4}' | sort -u | paste -sd' ' -)"
+    conflicted="$(conflicted_paths | paste -sd' ' - || true)"
     ui_error "Working tree still has unresolved conflicts: $conflicted"
     exit 1
   fi
@@ -679,10 +679,10 @@ else
   # Bare mode: derive the feature from the current @local branch.
   if _in_linked_worktree; then
     ui_error "Bare 'feature finish' cannot run inside a linked worktree."
-    ui_info  "Commit or stash your work in '$(git rev-parse --show-toplevel)', then run:"
+    ui_info  "Commit or stash your work in '$(repo_root)', then run:"
     ui_info  "  git shadow feature finish $(public_branch_from_any "$CURRENT_BRANCH")"
     ui_info  "from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
-    ui_info  "Or remove the worktree manually: git worktree remove '$(git rev-parse --show-toplevel)'"
+    ui_info  "Or remove the worktree manually: git worktree remove '$(repo_root)'"
     exit 1
   fi
   if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
@@ -698,7 +698,7 @@ else
 fi
 
 for branch in "$FEATURE_PUBLIC_BRANCH" "$FEATURE_LOCAL_BRANCH" "$PUBLIC_BASE" "$LOCAL_BASE"; do
-  if ! git show-ref --verify --quiet "refs/heads/$branch"; then
+  if ! branch_exists "$branch"; then
     ui_error "Branch does not exist locally: $branch"
     exit 1
   fi

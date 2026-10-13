@@ -240,7 +240,7 @@ worktree_orphans() {
       continue
     fi
     if [[ "$branch" != "-" && "$branch" == *"${LOCAL_SUFFIX:-@local}" ]]; then
-      git show-ref --verify --quiet "refs/heads/$branch" || \
+      branch_exists "$branch" || \
         printf '%s\t%s\n' "$path" "$branch"
     fi
   done < <(worktree_records)

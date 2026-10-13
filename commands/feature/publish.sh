@@ -39,7 +39,7 @@ if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
 fi
 
 PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
-if ! git show-ref --verify --quiet "refs/heads/$PUBLIC_BRANCH"; then
+if ! branch_exists "$PUBLIC_BRANCH"; then
   ui_error "Public feature branch does not exist: $PUBLIC_BRANCH"
   exit 1
 fi

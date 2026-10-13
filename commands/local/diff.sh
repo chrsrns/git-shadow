@@ -22,7 +22,7 @@ enter_project '.'
 patches_require_no_paused_op
 
 PATH_ARG="${1:-}"
-REPO_ROOT="$(patches_repo_root)"
+REPO_ROOT="$(repo_root)"
 
 if [[ -n "$PATH_ARG" ]]; then
   if ! RELPATH="$(patches_normalize_path "$PATH_ARG")"; then

@@ -14,7 +14,9 @@ sync_state_file() {
 }
 
 sync_has_conflicts() {
-  git ls-files -u >/dev/null 2>&1 && [[ -n "$(git ls-files -u)" ]]
+  # Fail closed: a failed enumeration reports conflicts, never "clean".
+  conflicted_paths >/dev/null || return 0
+  [[ -n "$(conflicted_paths)" ]]
 }
 
 sync_tree_changed() {
@@ -90,7 +92,7 @@ sync_patch_ids() {
 # 2.55.0). Stage everything, then unstage the env file instead.
 sync_stage_all() {
   local root
-  root="$(git rev-parse --show-toplevel)"
+  root="$(repo_root)"
   git -C "$root" add -A -- .
   git -C "$root" reset -q -- .git-shadow.env 2>/dev/null || true
 }
@@ -101,7 +103,7 @@ sync_apply_range() {
   local start="$1"
   local end="$2"
   local root
-  root="$(git rev-parse --show-toplevel)"
+  root="$(repo_root)"
   git -C "$root" diff "$start".."$end" | git -C "$root" apply --3way
 }
 

@@ -633,3 +633,11 @@ HOOK
   ! git worktree list --porcelain | grep -q "feat-x"
   git branch -D "feat-x@local" >/dev/null
 }
+
+@test "feature finish dirty-worktree report classifies the feature worktree dirt" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  echo "dirty" > "$TEST_DIR/wt-feat/dirty.txt"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"dirty.txt [untracked]"* ]]
+}

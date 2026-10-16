@@ -92,7 +92,8 @@ finish_check_feature_worktree() {
 
   if worktree_is_dirty "$FINISH_WORKTREE"; then
     ui_error "Feature worktree '$FINISH_WORKTREE' is dirty."
-    git -C "$FINISH_WORKTREE" status --porcelain >&2
+    ( cd "$FINISH_WORKTREE" && patches_dirty_table >&2 ) \
+      || ui_error "Unable to enumerate worktree status for '$FINISH_WORKTREE'."
     ui_info  "Commit or stash the work, then retry; or keep it with --keep-worktree."
     ui_info  "Or run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH' from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
     return 1
@@ -110,7 +111,8 @@ finish_cleanup_feature() {
   if [[ -n "$worktree" && "$KEEP_WORKTREE" -eq 0 ]]; then
     if [[ -d "$worktree" ]] && worktree_is_dirty "$worktree"; then
       ui_error "Feature worktree '$worktree' is dirty; refusing to remove it."
-      git -C "$worktree" status --porcelain >&2
+      ( cd "$worktree" && patches_dirty_table >&2 ) \
+        || ui_error "Unable to enumerate worktree status for '$worktree'."
       ui_info  "Commit or stash the work, then run: git worktree remove '$worktree'"
       return 1
     fi

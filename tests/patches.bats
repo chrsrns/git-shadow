@@ -477,3 +477,177 @@ teardown() {
   [ "$status" -ne 0 ]
   [ ! -f .git-shadow/file.txt.patch ]
 }
+
+@test "patches_classify_path reports patch for an applied overlay" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  run patches_classify_path " M" "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "patch" ]
+}
+
+@test "patches_classify_path reports patch-stale for a drifted overlay" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+  # Drift: file no longer equals HEAD + patch.
+  echo "extra" >> file.txt
+
+  run patches_classify_path " M" "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "patch-stale" ]
+}
+
+@test "patches_classify_path reports dirty for unstaged change without a sidecar" {
+  git checkout -q -b feature@local
+  echo "real edit" >> file.txt
+
+  run patches_classify_path " M" "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "dirty" ]
+}
+
+@test "patches_classify_path reports staged for an index change" {
+  git checkout -q -b feature@local
+  echo "staged" >> file.txt
+  git add file.txt
+
+  run patches_classify_path "M " "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "staged" ]
+}
+
+@test "patches_classify_path reports staged even when a sidecar exists" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+  git add file.txt
+
+  run patches_classify_path "M " "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "staged" ]
+}
+
+@test "patches_classify_path reports untracked for a new file" {
+  git checkout -q -b feature@local
+  echo "new" > new-file.txt
+
+  run patches_classify_path "??" "new-file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "untracked" ]
+}
+
+@test "patches_classify_path reports clean for exempt names" {
+  git checkout -q -b feature@local
+  echo "GIT_SHADOW=1" > .git-shadow.env
+
+  run patches_classify_path "??" ".git-shadow.env"
+  [ "$status" -eq 0 ]
+  [ "$output" = "clean" ]
+}
+
+@test "patches_classify_path reports staged for an unmerged record" {
+  git checkout -q -b other
+  echo "other" > file.txt
+  git commit -qam "other"
+  git checkout -q -b feature@local main
+  echo "ours" > file.txt
+  git commit -qam "ours"
+  git merge other >/dev/null 2>&1 || true
+
+  run patches_classify_path "UU" "file.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "staged" ]
+}
+
+@test "patches_dirty_table lists a staged rename as A/D records, not a bogus R record" {
+  git checkout -q -b feature@local
+  git mv file.txt renamed.txt
+
+  run patches_dirty_table
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"A  renamed.txt [staged]"* ]]
+  [[ "$output" == *"D  file.txt [staged]"* ]]
+  [[ "$output" != *"old.txt"* ]]
+}
+
+@test "patches_dirty_table prints classified lines for mixed dirt" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+  echo "real" > real.txt && git add real.txt && git commit -qm "add real.txt"
+  echo "dirt" >> real.txt
+  echo "new" > untracked.txt
+
+  run patches_dirty_table
+  [ "$status" -eq 0 ]
+  [[ "$output" == *" M file.txt [patch]"* ]]
+  [[ "$output" == *" M real.txt [dirty]"* ]]
+  [[ "$output" == *"?? untracked.txt [untracked]"* ]]
+}
+
+@test "patches_dirty_table omits exempt paths" {
+  git checkout -q -b feature@local
+  echo "GIT_SHADOW=1" > .git-shadow.env
+  echo "dirt" >> file.txt
+
+  run patches_dirty_table
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" != *".git-shadow.env"* ]]
+}
+
+@test "patches_dirty_table returns 1 when the status enumeration fails" {
+  git checkout -q -b feature@local
+  mkdir -p fakebin
+  cat > fakebin/git <<'SH'
+#!/bin/sh
+# Delegate everything except `status` to the real git.
+while [ "$1" = "-C" ]; do shift 2; done
+if [ "$1" = "status" ]; then exit 1; fi
+exec /usr/bin/git "$@"
+SH
+  chmod +x fakebin/git
+
+  run env PATH="$TEST_DIR/fakebin:$PATH" bash -c 'source "$1/lib/common.sh"; patches_dirty_table' -- "$TOOLKIT_ROOT"
+  [ "$status" -eq 1 ]
+}
+
+@test "patches_overlay_clean fails closed when the status enumeration fails" {
+  git checkout -q -b feature@local
+  mkdir -p fakebin
+  cat > fakebin/git <<'SH'
+#!/bin/sh
+# Delegate everything except `status` to the real git.
+while [ "$1" = "-C" ]; do shift 2; done
+if [ "$1" = "status" ]; then exit 1; fi
+exec /usr/bin/git "$@"
+SH
+  chmod +x fakebin/git
+
+  run env PATH="$TEST_DIR/fakebin:$PATH" bash -c 'source "$1/lib/common.sh"; patches_overlay_clean' -- "$TOOLKIT_ROOT"
+  [ "$status" -eq 1 ]
+}
+
+@test "patches_unapplied_sidecars lists sidecars whose source is clean" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+  git checkout -q HEAD -- file.txt
+
+  run patches_unapplied_sidecars
+  [ "$status" -eq 0 ]
+  [ "$output" = "file.txt" ]
+}
+
+@test "patches_unapplied_sidecars omits applied overlays" {
+  git checkout -q -b feature@local
+  echo "local edit" >> file.txt
+  patches_store "file.txt"
+
+  run patches_unapplied_sidecars
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

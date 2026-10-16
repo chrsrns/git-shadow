@@ -343,51 +343,198 @@ _patches_path_is_applied_overlay() {
   diff -q "$out_file" "$root/$relpath" >/dev/null 2>&1
 }
 
-# Return 0 iff every dirty tracked path has a stored sidecar and the file
-# content equals HEAD plus the patch applied. Staged changes and untracked
-# non-ignored files always return 1.
-patches_overlay_clean() {
+# Classify one `git status --porcelain -z` record's dirt class.
+#
+# Usage: patches_classify_path <status_xy> <relpath>
+# Prints one of: patch, patch-stale, dirty, staged, untracked, clean.
+# Exempt paths (.git-shadow.env, .gitignore, registered-worktree dirs —
+# untracked records only) print `clean`.
+patches_classify_path() {
+  local status="$1" path="$2"
+
+  # Untracked record.
+  if [[ "$status" == "??" ]]; then
+    # Local-only config/setup files that are normally gitignored may be
+    # present while the repo is being configured; treat them as clean.
+    if [[ "$path" == .git-shadow.env || "$path" == */.git-shadow.env ||
+          "$path" == .gitignore || "$path" == */.gitignore ]]; then
+      printf 'clean\n'
+      return 0
+    fi
+    # A registered worktree directory looks like an untracked path in the
+    # main checkout; it is not dirt we care about here.
+    local root abs_path
+    root="$(repo_root)" || return 1
+    abs_path="$(_worktree_abs "$root/$path")"
+    if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
+      printf 'clean\n'
+      return 0
+    fi
+    printf 'untracked\n'
+    return 0
+  fi
+
+  # Staged change (first column covers every unmerged code too).
+  if [[ "${status:0:1}" != " " && "${status:0:1}" != "?" ]]; then
+    printf 'staged\n'
+    return 0
+  fi
+
+  # Unstaged tracked change.
+  if [[ "${status:1:1}" != " " && "${status:1:1}" != "?" ]]; then
+    local sidecar_abs
+    sidecar_abs="$(patches_sidecar_abs "$path")" || return 1
+    if [[ -f "$sidecar_abs" ]]; then
+      if _patches_path_is_applied_overlay "$path"; then
+        printf 'patch\n'
+      else
+        printf 'patch-stale\n'
+      fi
+    else
+      printf 'dirty\n'
+    fi
+    return 0
+  fi
+
+  printf 'clean\n'
+}
+
+# Print the classified dirt table — `XY <path> [<class>]`, one line per
+# `git status --porcelain -z` record; `clean` records are dropped.
+#
+# With `porcelain` as $1, prints `XY <path> <class>` records instead —
+# re-rendered from each record, with C-quoted paths (git's non--z
+# porcelain convention).
+#
+# Returns 1 when the enumeration fails.
+patches_dirty_table() {
+  local mode="${1:-human}"
   local root
   root="$(repo_root)" || return 1
 
+  # Buffer the enumeration so a failed `git status` is detectable —
+  # process substitution would hide the exit status.
+  local enum_out
+  enum_out="$(mktemp)" || return 1
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
+
+  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+    return 1
+  fi
+
   # Porcelain records are NUL-delimited so paths with spaces, quotes, or
   # non-ASCII bytes arrive unquoted and cannot merge into one record.
-  local rec status path
+  local rec status path class
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
     [[ -z "$rec" ]] && continue
     status="${rec:0:2}"
     path="${rec:3}"
 
-    # Untracked non-ignored file.
-    if [[ "$status" == "??" ]]; then
-      # Local-only config/setup files that are normally gitignored may be
-      # present while the repo is being configured; treat them as clean.
-      if [[ "$path" == .git-shadow.env || "$path" == */.git-shadow.env ||
-           "$path" == .gitignore || "$path" == */.gitignore ]]; then
-        continue
-      fi
-      # A registered worktree directory looks like an untracked path in the
-      # main checkout; it is not worktree dirt we care about here.
-      local abs_path
-      abs_path="$(_worktree_abs "$root/$path")"
-      if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
-        continue
-      fi
-      return 1
-    fi
+    class="$(patches_classify_path "$status" "$path")" || return 1
+    [[ "$class" == "clean" ]] && continue
 
-    # Staged change.
-    if [[ "${status:0:1}" != " " && "${status:0:1}" != "?" ]]; then
-      return 1
+    if [[ "$mode" == "porcelain" ]]; then
+      printf '%s %s %s\n' "$status" "$(_patches_cquote "$path")" "$class"
+    else
+      printf '%s %s [%s]\n' "$status" "$path" "$class"
     fi
+  done < "$enum_out"
 
-    # Unstaged change.
-    if [[ "${status:1:1}" != " " && "${status:1:1}" != "?" ]]; then
-      if ! _patches_path_is_applied_overlay "$path"; then
-        return 1
-      fi
-    fi
-  done < <(git -C "$root" status --porcelain -z --untracked-files=all --no-renames 2>/dev/null)
+  return 0
+}
+
+# C-quote a path for machine-readable output, matching git's non-`-z`
+# porcelain convention: quote and escape when the path contains a double
+# quote, backslash, control byte, or non-ASCII byte.
+_patches_cquote() {
+  local path="$1"
+  if [[ "$path" != *[\"\\]* && "$path" =~ ^[[:print:]]+$ ]]; then
+    printf '%s\n' "$path"
+    return 0
+  fi
+
+  local out='"' i ch
+  for (( i = 0; i < ${#path}; i++ )); do
+    ch="${path:i:1}"
+    case "$ch" in
+      '"')  out+='\"' ;;
+      '\')  out+='\\' ;;
+      $'\n') out+='\n' ;;
+      $'\t') out+='\t' ;;
+      $'\r') out+='\r' ;;
+      $'\a') out+='\a' ;;
+      $'\b') out+='\b' ;;
+      $'\f') out+='\f' ;;
+      $'\v') out+='\v' ;;
+      [[:print:]]) out+="$ch" ;;
+      *) printf -v ch '\\%03o' "'$ch"; out+="$ch" ;;
+    esac
+  done
+  printf '%s"\n' "$out"
+}
+
+# Print the relpath of every stored sidecar whose source file is not dirty.
+patches_unapplied_sidecars() {
+  local root
+  root="$(repo_root)" || return 1
+
+  local enum_out
+  enum_out="$(mktemp)" || return 1
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
+
+  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+    return 1
+  fi
+
+  local rec path
+  local -a dirty_paths=()
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    dirty_paths+=("${rec:3}")
+  done < "$enum_out"
+
+  local rel dirty
+  while IFS= read -r rel; do
+    [[ -z "$rel" ]] && continue
+    dirty=0
+    for path in "${dirty_paths[@]}"; do
+      [[ "$path" == "$rel" ]] && { dirty=1; break; }
+    done
+    [[ "$dirty" -eq 0 ]] && printf '%s\n' "$rel"
+  done < <(patches_list_sidecars)
+  return 0
+}
+
+# Return 0 iff every dirty tracked path has a stored sidecar and the file
+# content equals HEAD plus the patch applied; any other dirt returns 1.
+# Fails closed: a failed `git status` enumeration returns 1 rather than
+# reporting the tree clean.
+patches_overlay_clean() {
+  local root
+  root="$(repo_root)" || return 1
+
+  local enum_out
+  enum_out="$(mktemp)" || return 1
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
+
+  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+    return 1
+  fi
+
+  local rec status path class
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    status="${rec:0:2}"
+    path="${rec:3}"
+    class="$(patches_classify_path "$status" "$path")" || return 1
+    case "$class" in
+      clean|patch) ;;
+      *) return 1 ;;
+    esac
+  done < "$enum_out"
 
   return 0
 }

@@ -165,3 +165,56 @@ teardown() {
   [[ "$output" == *'"diverged":true'* ]]
   [[ "$output" != *"Check pass:"* ]]
 }
+
+@test "status reports dirt counts in human output" {
+  echo "local edit" >> file.txt
+  git shadow local add file.txt >/dev/null
+  echo "real" > real.txt
+  git add real.txt
+  git commit -qm "add real.txt"
+  echo "dirt" >> real.txt
+
+  run git shadow status
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"local-patches : 1"* ]]
+  [[ "$output" == *"unpatched-dirty : 1"* ]]
+}
+
+@test "status --json includes dirt counts" {
+  echo "local edit" >> file.txt
+  git shadow local add file.txt >/dev/null
+
+  run git shadow status --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"local_patches":1'* ]]
+  [[ "$output" == *'"unpatched_dirty":0'* ]]
+}
+
+@test "status --json stays valid when public branch moved non-fast-forward" {
+  # Move the public branch sideways so public_ahead is '?'.
+  # Point the public branch at an unrelated root commit: the checkpoint
+  # public SHA is then not an ancestor and public_ahead renders "?".
+  git checkout -q test-feature
+  newsha="$(git commit-tree "$(git write-tree)" -m "alt")"
+  git update-ref refs/heads/test-feature "$newsha"
+  git checkout -q test-feature@local
+
+  run git shadow status --json
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | python3 -c 'import json,sys; json.loads(sys.stdin.read())'
+  [[ "$output" == *'"public_ahead":"?"'* ]]
+}
+
+@test "status --json escapes a quote-bearing branch name" {
+  git checkout -q -b 'q"f@local'
+  run git shadow status --json
+  [ "$status" -eq 0 ]
+  printf '%s' "$output" | python3 -c 'import json,sys; json.loads(sys.stdin.read())'
+}
+
+@test "status renders null dirt fields when enumeration fails" {
+  printf 'corrupt' > .git/index
+  run git shadow status --json
+  json="$(printf '%s\n' "$output" | grep '^{')"
+  printf '%s' "$json" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); assert d["local_patches"] is None and d["unpatched_dirty"] is None'
+}

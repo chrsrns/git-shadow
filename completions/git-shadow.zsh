@@ -253,6 +253,7 @@ _git_shadow_local_subcommands() {
     'rm:remove a local patch sidecar'
     'diff:print stored local patch sidecars'
     'apply:re-apply all stored local patch sidecars'
+    'status:report classified working-tree dirt'
     'help:show group help'
   )
   _describe 'subcommand' subcommands

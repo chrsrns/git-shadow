@@ -42,6 +42,7 @@ Commands:
   git shadow local rm [--revert] <path> [<ignored>...]
   git shadow local diff [path] [<ignored>...]
   git shadow local apply [<ignored>...]
+  git shadow local status [--porcelain|--json] [<ignored>...]
   git shadow completion install [<ignored>...]
   git shadow feature start [<name> [--worktree|--worktree-dir <path>]]
   git shadow feature list [--json]

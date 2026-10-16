@@ -399,21 +399,14 @@ patches_classify_path() {
   printf 'clean\n'
 }
 
-# Print the classified dirt table — `XY <path> [<class>]`, one line per
-# `git status --porcelain -z` record; `clean` records are dropped.
-#
-# With `porcelain` as $1, prints `XY <path> <class>` records instead —
-# re-rendered from each record, with C-quoted paths (git's non--z
-# porcelain convention).
-#
-# Returns 1 when the enumeration fails.
-patches_dirty_table() {
-  local mode="${1:-human}"
+# Internal: emit one NUL-delimited `xy<TAB>class<TAB>path` record per dirty
+# path (clean records dropped). Buffers the `git status` enumeration to a
+# temp file so its exit status stays observable — process substitution
+# would hide the failure. Returns 1 when the enumeration fails.
+_patches_dirty_records() {
   local root
   root="$(repo_root)" || return 1
 
-  # Buffer the enumeration so a failed `git status` is detectable —
-  # process substitution would hide the exit status.
   local enum_out
   enum_out="$(mktemp)" || return 1
   # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
@@ -434,12 +427,46 @@ patches_dirty_table() {
     class="$(patches_classify_path "$status" "$path")" || return 1
     [[ "$class" == "clean" ]] && continue
 
+    printf '%s\t%s\t%s\0' "$status" "$class" "$path"
+  done < "$enum_out"
+
+  return 0
+}
+
+# Print the classified dirt table — `XY <path> [<class>]`, one line per
+# dirty `git status` record; `clean` records are dropped.
+#
+# With `porcelain` as $1, prints `XY <path> <class>` records instead —
+# re-rendered from each record, with C-quoted paths (git's non--z
+# porcelain convention).
+#
+# Returns 1 when the enumeration fails.
+patches_dirty_table() {
+  local mode="${1:-human}"
+
+  local recs
+  recs="$(mktemp)" || return 1
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$recs"; trap - RETURN' RETURN
+
+  if ! _patches_dirty_records > "$recs"; then
+    return 1
+  fi
+
+  local rec status class path
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    status="${rec%%$'\t'*}"
+    rec="${rec#*$'\t'}"
+    class="${rec%%$'\t'*}"
+    path="${rec#*$'\t'}"
+
     if [[ "$mode" == "porcelain" ]]; then
       printf '%s %s %s\n' "$status" "$(_patches_cquote "$path")" "$class"
     else
       printf '%s %s [%s]\n' "$status" "$path" "$class"
     fi
-  done < "$enum_out"
+  done < "$recs"
 
   return 0
 }

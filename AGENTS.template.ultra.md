@@ -51,6 +51,7 @@ git shadow push feature/x
 - `git shadow local apply` — reapply all sidecars after sync, re-anchor, or checkout.
 - `git shadow local rm [--revert] <path>` — remove sidecar; `--revert` restores source to `HEAD`.
 - `git shadow local diff [path]` — print one or all sidecars.
+- `git shadow local status` — classify dirt: `[patch]`/`[patch-stale]` = overlay, `[dirty]`/`[staged]`/`[untracked]` = real changes; abort dumps carry the same classes.
 - `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
 

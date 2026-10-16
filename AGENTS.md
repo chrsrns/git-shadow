@@ -61,6 +61,7 @@ Use `git commit -m "[MEMORY] <subject>"` for notes, scratch files, plans, debug 
 - Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
 - Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
 - Use `git shadow local diff [path]` to print one sidecar or all sidecars.
+- Use `git shadow local status` to tell patch-overlay dirt (`[patch]`/`[patch-stale]`) from genuine uncommitted changes (`[dirty]`/`[staged]`/`[untracked]`); abort dumps carry the same classes.
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
 

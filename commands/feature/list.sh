@@ -17,6 +17,8 @@ if gs_help_requested -- "$@"; then
 fi
 
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/config-utils.sh"
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$_GS_LIB/common.sh"
 
 usage() {
@@ -90,7 +92,7 @@ for name in "${names[@]}"; do
     printf '  checkpoint : %s\n' "$checkpoint_str"
     printf '  publishable: %s\n' "$publishable"
   else
-    json_items+=("{\"name\":\"$name\",\"worktree\":\"$worktree_path\",\"checkpoint\":\"$checkpoint_str\",\"publishable\":$publishable}")
+    json_items+=("{\"name\":\"$(json_escape "$name")\",\"worktree\":\"$(json_escape "$worktree_path")\",\"checkpoint\":\"$(json_escape "$checkpoint_str")\",\"publishable\":$publishable}")
   fi
 done
 

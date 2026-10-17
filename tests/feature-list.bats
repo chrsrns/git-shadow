@@ -153,3 +153,12 @@ teardown() {
   [[ "$output" == *"\"name\":\"feat-w\",\"worktree\":\"$TEST_DIR/feat-wt\""* ]]
   [[ "$output" == *"\"name\":\"feat-m\",\"worktree\":\"-\""* ]]
 }
+
+@test "feature list --json escapes a quote-bearing branch name" {
+  run git shadow feature start 'feat"q'
+  [ "$status" -eq 0 ]
+
+  run git shadow feature list --json
+  [ "$status" -eq 0 ]
+  echo "$output" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(i["name"] == '"'"'feat"q'"'"' for i in d)'
+}

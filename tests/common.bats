@@ -246,3 +246,34 @@ f one.txt" ]
   [ "$status" -eq 1 ]
   [[ "$output" == *"This command must be run from a branch ending with"* ]]
 }
+
+@test "local_branch_refs prints only *@local shortnames sorted" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git symbolic-ref HEAD refs/heads/main
+  git commit --allow-empty -qm init
+  git branch zebra@local
+  git branch feat/x@local
+  git branch plain
+  run local_branch_refs
+  [ "$status" -eq 0 ]
+  [ "$output" = $'feat/x@local\nzebra@local' ]
+}
+
+@test "paired_public_branches emits only paired public names sorted" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git symbolic-ref HEAD refs/heads/main
+  git commit --allow-empty -qm init
+  git branch feat/x
+  git branch feat/x@local
+  git branch orphan@local
+  git branch unpaired
+  run paired_public_branches
+  [ "$status" -eq 0 ]
+  [ "$output" = "feat/x" ]
+}

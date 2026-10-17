@@ -185,10 +185,9 @@ doctor_doc_directives_check() {
 
   # Public-branch trees: every public branch with an @local pair.
   while IFS= read -r ref; do
-    [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
+    [[ -z "$ref" ]] && continue
     _doctor_doc_directives_in_ref "$ref" "$ref" || issues=1
-  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
+  done < <(paired_public_branches)
 
   # Staged index: only files staged since HEAD; committed @local content
   # legitimately carries `///` markers and must not warn.
@@ -494,7 +493,7 @@ doctor_run() {
     [[ -z "$ref" ]] && continue
     seen=$((seen + 1))
     _doctor_tally doctor_checkpoint_summary "$ref"
-  done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}")
+  done < <(local_branch_refs)
   if [[ $seen -eq 0 ]]; then
     ui_ok "checkpoints: no ${LOCAL_SUFFIX} branches found"
   fi
@@ -504,10 +503,9 @@ doctor_run() {
 
   # Unpromoted files for every public branch with a local counterpart (V99).
   while IFS= read -r ref; do
-    [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
+    [[ -z "$ref" ]] && continue
     _doctor_tally doctor_unpromoted_files "$ref"
-  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
+  done < <(paired_public_branches)
 
   _doctor_tally doctor_base_drift_check
   _doctor_tally doctor_spec_integrity_check

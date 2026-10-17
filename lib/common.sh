@@ -180,6 +180,27 @@ rev_blob_to() {
   git show "$1:$2" > "$3" 2>/dev/null || return 1
 }
 
+# Print every local branch name ending with LOCAL_SUFFIX (short names,
+# sorted). The single `git for-each-ref` glob oracle for shadow
+# enumeration.
+local_branch_refs() {
+  git for-each-ref --format='%(refname:short)' "refs/heads/**/*${LOCAL_SUFFIX}" | sort
+}
+
+# Print every public branch name having a <name><LOCAL_SUFFIX>
+# counterpart, sorted (derived from local_branch_refs + branch_exists).
+# The local base pair is included; callers that exclude it filter by
+# name.
+paired_public_branches() {
+  local ref name
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    name="${ref%${LOCAL_SUFFIX}}"
+    branch_exists "$name" || continue
+    printf '%s\n' "$name"
+  done < <(local_branch_refs)
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

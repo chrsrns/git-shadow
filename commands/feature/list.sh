@@ -52,13 +52,10 @@ PUBLIC_BASE="${PUBLIC_BASE_BRANCH:-main}"
 # without its public counterpart is not a feature. The local base pair is
 # never a feature.
 names=()
-while IFS= read -r ref; do
-  [[ -z "$ref" ]] && continue
-  name="${ref%${LOCAL_SUFFIX}}"
-  [[ "$name" == "$PUBLIC_BASE" ]] && continue
-  branch_exists "$name" || continue
+while IFS= read -r name; do
+  [[ -z "$name" || "$name" == "$PUBLIC_BASE" ]] && continue
   names+=("$name")
-done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}" | sort)
+done < <(paired_public_branches)
 
 # The field reports only a dedicated worktree; a pair checked out in the
 # main worktree shows -. Resolve the main checkout's toplevel through the

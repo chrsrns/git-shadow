@@ -222,3 +222,27 @@ f one.txt" ]
   [ "$status" -eq 0 ]
   [ "$(cat out.txt)" = "staged-content" ]
 }
+
+@test "require_local_branch renders a supplied label in the refusal" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git symbolic-ref HEAD refs/heads/main
+  git commit --allow-empty -qm init
+  run require_local_branch "git shadow demo"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"git shadow demo must be run from a branch ending with"* ]]
+}
+
+@test "require_local_branch keeps the generic message without a label" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git symbolic-ref HEAD refs/heads/main
+  git commit --allow-empty -qm init
+  run require_local_branch
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"This command must be run from a branch ending with"* ]]
+}

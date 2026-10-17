@@ -29,10 +29,7 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "git shadow annotations reapply must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
+require_local_branch "git shadow annotations reapply"
 
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT

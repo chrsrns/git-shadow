@@ -196,10 +196,7 @@ EOF
   # Feature mode requires a @local branch and refuses the local base branch.
   # (Base mode already validated above.)
   if [[ "$mode" == "feature" ]]; then
-    if [[ ! "$local_branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-      ui_error "$mode sync must be run from a branch ending with '${LOCAL_SUFFIX}'."
-      return 1
-    fi
+    require_local_branch "$mode sync"
     if [[ "$local_branch" == "$local_base_branch" ]]; then
       ui_error "'git shadow feature sync' is for feature shadow branches, not the local base branch '$local_base_branch'."
       return 1

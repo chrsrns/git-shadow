@@ -265,8 +265,10 @@ local_branch_from_any() {
   _branch_transform "$1" ensure
 }
 
-# Abort unless the current branch ends with LOCAL_SUFFIX.
+# Abort unless the current branch ends with LOCAL_SUFFIX. An optional
+# label names the command in the refusal message (default "This command").
 require_local_branch() {
+  local label="${1:-This command}"
   local branch
   branch="$(current_branch)"
   if [[ -z "$branch" ]]; then
@@ -274,7 +276,7 @@ require_local_branch() {
     exit 1
   fi
   if [[ ! "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-    ui_error "This command must be run from a branch ending with '${LOCAL_SUFFIX}'."
+    ui_error "$label must be run from a branch ending with '${LOCAL_SUFFIX}'."
     exit 1
   fi
 }

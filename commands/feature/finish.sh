@@ -687,10 +687,7 @@ else
     ui_info  "Or remove the worktree manually: git worktree remove '$(repo_root)'"
     exit 1
   fi
-  if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-    ui_error "feature finish must be run from a branch ending with '${LOCAL_SUFFIX}'."
-    exit 1
-  fi
+  require_local_branch "feature finish"
   FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
   FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
   if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then

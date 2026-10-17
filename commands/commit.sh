@@ -28,10 +28,7 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "git shadow commit must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
+require_local_branch "git shadow commit"
 
 # Abort on in-progress operations.
 cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"

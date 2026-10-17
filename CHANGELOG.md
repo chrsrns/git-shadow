@@ -2,6 +2,20 @@
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-10-17
+
+### Added
+
+- `git shadow local status [--porcelain|--json]` classifies every dirty path as `patch` / `patch-stale` / `dirty` / `staged` / `untracked`, distinguishing local patch overlays from genuine uncommitted work; stored sidecars whose source file is not dirty appear as unapplied records.
+- `git shadow status` reports `local-patches` and `unpatched-dirty` counts in human output and as `local_patches` / `unpatched_dirty` JSON keys.
+
+### Changed
+
+- Dirty-tree abort reports in `ensure_clean_repo` and `feature finish` print the classified table instead of a raw `git status` dump; `feature finish` classifies inside the reported worktree.
+- The clean-tree check fails closed when `git status` enumeration itself fails, and porcelain enumeration uses `--untracked-files=all --no-renames` so rename records cannot corrupt path parsing.
+- `git shadow status --json` escapes branch names and quotes the non-fast-forward `public_ahead` marker as `"?"`, fixing invalid JSON in both cases.
+- AGENTS.md and the AGENTS templates document the annotations workflow (`show --with-annotations`, `annotations reapply`), `git shadow local status`, and the status dirt fields.
+
 ## [1.5.3] — 2026-10-13
 
 ### Changed

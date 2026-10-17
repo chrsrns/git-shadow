@@ -20,6 +20,7 @@ Copy below section into `AGENTS.md` of project that uses git shadow.
 - Public code without markers: `git commit`.
 - Local notes / scratch / debug: `git commit -m "[MEMORY] <subject>"`.
   `[MEMORY]` commits must not modify public-tracked files already tracked by the public branch.
+- `///`/`// @local` mark local-only reasoning in source; extracted to `.git-shadow/annotations/<relpath>` (gitignored, local-only). `git shadow show --with-annotations <file>` views overlaid; `git shadow annotations reapply [path]` writes markers back.
 
 ### Typical workflow
 
@@ -51,6 +52,8 @@ git shadow push feature/x
 - `git shadow local apply` — reapply all sidecars after sync, re-anchor, or checkout.
 - `git shadow local rm [--revert] <path>` — remove sidecar; `--revert` restores source to `HEAD`.
 - `git shadow local diff [path]` — print one or all sidecars.
+- `git shadow local status` — classify dirt: `[patch]`/`[patch-stale]` = overlay, `[dirty]`/`[staged]`/`[untracked]` = real changes; abort dumps carry the same classes.
+- `git shadow status` reports `local-patches` (`[patch]` count) + `unpatched-dirty` (paths failing the clean-tree check) — JSON `local_patches`/`unpatched_dirty`.
 - `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
 

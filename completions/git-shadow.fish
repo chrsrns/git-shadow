@@ -114,15 +114,18 @@ complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and __fish_s
 # local subcommands and flags
 # ---------------------------------------------------------------------------
 
-set -l local_subcmds add rm diff apply
+set -l local_subcmds add rm diff apply status
 
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a add   -d "capture working-tree delta as a sidecar"
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a rm    -d "remove a local patch sidecar"
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a diff  -d "print stored local patch sidecars"
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a apply -d "re-apply all stored local patch sidecars"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and not __fish_seen_subcommand_from $local_subcmds" -a status -d "report classified working-tree dirt"
 
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from add diff" -a "(__fish_complete_path)" -d "source path"
 complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from rm"      -l revert -d "reverse-apply overlay before removing"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from status"  -l porcelain -d "machine-readable records"
+complete -c git-shadow -n "__fish_seen_subcommand_from local; and __fish_seen_subcommand_from status"  -l json      -d "JSON output"
 
 # ---------------------------------------------------------------------------
 # config subcommands and flags

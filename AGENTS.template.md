@@ -21,6 +21,12 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
 - Local notes, scratch files, debug logs: `git commit -m "[MEMORY] <subject>"`.
   `[MEMORY]` commits must not modify files already tracked by the public branch.
 
+### Local annotations workflow
+
+- `///` and `// @local` mark local-only reasoning inside source files; `git shadow commit` extracts them to `.git-shadow/annotations/<relpath>` (gitignored, local-only) so the public commit stays clean.
+- Use `git shadow show --with-annotations <file>` to view the committed source with markers overlaid.
+- Use `git shadow annotations reapply [path]` to write markers back into the working tree for editing.
+
 ### Local patch workflow
 
 - Use `git shadow local add <path>` to store local-only edits to a public-tracked file as a unified-diff sidecar under `.git-shadow/patches/<relpath>.patch`.
@@ -28,6 +34,8 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
 - Use `git shadow local apply` to reapply every stored sidecar after sync, re-anchor, or checkout.
 - Use `git shadow local rm [--revert] <path>` to remove a sidecar; `--revert` also restores the source file to `HEAD`.
 - Use `git shadow local diff [path]` to print one sidecar or all sidecars.
+- Use `git shadow local status` to tell patch-overlay dirt (`[patch]`/`[patch-stale]`) from genuine uncommitted changes (`[dirty]`/`[staged]`/`[untracked]`); abort dumps carry the same classes.
+- `git shadow status` also reports `local-patches` (paths classed `[patch]`) and `unpatched-dirty` (paths that would abort a clean-tree check: `[patch-stale]`/`[dirty]`/`[staged]`/`[untracked]`) — JSON keys `local_patches`/`unpatched_dirty`.
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
 

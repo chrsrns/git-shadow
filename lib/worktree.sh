@@ -178,9 +178,6 @@ worktree_is_dirty() {
     if ! patches_overlay_clean; then
       return 0
     fi
-    if ! git diff --cached --quiet; then
-      return 0
-    fi
     return 1
   )
 }

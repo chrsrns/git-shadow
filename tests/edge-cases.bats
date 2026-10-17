@@ -175,3 +175,29 @@ setup_with_commit() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"Invalid branch name"* ]]
 }
+
+@test "edge: abort report classifies overlay vs real dirt" {
+  setup_with_commit
+  git shadow feature start test-feature
+  echo "local" >> file.txt
+  git shadow local add file.txt
+  echo "real" > real.txt
+  git add real.txt
+  git commit -qm "add real.txt"
+  echo "dirt" >> real.txt
+
+  run git shadow feature publish
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"file.txt [patch]"* ]]
+  [[ "$output" == *"real.txt [dirty]"* ]]
+}
+
+@test "edge: abort report names enumeration failure instead of an empty table" {
+  setup_with_commit
+  git shadow feature start test-feature
+  printf 'corrupt' > .git/index
+
+  run git shadow feature publish
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"enumerate"* ]]
+}

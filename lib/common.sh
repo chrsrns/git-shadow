@@ -265,13 +265,9 @@ ensure_clean_repo() {
       ui_error "Working tree contains uncommitted changes."
     fi
     ui_info  "Refresh local patches with 'git shadow local add' or resolve the changes below."
-    git status --short >&2
-    exit 1
-  fi
-
-  if ! git diff --cached --quiet; then
-    ui_error "Index still contains staged changes." >&2
-    git diff --cached --name-only >&2
+    if ! patches_dirty_table >&2; then
+      ui_error "Unable to enumerate working tree status."
+    fi
     exit 1
   fi
 }

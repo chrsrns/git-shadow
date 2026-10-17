@@ -108,7 +108,9 @@ _git_shadow() {
       ;;
     local)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "add rm diff apply help -h --help" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "add rm diff apply status help -h --help" -- "$cur")
+      elif [[ $pos -eq 2 && "$subcmd" == "status" ]]; then
+        mapfile -t COMPREPLY < <(compgen -W "--porcelain --json -h --help" -- "$cur")
       elif [[ $pos -eq 2 && "$subcmd" == "rm" ]]; then
         mapfile -t COMPREPLY < <(compgen -W "--revert -h --help" -- "$cur")
       else

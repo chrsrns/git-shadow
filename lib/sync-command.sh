@@ -18,7 +18,7 @@ _sync_apply_body() {
 # Uses the SYNC_* state loaded by sync_command_run.
 _sync_continue_body() {
   sync_stage_all
-  if sync_tree_changed; then
+  if index_dirty; then
     sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_DIFF_START" "$SYNC_TARGET_PUBLIC"
   fi
   return 0
@@ -161,7 +161,7 @@ EOF
       ui_info "Or run: git shadow $mode sync --abort"
       return 1
     fi
-    if ! sync_tree_changed; then
+    if ! index_dirty; then
       ui_error "No resolved changes to commit. Resolve the conflicts and add them."
       return 1
     fi

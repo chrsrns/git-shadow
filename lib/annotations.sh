@@ -217,7 +217,7 @@ annotations_reanchor_all_commit() {
   if ! annotations_reanchor_all; then
     return 1
   fi
-  if ! git diff --cached --quiet; then
+  if index_dirty; then
     env GIT_SHADOW=1 git commit -m "${SHADOW_COMMIT_PREFIX} re-anchor sidecars"
   fi
 }

@@ -900,7 +900,7 @@ patches_commit() {
     return 1
   fi
 
-  if ! git -C "$root" diff --cached --quiet; then
+  if index_dirty; then
     env GIT_SHADOW=1 git -C "$root" commit -m "$msg" >/dev/null
   fi
 }

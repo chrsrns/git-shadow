@@ -312,7 +312,7 @@ finish_memory_replay() {
 # Reads the finish-context globals.
 finish_base_diff_commit() {
   sync_stage_all
-  if sync_tree_changed; then
+  if index_dirty; then
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
   fi
 }

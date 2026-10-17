@@ -323,3 +323,45 @@ f one.txt" ]
   run require_no_in_progress_git_op
   [ "$status" -eq 0 ]
 }
+
+@test "index_dirty returns 0 on a staged change" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo x > f.txt
+  git add f.txt
+  git commit -qm init
+  echo y >> f.txt
+  git add f.txt
+  run index_dirty
+  [ "$status" -eq 0 ]
+}
+
+@test "index_dirty returns 1 on a clean index" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo x > f.txt
+  git add f.txt
+  git commit -qm init
+  run index_dirty
+  [ "$status" -eq 1 ]
+}
+
+@test "index_dirty sees staged changes from a subdirectory" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo x > f.txt
+  git add f.txt
+  git commit -qm init
+  mkdir sub
+  echo y >> f.txt
+  git add f.txt
+  cd sub
+  run index_dirty
+  [ "$status" -eq 0 ]
+}

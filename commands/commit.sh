@@ -72,7 +72,7 @@ if [[ "$PUBLIC_MESSAGE" =~ $SHADOW_COMMIT_FILTER ]]; then
   exit 1
 fi
 
-if git diff --cached --quiet; then
+if ! index_dirty; then
   ui_error "No staged changes to commit."
   exit 1
 fi
@@ -284,7 +284,7 @@ done
 
 # Public commit, if the public index now differs from HEAD.
 PUBLIC_SHA=""
-if ! git diff --cached --quiet; then
+if index_dirty; then
   PUBLIC_SHA="$(env GIT_SHADOW=1 git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
   if [[ -z "$PUBLIC_SHA" ]]; then
     PUBLIC_SHA="$(git rev-parse HEAD)"
@@ -331,7 +331,7 @@ if [[ ${#MEMORY_PATHS[@]} -gt 0 ]]; then
     MEMORY_MSG="${SHADOW_COMMIT_PREFIX} local comments for ${PUBLIC_SHA:0:7}"
   fi
 
-  if ! git diff --cached --quiet; then
+  if index_dirty; then
     env GIT_SHADOW=1 git -C "$REPO_ROOT" commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
     ui_shadow "Memory sidecar committed."
   else

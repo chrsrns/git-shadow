@@ -328,12 +328,18 @@ require_no_in_progress_git_op() {
   fi
 }
 
+# Return 0 iff the index differs from HEAD. The index is repo-global, so
+# no toplevel anchor is needed.
+index_dirty() {
+  ! git diff --cached --quiet
+}
+
 # Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
 ensure_clean_repo() {
   require_no_in_progress_git_op
 
   if ! patches_overlay_clean; then
-    if ! git diff --cached --quiet; then
+    if index_dirty; then
       ui_error "Working tree contains staged but uncommitted changes."
     else
       ui_error "Working tree contains uncommitted changes."

@@ -19,10 +19,6 @@ sync_has_conflicts() {
   [[ -n "$(conflicted_paths)" ]]
 }
 
-sync_tree_changed() {
-  ! git diff --cached --quiet
-}
-
 # Create a well-formed sync commit from a staged net diff.
 #
 # Arguments:
@@ -136,7 +132,7 @@ sync_apply_and_commit() {
 
   sync_stage_all
 
-  if sync_tree_changed; then
+  if index_dirty; then
     sync_commit "$local_branch" "$public_branch" "$start_sha" "$end_sha" "$source_branch"
   fi
 }

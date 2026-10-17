@@ -239,7 +239,7 @@ _feature_start_feature_body() {
       ui_info  "Rolled back '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
       return 1
     fi
-    _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
+    _wt_abs="$(abs_path_m "$WORKTREE_PATH")"
   else
     ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
     git checkout "$LOCAL_FEATURE"

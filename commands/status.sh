@@ -44,7 +44,7 @@ enter_project '.'
 # enumeration itself fails (a silent zero would mask a failed probe).
 DIRT_RECS="$(mktemp)"
 trap 'rm -f "$DIRT_RECS"' EXIT
-if _patches_dirty_records > "$DIRT_RECS"; then
+if patches_dirty_records > "$DIRT_RECS"; then
   LOCAL_PATCHES=0
   UNPATCHED_DIRTY=0
   while IFS= read -r -d '' _rec || [[ -n "$_rec" ]]; do
@@ -104,7 +104,7 @@ fi
 if [[ "$BRANCH_TYPE" == "unknown" ]]; then
   if [[ "$JSON" -eq 1 ]]; then
     printf '{"current_branch":"%s","branch_type":"unknown","error":"Not a Git Shadow branch"}\n' \
-      "$(_json_escape "$CURRENT_BRANCH")"
+      "$(json_escape "$CURRENT_BRANCH")"
   else
     ui_error "Not a Git Shadow branch: '$CURRENT_BRANCH'."
   fi
@@ -122,8 +122,8 @@ fi
 if ! branch_exists "$PUBLIC_BRANCH"; then
   if [[ "$JSON" -eq 1 ]]; then
     printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","publishable":0,"public_ahead":0,"diverged":false,"local_patches":%s,"unpatched_dirty":%s,"status":"public branch missing"}\n' \
-      "$(_json_escape "$CURRENT_BRANCH")" "$(_json_escape "$BRANCH_TYPE")" \
-      "$(_json_escape "$PUBLIC_BRANCH")" "$(_json_escape "$SHADOW_BRANCH")" \
+      "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
+      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
       "$LP_JSON" "$UD_JSON"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
@@ -146,8 +146,8 @@ LATEST_CP="$(checkpoint_latest "$SHADOW_BRANCH")"
 if [[ -z "$LATEST_CP" ]]; then
   if [[ "$JSON" -eq 1 ]]; then
     printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","status":"uninitialized"}\n' \
-      "$(_json_escape "$CURRENT_BRANCH")" "$(_json_escape "$BRANCH_TYPE")" \
-      "$(_json_escape "$PUBLIC_BRANCH")" "$(_json_escape "$SHADOW_BRANCH")"
+      "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
+      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
     ui_git    "Branch type   : $BRANCH_TYPE"
@@ -193,8 +193,8 @@ if [[ "$JSON" -eq 1 ]]; then
     public_ahead_json="$PUBLIC_AHEAD"
   fi
   printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","publishable":%d,"public_ahead":%s,"diverged":%s,"local_patches":%s,"unpatched_dirty":%s,"checkpoint_public":"%s","checkpoint_local":"%s"}\n' \
-    "$(_json_escape "$CURRENT_BRANCH")" "$(_json_escape "$BRANCH_TYPE")" \
-    "$(_json_escape "$PUBLIC_BRANCH")" "$(_json_escape "$SHADOW_BRANCH")" \
+    "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
+    "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
     "$PUBLISHABLE" "$public_ahead_json" "$DIVERGED" "$LP_JSON" "$UD_JSON" "$CP_PUBLIC" "$CP_LOCAL"
 else
   ui_shadow "Current branch : $CURRENT_BRANCH"

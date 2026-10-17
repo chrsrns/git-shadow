@@ -118,3 +118,35 @@ f one.txt" ]
   run branch_exists missing-branch
   [ "$status" -eq 1 ]
 }
+
+@test "abs_path_m canonicalizes a path with missing components" {
+  run abs_path_m "$TEST_DIR/nope/deeper/../leaf"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$TEST_DIR/nope/leaf" ]
+}
+
+@test "abs_path_m resolves a relative path against \$PWD" {
+  mkdir -p sub
+  cd sub
+  run abs_path_m "x/../y"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$TEST_DIR/sub/y" ]
+}
+
+@test "expand_tilde expands bare ~" {
+  run expand_tilde "~"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$HOME" ]
+}
+
+@test "expand_tilde expands ~/path" {
+  run expand_tilde "~/x/y"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$HOME/x/y" ]
+}
+
+@test "expand_tilde passes absolute paths through" {
+  run expand_tilde "/abs/path"
+  [ "$status" -eq 0 ]
+  [ "$output" = "/abs/path" ]
+}

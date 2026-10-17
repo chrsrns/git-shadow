@@ -413,7 +413,7 @@ doctor_worktree_root_check() {
   if [[ -z "$root" ]]; then
     ui_info "worktree-root: not configured"
   else
-    root="$(_worktree_expand_tilde "$root")"
+    root="$(expand_tilde "$root")"
     if [[ "$root" != /* ]]; then
       ui_warn "worktree-root: WORKTREE_ROOT must be absolute (got: '${WORKTREE_ROOT}')"
       issues=1
@@ -446,7 +446,7 @@ doctor_worktree_check() {
   local public_base="${PUBLIC_BASE_BRANCH:-main}"
   local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
   local current_top
-  current_top="$(_worktree_abs "$(repo_root_or_pwd)")"
+  current_top="$(abs_path_m "$(repo_root_or_pwd)")"
 
   local orphans wt_path wt_branch
   orphans="$(worktree_orphans)"

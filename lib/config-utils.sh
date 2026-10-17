@@ -201,7 +201,7 @@ config_prompt_scope() {
 # ---------------------------------------------------------------------------
 
 # Escape a string for safe embedding inside a JSON double-quoted value.
-_json_escape() {
+json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"   # backslash
   s="${s//\"/\\\"}"   # double-quote

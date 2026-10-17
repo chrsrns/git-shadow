@@ -34,7 +34,7 @@ patches_require_no_paused_op
 # Buffer the classified records so an enumeration failure is visible.
 RECS="$(mktemp)"
 trap 'rm -f "$RECS"' EXIT
-if ! _patches_dirty_records > "$RECS"; then
+if ! patches_dirty_records > "$RECS"; then
   ui_error "Unable to enumerate working tree status."
   exit 1
 fi
@@ -50,12 +50,12 @@ case "$MODE" in
       [[ -z "$rec" ]] && continue
       xy="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
       class="${rec%%$'\t'*}"; path="${rec#*$'\t'}"
-      printf '%s %s %s\n' "$xy" "$(_patches_cquote "$path")" "$class"
+      printf '%s %s %s\n' "$xy" "$(patches_cquote "$path")" "$class"
     done < "$RECS"
     if [[ -n "$UNAPPLIED" ]]; then
       while IFS= read -r rel; do
         [[ -z "$rel" ]] && continue
-        printf -- '-  %s unapplied\n' "$(_patches_cquote "$rel")"
+        printf -- '-  %s unapplied\n' "$(patches_cquote "$rel")"
       done <<< "$UNAPPLIED"
     fi
     ;;
@@ -70,7 +70,7 @@ case "$MODE" in
       [[ "$first" -eq 0 ]] && printf ','
       first=0
       printf '{"path":"%s","xy":"%s","class":"%s"}' \
-        "$(_json_escape "$path")" "$(_json_escape "$xy")" "$(_json_escape "$class")"
+        "$(json_escape "$path")" "$(json_escape "$xy")" "$(json_escape "$class")"
     done < "$RECS"
     printf '],'
     printf '"unapplied":['
@@ -80,7 +80,7 @@ case "$MODE" in
         [[ -z "$rel" ]] && continue
         [[ "$first" -eq 0 ]] && printf ','
         first=0
-        printf '"%s"' "$(_json_escape "$rel")"
+        printf '"%s"' "$(json_escape "$rel")"
       done <<< "$UNAPPLIED"
     fi
     printf '],'

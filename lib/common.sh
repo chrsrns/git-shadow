@@ -105,6 +105,37 @@ abs_path() {
   cd "$cwd"
 }
 
+# Resolve a path to absolute canonical form, tolerating components that do
+# not exist yet (worktree targets are usually created by `git worktree add`).
+abs_path_m() {
+  local path="$1"
+  if [[ "$path" != /* ]]; then
+    path="$PWD/$path"
+  fi
+  if command -v realpath >/dev/null 2>&1; then
+    realpath -m "$path"
+    return
+  fi
+  if command -v readlink >/dev/null 2>&1 && readlink -m / >/dev/null 2>&1; then
+    readlink -m "$path"
+    return
+  fi
+  printf '%s\n' "$path"
+}
+
+# Expand a leading ~ or ~/ in a configured path to $HOME.
+expand_tilde() {
+  local path="$1"
+  # shellcheck disable=SC2088  # tildes are matched literally here and expanded manually below
+  if [[ "$path" == "~" ]]; then
+    printf '%s\n' "$HOME"
+  elif [[ "$path" == "~/"* ]]; then
+    printf '%s/%s\n' "$HOME" "${path#"~/"}"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
 # Print the worktree toplevel (absolute). The single
 # `git rev-parse --show-toplevel` oracle for toolkit code — every
 # filesystem access and git pathspec anchors here. Returns 1 outside a

@@ -146,8 +146,8 @@ patches_normalize_path() {
     /*) abs="$arg" ;;
     *)  abs="$PWD/$arg" ;;
   esac
-  abs="$(_worktree_abs "$abs")" || return 1
-  root="$(_worktree_abs "$root")" || return 1
+  abs="$(abs_path_m "$abs")" || return 1
+  root="$(abs_path_m "$root")" || return 1
   [[ "$abs" == "$root/"* ]] || return 1
   printf '%s\n' "${abs#"$root"/}"
 }
@@ -184,8 +184,8 @@ patches_store() {
   # an escaping path would write a sidecar invisible to the enumeration loops.
   local sidecar sidecar_abs
   sidecar="$(patches_sidecar_for "$relpath")"
-  sidecar_abs="$(_worktree_abs "$root/$sidecar")"
-  if [[ "$sidecar_abs" != "$(_worktree_abs "$root")/$PATCHES_DIR/"* ]]; then
+  sidecar_abs="$(abs_path_m "$root/$sidecar")"
+  if [[ "$sidecar_abs" != "$(abs_path_m "$root")/$PATCHES_DIR/"* ]]; then
     ui_error "patches_store: '$relpath' escapes the worktree toplevel."
     return 1
   fi
@@ -365,8 +365,8 @@ patches_classify_path() {
     # main checkout; it is not dirt we care about here.
     local root abs_path
     root="$(repo_root)" || return 1
-    abs_path="$(_worktree_abs "$root/$path")"
-    if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
+    abs_path="$(abs_path_m "$root/$path")"
+    if worktree_paths | grep -qxF "$abs_path" 2>/dev/null; then
       printf 'clean\n'
       return 0
     fi
@@ -403,7 +403,7 @@ patches_classify_path() {
 # path (clean records dropped). Buffers the `git status` enumeration to a
 # temp file so its exit status stays observable — process substitution
 # would hide the failure. Returns 1 when the enumeration fails.
-_patches_dirty_records() {
+patches_dirty_records() {
   local root
   root="$(repo_root)" || return 1
 
@@ -449,7 +449,7 @@ patches_dirty_table() {
   # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -f "$recs"; trap - RETURN' RETURN
 
-  if ! _patches_dirty_records > "$recs"; then
+  if ! patches_dirty_records > "$recs"; then
     return 1
   fi
 
@@ -462,7 +462,7 @@ patches_dirty_table() {
     path="${rec#*$'\t'}"
 
     if [[ "$mode" == "porcelain" ]]; then
-      printf '%s %s %s\n' "$status" "$(_patches_cquote "$path")" "$class"
+      printf '%s %s %s\n' "$status" "$(patches_cquote "$path")" "$class"
     else
       printf '%s %s [%s]\n' "$status" "$path" "$class"
     fi
@@ -474,7 +474,7 @@ patches_dirty_table() {
 # C-quote a path for machine-readable output, matching git's non-`-z`
 # porcelain convention: quote and escape when the path contains a double
 # quote, backslash, control byte, or non-ASCII byte.
-_patches_cquote() {
+patches_cquote() {
   local path="$1"
   if [[ "$path" != *[\"\\]* && "$path" =~ ^[[:print:]]+$ ]]; then
     printf '%s\n' "$path"

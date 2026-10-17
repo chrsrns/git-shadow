@@ -43,7 +43,7 @@ _in_linked_worktree() {
 finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
-  current_top="$(_worktree_abs "$(repo_root)")"
+  current_top="$(abs_path_m "$(repo_root)")"
   local path held
   while IFS=$'\t' read -r path held; do
     [[ -z "$path" ]] && continue
@@ -65,7 +65,7 @@ finish_resolve_worktree() {
   FINISH_WORKTREE=""
   local wt current_top
   wt="$(worktree_find_for_branch "$FEATURE_LOCAL_BRANCH")" || return 0
-  current_top="$(_worktree_abs "$(repo_root)")"
+  current_top="$(abs_path_m "$(repo_root)")"
   if [[ "$wt" != "$current_top" ]]; then
     FINISH_WORKTREE="$wt"
   fi

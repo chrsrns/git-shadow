@@ -30,9 +30,9 @@ if $JSON; then
     $first || printf ',\n'
     first=false
     printf '  {"key":"%s","default":"%s","description":"%s"}' \
-      "$(_json_escape "$key")" \
-      "$(_json_escape "$default")" \
-      "$(_json_escape "$desc")"
+      "$(json_escape "$key")" \
+      "$(json_escape "$default")" \
+      "$(json_escape "$desc")"
   done < <(config_known_keys)
   printf '\n]\n'
 else

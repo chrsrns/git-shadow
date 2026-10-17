@@ -203,3 +203,23 @@ teardown() {
   [ "$status" -eq 0 ]
   git diff --cached --name-only | grep -q '.git-shadow/annotations/file.txt'
 }
+
+@test "show: renders overlay for a cwd-relative path from a subdirectory" {
+  git shadow feature start my-feature
+  mkdir -p sub
+  printf 'public line\n/// local note\n' > sub/deep.txt
+  git add sub/deep.txt
+  git shadow commit -q -m "add deep note"
+
+  cd sub
+  run git shadow show --with-annotations deep.txt
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"/// local note"* ]]
+}
+
+@test "show: rejects a path escaping the worktree" {
+  git shadow feature start my-feature
+  run git shadow show --with-annotations ../outside.txt
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"escapes the worktree"* ]]
+}

@@ -57,6 +57,14 @@ if ! $WITH_ANNOTATIONS; then
   exit 1
 fi
 
+# Normalize the file argument to toplevel-relative, matching local
+# add|rm|diff and annotations reapply — cwd-relative and absolute paths
+# inside the worktree are accepted, escaping paths rejected.
+if ! FILE="$(patches_normalize_path "$FILE")"; then
+  ui_error "Path escapes the worktree toplevel: $FILE"
+  exit 1
+fi
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

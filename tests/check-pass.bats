@@ -39,8 +39,7 @@ teardown() {
 
 @test "check pass passes for public commits with local-only [MEMORY]" {
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -eq 0 ]
@@ -54,8 +53,7 @@ teardown() {
 
 @test "publish_replay_and_head sets the caller-named variable and prints only SHAs" {
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   out_var="unset"
   shas_file="$TEST_DIR/shas.txt"
@@ -73,8 +71,7 @@ teardown() {
   _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse main@local)")"
 
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   out_var="unset"
   publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" out_var >"$TEST_DIR/shas.txt"
@@ -90,8 +87,7 @@ teardown() {
   git commit -q -m "[MEMORY] should not touch public file"
 
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -ne 0 ]
@@ -110,8 +106,7 @@ teardown() {
   bad_sha="$(git rev-parse HEAD)"
 
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -ne 0 ]
@@ -170,8 +165,7 @@ teardown() {
   _cp="$(checkpoint_create "$(git rev-parse main)" "$(git rev-parse main@local)")"
 
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -eq 0 ]
@@ -195,7 +189,7 @@ teardown() {
 
 @test "check_publishable_count counts only non-marker commits" {
   latest="$(checkpoint_latest main@local)"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r _ cp_local <<< "$(checkpoint_parse "$latest")"
 
   run check_publishable_count "main@local" "$cp_local"
   [ "$status" -eq 0 ]
@@ -271,8 +265,7 @@ teardown() {
   git commit -q --allow-empty -m "public: empty commit"
   empty_sha="$(git rev-parse HEAD)"
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   out_var="unset"
   shas_file="$TEST_DIR/empty-shas.txt"
@@ -296,8 +289,7 @@ teardown() {
   git checkout -q "HEAD~1" -- file.txt
   git commit -q -m "public: restore file"
   latest="$(checkpoint_latest main@local)"
-  cp_public="$(checkpoint_public "$latest")"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest")"
 
   run publish_replay_and_head "main" "main@local" "$cp_public" "$cp_local" tmp_branch
   [ "$status" -eq 0 ]
@@ -322,7 +314,7 @@ teardown() {
   merge_sha="$(git rev-parse HEAD)"
 
   latest="$(checkpoint_latest feat@local)"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r _ cp_local <<< "$(checkpoint_parse "$latest")"
   run check_public_commits "feat@local" "$cp_local"
   [ "$status" -eq 0 ]
   [[ "$output" != *"$merge_sha"* ]]
@@ -348,7 +340,7 @@ teardown() {
   git merge -q --no-ff "main@local" -m "merge base into feature"
 
   latest="$(checkpoint_latest feat@local)"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r _ cp_local <<< "$(checkpoint_parse "$latest")"
   run check_public_commits "feat@local" "$cp_local"
   [ "$status" -eq 0 ]
   [[ "$output" != *"$base_sha"* ]]
@@ -371,7 +363,7 @@ teardown() {
   merge_sha="$(git rev-parse HEAD)"
 
   latest="$(checkpoint_latest feat@local)"
-  cp_local="$(checkpoint_local "$latest")"
+  read -r _ cp_local <<< "$(checkpoint_parse "$latest")"
   run check_public_commits "feat@local" "$cp_local"
   [ "$status" -eq 0 ]
   [[ "$output" != *"$merge_sha"* ]]

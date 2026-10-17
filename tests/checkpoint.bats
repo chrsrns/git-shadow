@@ -40,18 +40,18 @@ teardown() {
   [ "$body" = "patches:p1,p2" ]
 }
 
-@test "checkpoint_public extracts public sha" {
+@test "checkpoint_parse prints public and local shas in one pass" {
   sha="$(checkpoint_create "abc1234" "def5678" "p1" "p2")"
-  run checkpoint_public "$sha"
+  run checkpoint_parse "$sha"
   [ "$status" -eq 0 ]
-  [ "$output" = "abc1234" ]
+  [ "$output" = "abc1234 def5678" ]
 }
 
-@test "checkpoint_local extracts local sha" {
-  sha="$(checkpoint_create "abc1234" "def5678" "p1" "p2")"
-  run checkpoint_local "$sha"
+@test "checkpoint_parse prints nothing for a non-checkpoint subject" {
+  git commit --allow-empty -qm "ordinary commit"
+  run checkpoint_parse HEAD
   [ "$status" -eq 0 ]
-  [ "$output" = "def5678" ]
+  [ -z "$output" ]
 }
 
 @test "checkpoint_pids extracts patch-ids" {
@@ -74,8 +74,8 @@ teardown() {
   run checkpoint_latest "HEAD"
   [ "$status" -eq 0 ]
   [ "$output" = "$sha2" ]
-  run checkpoint_public "$sha2"
-  [ "$output" = "abc1111" ]
+  run checkpoint_parse "$sha2"
+  [ "$output" = "abc1111 def1111" ]
 }
 
 @test "checkpoint_latest returns nothing when no checkpoint exists" {

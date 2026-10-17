@@ -46,10 +46,10 @@ desc="$(config_description "$KEY" || true)"
 
 if $JSON; then
   printf '{"key":"%s","value":"%s","source":"%s","description":"%s"}\n' \
-    "$(_json_escape "$KEY")" \
-    "$(_json_escape "$value")" \
-    "$(_json_escape "$source_tier")" \
-    "$(_json_escape "$desc")"
+    "$(json_escape "$KEY")" \
+    "$(json_escape "$value")" \
+    "$(json_escape "$source_tier")" \
+    "$(json_escape "$desc")"
 else
   printf '%s=%s   (source: %s)\n' "$KEY" "$value" "$source_tier"
 fi

@@ -95,8 +95,7 @@ doctor_checkpoint_summary() {
   fi
 
   local cp_public cp_local
-  cp_public="$(checkpoint_public "$cp")"
-  cp_local="$(checkpoint_local "$cp")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$cp")"
 
   if ! branch_exists "$public_branch"; then
     ui_warn "checkpoints: '$local_branch' public:${cp_public:0:7} local:${cp_local:0:7} — public branch '$public_branch' missing"
@@ -185,10 +184,9 @@ doctor_doc_directives_check() {
 
   # Public-branch trees: every public branch with an @local pair.
   while IFS= read -r ref; do
-    [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
+    [[ -z "$ref" ]] && continue
     _doctor_doc_directives_in_ref "$ref" "$ref" || issues=1
-  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
+  done < <(paired_public_branches)
 
   # Staged index: only files staged since HEAD; committed @local content
   # legitimately carries `///` markers and must not warn.
@@ -413,7 +411,7 @@ doctor_worktree_root_check() {
   if [[ -z "$root" ]]; then
     ui_info "worktree-root: not configured"
   else
-    root="$(_worktree_expand_tilde "$root")"
+    root="$(expand_tilde "$root")"
     if [[ "$root" != /* ]]; then
       ui_warn "worktree-root: WORKTREE_ROOT must be absolute (got: '${WORKTREE_ROOT}')"
       issues=1
@@ -446,7 +444,7 @@ doctor_worktree_check() {
   local public_base="${PUBLIC_BASE_BRANCH:-main}"
   local local_base="${public_base}${LOCAL_SUFFIX:-@local}"
   local current_top
-  current_top="$(_worktree_abs "$(repo_root_or_pwd)")"
+  current_top="$(abs_path_m "$(repo_root_or_pwd)")"
 
   local orphans wt_path wt_branch
   orphans="$(worktree_orphans)"
@@ -494,7 +492,7 @@ doctor_run() {
     [[ -z "$ref" ]] && continue
     seen=$((seen + 1))
     _doctor_tally doctor_checkpoint_summary "$ref"
-  done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}")
+  done < <(local_branch_refs)
   if [[ $seen -eq 0 ]]; then
     ui_ok "checkpoints: no ${LOCAL_SUFFIX} branches found"
   fi
@@ -504,10 +502,9 @@ doctor_run() {
 
   # Unpromoted files for every public branch with a local counterpart (V99).
   while IFS= read -r ref; do
-    [[ -z "$ref" || "$ref" =~ ${LOCAL_SUFFIX}$ ]] && continue
-    branch_exists "${ref}${LOCAL_SUFFIX}" || continue
+    [[ -z "$ref" ]] && continue
     _doctor_tally doctor_unpromoted_files "$ref"
-  done < <(git for-each-ref --format='%(refname:short)' 'refs/heads/')
+  done < <(paired_public_branches)
 
   _doctor_tally doctor_base_drift_check
   _doctor_tally doctor_spec_integrity_check

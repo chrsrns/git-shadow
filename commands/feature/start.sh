@@ -194,8 +194,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-PUBLIC_CP="$(checkpoint_public "$LATEST_CP")"
-LOCAL_CP="$(checkpoint_local "$LATEST_CP")"
+read -r PUBLIC_CP LOCAL_CP <<< "$(checkpoint_parse "$LATEST_CP")"
 
 if branch_exists "$PUBLIC_FEATURE"; then
   ui_error "Branch already exists: $PUBLIC_FEATURE"
@@ -239,7 +238,7 @@ _feature_start_feature_body() {
       ui_info  "Rolled back '$PUBLIC_FEATURE' and '$LOCAL_FEATURE'."
       return 1
     fi
-    _wt_abs="$(_worktree_abs "$WORKTREE_PATH")"
+    _wt_abs="$(abs_path_m "$WORKTREE_PATH")"
   else
     ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
     git checkout "$LOCAL_FEATURE"

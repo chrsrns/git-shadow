@@ -51,3 +51,21 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "@local" ]
 }
+
+@test "json_escape escapes double quotes" {
+  run json_escape 'a"b'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'a\"b' ]
+}
+
+@test "json_escape escapes backslashes" {
+  run json_escape 'a\b'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'a\\b' ]
+}
+
+@test "json_escape passes non-ASCII bytes through" {
+  run json_escape 'café'
+  [ "$status" -eq 0 ]
+  [ "$output" = 'café' ]
+}

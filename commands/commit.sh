@@ -28,29 +28,10 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "git shadow commit must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
+require_local_branch "git shadow commit"
 
 # Abort on in-progress operations.
-cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"
-merge_head_file="$(git rev-parse --git-path MERGE_HEAD)"
-rebase_merge_dir="$(git rev-parse --git-path rebase-merge)"
-rebase_apply_dir="$(git rev-parse --git-path rebase-apply)"
-
-if [[ -f "$cherry_pick_head_file" ]]; then
-  ui_error "A cherry-pick is still in progress."
-  exit 1
-fi
-if [[ -f "$merge_head_file" ]]; then
-  ui_error "A merge is still in progress."
-  exit 1
-fi
-if [[ -d "$rebase_merge_dir" || -d "$rebase_apply_dir" ]]; then
-  ui_error "A rebase is still in progress."
-  exit 1
-fi
+require_no_in_progress_git_op
 
 # Parse arguments.
 PUBLIC_MESSAGE=""
@@ -91,7 +72,7 @@ if [[ "$PUBLIC_MESSAGE" =~ $SHADOW_COMMIT_FILTER ]]; then
   exit 1
 fi
 
-if git diff --cached --quiet; then
+if ! index_dirty; then
   ui_error "No staged changes to commit."
   exit 1
 fi
@@ -128,7 +109,7 @@ _is_binary() {
 # Helper: determine if a file exists in HEAD.
 _in_head() {
   local path="$1"
-  git rev-parse "HEAD:$path" >/dev/null 2>&1
+  rev_path_exists HEAD "$path"
 }
 
 # Process staged source files.
@@ -142,10 +123,10 @@ for path in "${STAGED[@]}"; do
     # sidecar is already tracked. The staged version wins for keys it
     # contains; committed-only records are kept.
     committed_ann="$TMP_DIR/committed_ann_${relpath////_}.md"
-    if [[ -f "$REPO_ROOT/$relpath" ]] && git show "HEAD:$relpath" > "$committed_ann" 2>/dev/null; then
+    if [[ -f "$REPO_ROOT/$relpath" ]] && rev_blob_to HEAD "$relpath" "$committed_ann"; then
       staged_ann="$TMP_DIR/staged_ann_${relpath////_}.md"
       merged_ann="$TMP_DIR/merged_ann_${relpath////_}.md"
-      git show ":$relpath" > "$staged_ann"
+      rev_blob_to "" "$relpath" "$staged_ann"
       if annotations_merge "$committed_ann" "$staged_ann" "$merged_ann" replace; then
         cp "$merged_ann" "$REPO_ROOT/$relpath"
       fi
@@ -163,13 +144,13 @@ for path in "${STAGED[@]}"; do
 
   # Export staged content to a temp file.
   staged_tmp="$TMP_DIR/staged_${relpath////_}"
-  git show :"$relpath" > "$staged_tmp"
+  rev_blob_to "" "$relpath" "$staged_tmp"
 
   # If a local patch is stored for this path, subtract it from the staged
   # blob before marker extraction so the public commit contains clean source.
   work_tmp="$staged_tmp"
   if [[ -f "$REPO_ROOT/.git-shadow/patches/$relpath.patch" ]] || \
-     git cat-file -e "HEAD:.git-shadow/patches/$relpath.patch" 2>/dev/null; then
+     rev_path_exists HEAD ".git-shadow/patches/$relpath.patch"; then
     public_tmp="$TMP_DIR/public_${relpath////_}"
     if ! patches_subtract "$relpath" "$staged_tmp" "$public_tmp"; then
       ui_error "Staged content for '$relpath' does not match the stored local patch. Refresh with 'git shadow local add'."
@@ -207,7 +188,7 @@ for path in "${STAGED[@]}"; do
   if [[ -f "$REPO_ROOT/.git-shadow/annotations/$relpath" ]]; then
     existing_ann="$REPO_ROOT/.git-shadow/annotations/$relpath"
   # Otherwise, try the committed version and re-anchor it.
-  elif git show "HEAD:.git-shadow/annotations/$relpath" > "$TMP_DIR/existing_${relpath////_}.md" 2>/dev/null; then
+  elif rev_blob_to HEAD ".git-shadow/annotations/$relpath" "$TMP_DIR/existing_${relpath////_}.md"; then
     reanchored_tmp="$TMP_DIR/reanchored_${relpath////_}.md"
     if annotations_reanchor "$work_tmp" "$TMP_DIR/existing_${relpath////_}.md" "$reanchored_tmp" 2>/dev/null; then
       existing_ann="$reanchored_tmp"
@@ -303,7 +284,7 @@ done
 
 # Public commit, if the public index now differs from HEAD.
 PUBLIC_SHA=""
-if ! git diff --cached --quiet; then
+if index_dirty; then
   PUBLIC_SHA="$(env GIT_SHADOW=1 git commit -m "$PUBLIC_MESSAGE" | awk '/\[/{print $2; exit}' | tr -d '])')" || true
   if [[ -z "$PUBLIC_SHA" ]]; then
     PUBLIC_SHA="$(git rev-parse HEAD)"
@@ -350,7 +331,7 @@ if [[ ${#MEMORY_PATHS[@]} -gt 0 ]]; then
     MEMORY_MSG="${SHADOW_COMMIT_PREFIX} local comments for ${PUBLIC_SHA:0:7}"
   fi
 
-  if ! git diff --cached --quiet; then
+  if index_dirty; then
     env GIT_SHADOW=1 git -C "$REPO_ROOT" commit -m "$MEMORY_MSG" -- "${MEMORY_PATHS[@]}"
     ui_shadow "Memory sidecar committed."
   else

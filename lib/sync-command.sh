@@ -18,7 +18,7 @@ _sync_apply_body() {
 # Uses the SYNC_* state loaded by sync_command_run.
 _sync_continue_body() {
   sync_stage_all
-  if sync_tree_changed; then
+  if index_dirty; then
     sync_commit "$SYNC_LOCAL_BRANCH" "$SYNC_PUBLIC_BRANCH" "$SYNC_DIFF_START" "$SYNC_TARGET_PUBLIC"
   fi
   return 0
@@ -161,7 +161,7 @@ EOF
       ui_info "Or run: git shadow $mode sync --abort"
       return 1
     fi
-    if ! sync_tree_changed; then
+    if ! index_dirty; then
       ui_error "No resolved changes to commit. Resolve the conflicts and add them."
       return 1
     fi
@@ -196,10 +196,7 @@ EOF
   # Feature mode requires a @local branch and refuses the local base branch.
   # (Base mode already validated above.)
   if [[ "$mode" == "feature" ]]; then
-    if [[ ! "$local_branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-      ui_error "$mode sync must be run from a branch ending with '${LOCAL_SUFFIX}'."
-      return 1
-    fi
+    require_local_branch "$mode sync"
     if [[ "$local_branch" == "$local_base_branch" ]]; then
       ui_error "'git shadow feature sync' is for feature shadow branches, not the local base branch '$local_base_branch'."
       return 1
@@ -234,8 +231,7 @@ EOF
   fi
 
   local cp_public cp_local cp_pids
-  cp_public="$(checkpoint_public "$latest_cp")"
-  cp_local="$(checkpoint_local "$latest_cp")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest_cp")"
   cp_pids="$(checkpoint_pids "$latest_cp")"
 
   local public_head local_head

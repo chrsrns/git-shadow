@@ -57,8 +57,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+read -r CP_PUBLIC CP_LOCAL <<< "$(checkpoint_parse "$LATEST_CP")"
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
 LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 
@@ -76,7 +75,7 @@ while IFS= read -r file; do
   public_blob="$(git rev-parse "$PUBLIC_HEAD:$file")" || continue
 
   # Skip files not present in the local tree (public-only addition)
-  if ! git cat-file -e "$LOCAL_HEAD:$file" 2>/dev/null; then
+  if ! rev_path_exists "$LOCAL_HEAD" "$file"; then
     continue
   fi
 
@@ -89,7 +88,7 @@ while IFS= read -r file; do
   fi
 
   # If the public blob matches the checkpoint public blob, nothing changed.
-  if git cat-file -e "$CP_PUBLIC:$file" 2>/dev/null; then
+  if rev_path_exists "$CP_PUBLIC" "$file"; then
     cp_blob="$(git rev-parse "$CP_PUBLIC:$file")"
     if [[ "$public_blob" == "$cp_blob" ]]; then
       continue

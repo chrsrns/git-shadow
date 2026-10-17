@@ -33,10 +33,7 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "feature publish must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
+require_local_branch "feature publish"
 
 PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
 if ! branch_exists "$PUBLIC_BRANCH"; then
@@ -51,8 +48,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+read -r CP_PUBLIC CP_LOCAL <<< "$(checkpoint_parse "$LATEST_CP")"
 
 # The public branch HEAD must be the checkpointed public SHA.
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"

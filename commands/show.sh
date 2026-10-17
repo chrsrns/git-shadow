@@ -26,10 +26,7 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-  ui_error "git shadow show must be run from a branch ending with '${LOCAL_SUFFIX}'."
-  exit 1
-fi
+require_local_branch "git shadow show"
 
 WITH_ANNOTATIONS=false
 FILE=""
@@ -60,19 +57,27 @@ if ! $WITH_ANNOTATIONS; then
   exit 1
 fi
 
+# Normalize the file argument to toplevel-relative, matching local
+# add|rm|diff and annotations reapply — cwd-relative and absolute paths
+# inside the worktree are accepted, escaping paths rejected.
+if ! FILE="$(patches_normalize_path "$FILE")"; then
+  ui_error "Path escapes the worktree toplevel: $FILE"
+  exit 1
+fi
+
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 source_tmp="$TMP_DIR/source"
-if ! git show "HEAD:$FILE" > "$source_tmp" 2>/dev/null; then
+if ! rev_blob_to HEAD "$FILE" "$source_tmp"; then
   ui_error "File not found in HEAD: $FILE"
   exit 1
 fi
 
 ann_path=".git-shadow/annotations/$FILE"
-if git rev-parse "HEAD:$ann_path" >/dev/null 2>&1; then
+if rev_path_exists HEAD "$ann_path"; then
   ann_tmp="$TMP_DIR/annotations"
-  git show "HEAD:$ann_path" > "$ann_tmp" 2>/dev/null || true
+  rev_blob_to HEAD "$ann_path" "$ann_tmp" || true
   if ! annotations_render "$source_tmp" "$ann_tmp"; then
     ui_error "Failed to render annotations for $FILE"
     exit 1

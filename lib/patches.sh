@@ -146,10 +146,24 @@ patches_normalize_path() {
     /*) abs="$arg" ;;
     *)  abs="$PWD/$arg" ;;
   esac
-  abs="$(_worktree_abs "$abs")" || return 1
-  root="$(_worktree_abs "$root")" || return 1
+  abs="$(abs_path_m "$abs")" || return 1
+  root="$(abs_path_m "$root")" || return 1
   [[ "$abs" == "$root/"* ]] || return 1
   printf '%s\n' "${abs#"$root"/}"
+}
+
+# Remove the empty parent directories of <sidecar_abs>, walking up to
+# (not including) the .git-shadow/patches root. Stops at the first
+# non-empty level and at the patches root itself.
+patches_prune_empty_parents() {
+  local sidecar_abs="$1" root base dir
+  root="$(repo_root)" || return 0
+  base="$root/$PATCHES_DIR"
+  dir="$(dirname "$sidecar_abs")"
+  while [[ "$dir" == "$base/"* ]]; do
+    rmdir "$dir" 2>/dev/null || break
+    dir="$(dirname "$dir")"
+  done
 }
 
 # List all existing sidecar relpaths, one per line, sorted.
@@ -184,8 +198,8 @@ patches_store() {
   # an escaping path would write a sidecar invisible to the enumeration loops.
   local sidecar sidecar_abs
   sidecar="$(patches_sidecar_for "$relpath")"
-  sidecar_abs="$(_worktree_abs "$root/$sidecar")"
-  if [[ "$sidecar_abs" != "$(_worktree_abs "$root")/$PATCHES_DIR/"* ]]; then
+  sidecar_abs="$(abs_path_m "$root/$sidecar")"
+  if [[ "$sidecar_abs" != "$(abs_path_m "$root")/$PATCHES_DIR/"* ]]; then
     ui_error "patches_store: '$relpath' escapes the worktree toplevel."
     return 1
   fi
@@ -193,7 +207,7 @@ patches_store() {
   # The path must be public-tracked: present in HEAD and introduced by at
   # least one non-[MEMORY] commit. On @local, HEAD alone is not the oracle —
   # [MEMORY]-only files live there too and must be rejected.
-  if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
+  if ! rev_path_exists HEAD "$relpath"; then
     ui_error "patches_store: '$relpath' is not public-tracked. [MEMORY] commits are for new local files."
     return 1
   fi
@@ -221,7 +235,7 @@ patches_store() {
   local numstat
   numstat="$(git -C "$root" diff --numstat HEAD -- "$relpath" 2>/dev/null | head -1)"
   set -- $numstat
-  if [[ "$1" = "-" && "$2" = "-" ]]; then
+  if [[ "${1:-}" = "-" && "${2:-}" = "-" ]]; then
     ui_error "patches_store: '$relpath' is binary. Binary patches are not supported."
     return 1
   fi
@@ -231,7 +245,7 @@ patches_store() {
   git -C "$root" diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar_abs"
   if [[ ! -s "$sidecar_abs" ]]; then
     rm -f "$sidecar_abs"
-    rmdir "$(dirname "$sidecar_abs")" 2>/dev/null || true
+    patches_prune_empty_parents "$sidecar_abs"
     ui_error "patches_store: no working-tree delta for '$relpath'."
     return 1
   fi
@@ -255,6 +269,19 @@ patches_store() {
 # HEAD:<relpath> or missing base file).  The temp tree is removed on every
 # exit path.
 _patches_apply_ladder() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)" || return 1
+
+  # A RETURN trap cannot own this cleanup: under functrace (e.g. bats) it
+  # fires on nested function returns too, deleting the temp tree mid-ladder.
+  local rc=0
+  _patches_apply_ladder_work "$tmp_dir" "$@" || rc=$?
+  rm -rf "$tmp_dir"
+  return "$rc"
+}
+
+_patches_apply_ladder_work() {
+  local tmp_dir="$1"; shift
   local relpath="${1#./}"
   local sidecar_source="$2"
   local base_source="$3"
@@ -267,20 +294,15 @@ _patches_apply_ladder() {
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
 
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
-
   # Resolve the sidecar content.
   local sidecar_file="$root/$sidecar"
   if [[ ! -f "$sidecar_file" ]]; then
     if [[ "$sidecar_source" == "worktree-or-head" ]] && \
-       git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
+       rev_path_exists HEAD "$sidecar"; then
       # The sidecar may exist only in HEAD (deleted in the worktree, not yet
       # committed); use the committed copy so the ladder still runs.
       sidecar_file="$tmp_dir/head_sidecar.patch"
-      if ! git show "HEAD:$sidecar" > "$sidecar_file" 2>/dev/null; then
+      if ! rev_blob_to HEAD "$sidecar" "$sidecar_file"; then
         return 2
       fi
     else
@@ -292,7 +314,7 @@ _patches_apply_ladder() {
   local base_file="$base_source"
   if [[ "$base_source" == "HEAD" ]]; then
     base_file="$tmp_dir/base.content"
-    if ! git show "HEAD:$relpath" > "$base_file" 2>/dev/null; then
+    if ! rev_blob_to HEAD "$relpath" "$base_file"; then
       return 3
     fi
   else
@@ -365,8 +387,8 @@ patches_classify_path() {
     # main checkout; it is not dirt we care about here.
     local root abs_path
     root="$(repo_root)" || return 1
-    abs_path="$(_worktree_abs "$root/$path")"
-    if _worktree_list_paths | grep -qxF "$abs_path" 2>/dev/null; then
+    abs_path="$(abs_path_m "$root/$path")"
+    if worktree_paths | grep -qxF "$abs_path" 2>/dev/null; then
       printf 'clean\n'
       return 0
     fi
@@ -403,7 +425,7 @@ patches_classify_path() {
 # path (clean records dropped). Buffers the `git status` enumeration to a
 # temp file so its exit status stays observable — process substitution
 # would hide the failure. Returns 1 when the enumeration fails.
-_patches_dirty_records() {
+patches_dirty_records() {
   local root
   root="$(repo_root)" || return 1
 
@@ -449,7 +471,7 @@ patches_dirty_table() {
   # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
   trap 'rm -f "$recs"; trap - RETURN' RETURN
 
-  if ! _patches_dirty_records > "$recs"; then
+  if ! patches_dirty_records > "$recs"; then
     return 1
   fi
 
@@ -462,7 +484,7 @@ patches_dirty_table() {
     path="${rec#*$'\t'}"
 
     if [[ "$mode" == "porcelain" ]]; then
-      printf '%s %s %s\n' "$status" "$(_patches_cquote "$path")" "$class"
+      printf '%s %s %s\n' "$status" "$(patches_cquote "$path")" "$class"
     else
       printf '%s %s [%s]\n' "$status" "$path" "$class"
     fi
@@ -474,7 +496,7 @@ patches_dirty_table() {
 # C-quote a path for machine-readable output, matching git's non-`-z`
 # porcelain convention: quote and escape when the path contains a double
 # quote, backslash, control byte, or non-ASCII byte.
-_patches_cquote() {
+patches_cquote() {
   local path="$1"
   if [[ "$path" != *[\"\\]* && "$path" =~ ^[[:print:]]+$ ]]; then
     printf '%s\n' "$path"
@@ -695,7 +717,7 @@ patches_reapply() {
     fi
 
     # Skip if the source file no longer exists in HEAD (public-tracked).
-    if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
+    if ! rev_path_exists HEAD "$relpath"; then
       ui_warn "patches_reapply: source '$relpath' no longer in HEAD; skipping."
       continue
     fi
@@ -761,7 +783,7 @@ patches_reapply() {
       ui_warn "patches_reapply: cannot reapply patch for '$relpath' (orphan). Restore with 'git shadow local add'."
       if git -C "$root" checkout -q HEAD -- "$relpath" 2>/dev/null; then
         :
-      elif git show "HEAD:$relpath" > "$root/$relpath" 2>/dev/null; then
+      elif rev_blob_to HEAD "$relpath" "$root/$relpath"; then
         :
       fi
       continue
@@ -892,7 +914,7 @@ patches_commit() {
     return 1
   fi
 
-  if ! git -C "$root" diff --cached --quiet; then
+  if index_dirty; then
     env GIT_SHADOW=1 git -C "$root" commit -m "$msg" >/dev/null
   fi
 }

@@ -105,6 +105,37 @@ abs_path() {
   cd "$cwd"
 }
 
+# Resolve a path to absolute canonical form, tolerating components that do
+# not exist yet (worktree targets are usually created by `git worktree add`).
+abs_path_m() {
+  local path="$1"
+  if [[ "$path" != /* ]]; then
+    path="$PWD/$path"
+  fi
+  if command -v realpath >/dev/null 2>&1; then
+    realpath -m "$path"
+    return
+  fi
+  if command -v readlink >/dev/null 2>&1 && readlink -m / >/dev/null 2>&1; then
+    readlink -m "$path"
+    return
+  fi
+  printf '%s\n' "$path"
+}
+
+# Expand a leading ~ or ~/ in a configured path to $HOME.
+expand_tilde() {
+  local path="$1"
+  # shellcheck disable=SC2088  # tildes are matched literally here and expanded manually below
+  if [[ "$path" == "~" ]]; then
+    printf '%s\n' "$HOME"
+  elif [[ "$path" == "~/"* ]]; then
+    printf '%s/%s\n' "$HOME" "${path#"~/"}"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
 # Print the worktree toplevel (absolute). The single
 # `git rev-parse --show-toplevel` oracle for toolkit code — every
 # filesystem access and git pathspec anchors here. Returns 1 outside a
@@ -134,6 +165,40 @@ conflicted_paths() {
 # oracle; <name> is a short branch name, not a full ref.
 branch_exists() {
   git show-ref --verify --quiet "refs/heads/$1"
+}
+
+# Return 0 iff object <rev>:<path> exists. An empty <rev> probes the
+# staged index (":<path>").
+rev_path_exists() {
+  git cat-file -e "$1:$2" 2>/dev/null || return 1
+}
+
+# Write the <rev>:<path> blob to file <out>. Git's stderr is suppressed —
+# a missing or unreadable object surfaces only as return 1. An empty
+# <rev> reads the staged blob (":<path>").
+rev_blob_to() {
+  git show "$1:$2" > "$3" 2>/dev/null || return 1
+}
+
+# Print every local branch name ending with LOCAL_SUFFIX (short names,
+# sorted). The single `git for-each-ref` glob oracle for shadow
+# enumeration.
+local_branch_refs() {
+  git for-each-ref --format='%(refname:short)' "refs/heads/**/*${LOCAL_SUFFIX}" | sort
+}
+
+# Print every public branch name having a <name><LOCAL_SUFFIX>
+# counterpart, sorted (derived from local_branch_refs + branch_exists).
+# The local base pair is included; callers that exclude it filter by
+# name.
+paired_public_branches() {
+  local ref name
+  while IFS= read -r ref; do
+    [[ -z "$ref" ]] && continue
+    name="${ref%${LOCAL_SUFFIX}}"
+    branch_exists "$name" || continue
+    printf '%s\n' "$name"
+  done < <(local_branch_refs)
 }
 
 # Normalize the workspace path from config
@@ -221,8 +286,10 @@ local_branch_from_any() {
   _branch_transform "$1" ensure
 }
 
-# Abort unless the current branch ends with LOCAL_SUFFIX.
+# Abort unless the current branch ends with LOCAL_SUFFIX. An optional
+# label names the command in the refusal message (default "This command").
 require_local_branch() {
+  local label="${1:-This command}"
   local branch
   branch="$(current_branch)"
   if [[ -z "$branch" ]]; then
@@ -230,13 +297,15 @@ require_local_branch() {
     exit 1
   fi
   if [[ ! "$branch" =~ ${LOCAL_SUFFIX}$ ]]; then
-    ui_error "This command must be run from a branch ending with '${LOCAL_SUFFIX}'."
+    ui_error "$label must be run from a branch ending with '${LOCAL_SUFFIX}'."
     exit 1
   fi
 }
 
-# Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
-ensure_clean_repo() {
+# Abort when a cherry-pick, merge, or rebase is in progress; each state
+# is named in the refusal. Used by ensure_clean_repo and by command
+# leaves that tolerate a dirty tree but not a mid-operation repo.
+require_no_in_progress_git_op() {
   local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir
   cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"
   merge_head_file="$(git rev-parse --git-path MERGE_HEAD)"
@@ -244,22 +313,33 @@ ensure_clean_repo() {
   rebase_apply_dir="$(git rev-parse --git-path rebase-apply)"
 
   if [[ -f "$cherry_pick_head_file" ]]; then
-    echo "❌ A cherry-pick is still in progress." >&2
+    ui_error "A cherry-pick is still in progress."
     exit 1
   fi
 
   if [[ -f "$merge_head_file" ]]; then
-    echo "❌ A merge is still in progress." >&2
+    ui_error "A merge is still in progress."
     exit 1
   fi
 
   if [[ -d "$rebase_merge_dir" || -d "$rebase_apply_dir" ]]; then
-    echo "❌ A rebase is still in progress." >&2
+    ui_error "A rebase is still in progress."
     exit 1
   fi
+}
+
+# Return 0 iff the index differs from HEAD. The index is repo-global, so
+# no toplevel anchor is needed.
+index_dirty() {
+  ! git diff --cached --quiet
+}
+
+# Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
+ensure_clean_repo() {
+  require_no_in_progress_git_op
 
   if ! patches_overlay_clean; then
-    if ! git diff --cached --quiet; then
+    if index_dirty; then
       ui_error "Working tree contains staged but uncommitted changes."
     else
       ui_error "Working tree contains uncommitted changes."

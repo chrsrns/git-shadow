@@ -17,6 +17,8 @@ if gs_help_requested -- "$@"; then
 fi
 
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$_GS_LIB/config-utils.sh"
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$_GS_LIB/common.sh"
 
 usage() {
@@ -52,13 +54,10 @@ PUBLIC_BASE="${PUBLIC_BASE_BRANCH:-main}"
 # without its public counterpart is not a feature. The local base pair is
 # never a feature.
 names=()
-while IFS= read -r ref; do
-  [[ -z "$ref" ]] && continue
-  name="${ref%${LOCAL_SUFFIX}}"
-  [[ "$name" == "$PUBLIC_BASE" ]] && continue
-  branch_exists "$name" || continue
+while IFS= read -r name; do
+  [[ -z "$name" || "$name" == "$PUBLIC_BASE" ]] && continue
   names+=("$name")
-done < <(git for-each-ref --format='%(refname:short)' "refs/heads/*${LOCAL_SUFFIX}" | sort)
+done < <(paired_public_branches)
 
 # The field reports only a dedicated worktree; a pair checked out in the
 # main worktree shows -. Resolve the main checkout's toplevel through the
@@ -81,7 +80,7 @@ for name in "${names[@]}"; do
     publishable=0
   else
     checkpoint_str="$(git log -1 --format='%s' "$cp")"
-    cp_local="$(checkpoint_local "$cp")"
+    read -r _ cp_local <<< "$(checkpoint_parse "$cp")"
     if ! publishable="$(check_publishable_count "$local_ref" "$cp_local" 2>/dev/null)"; then
       publishable=0
     fi
@@ -93,7 +92,7 @@ for name in "${names[@]}"; do
     printf '  checkpoint : %s\n' "$checkpoint_str"
     printf '  publishable: %s\n' "$publishable"
   else
-    json_items+=("{\"name\":\"$name\",\"worktree\":\"$worktree_path\",\"checkpoint\":\"$checkpoint_str\",\"publishable\":$publishable}")
+    json_items+=("{\"name\":\"$(json_escape "$name")\",\"worktree\":\"$(json_escape "$worktree_path")\",\"checkpoint\":\"$(json_escape "$checkpoint_str")\",\"publishable\":$publishable}")
   fi
 done
 

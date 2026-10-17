@@ -43,7 +43,7 @@ _in_linked_worktree() {
 finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
-  current_top="$(_worktree_abs "$(repo_root)")"
+  current_top="$(abs_path_m "$(repo_root)")"
   local path held
   while IFS=$'\t' read -r path held; do
     [[ -z "$path" ]] && continue
@@ -65,7 +65,7 @@ finish_resolve_worktree() {
   FINISH_WORKTREE=""
   local wt current_top
   wt="$(worktree_find_for_branch "$FEATURE_LOCAL_BRANCH")" || return 0
-  current_top="$(_worktree_abs "$(repo_root)")"
+  current_top="$(abs_path_m "$(repo_root)")"
   if [[ "$wt" != "$current_top" ]]; then
     FINISH_WORKTREE="$wt"
   fi
@@ -171,7 +171,7 @@ finish_merge_sidecars() {
       cp "$REPO_ROOT/$source_path" "$source_tmp"
 
       # Re-anchor the current base sidecar (if any).
-      if git show "HEAD:$ann_path" > "$base_ann_tmp" 2>/dev/null; then
+      if rev_blob_to HEAD "$ann_path" "$base_ann_tmp"; then
         annotations_reanchor "$source_tmp" "$base_ann_tmp" "$new_base_ann" 2>/dev/null || true
       else
         : > "$new_base_ann"
@@ -180,7 +180,7 @@ finish_merge_sidecars() {
       mkdir -p "$REPO_ROOT/$(dirname "$ann_path")"
       if [[ "$status" != "D" ]]; then
         # Re-anchor the feature sidecar and merge with the base sidecar.
-        if git show "$sha:$ann_path" > "$feature_ann_tmp" 2>/dev/null; then
+        if rev_blob_to "$sha" "$ann_path" "$feature_ann_tmp"; then
           annotations_reanchor "$source_tmp" "$feature_ann_tmp" "$new_feature_ann" 2>/dev/null || true
           annotations_merge "$new_base_ann" "$new_feature_ann" "$merged_ann" append --warn-differing
           cp "$merged_ann" "$REPO_ROOT/$ann_path"
@@ -312,7 +312,7 @@ finish_memory_replay() {
 # Reads the finish-context globals.
 finish_base_diff_commit() {
   sync_stage_all
-  if sync_tree_changed; then
+  if index_dirty; then
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
   fi
 }
@@ -687,10 +687,7 @@ else
     ui_info  "Or remove the worktree manually: git worktree remove '$(repo_root)'"
     exit 1
   fi
-  if [[ ! "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ ]]; then
-    ui_error "feature finish must be run from a branch ending with '${LOCAL_SUFFIX}'."
-    exit 1
-  fi
+  require_local_branch "feature finish"
   FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
   FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
   if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then
@@ -794,7 +791,7 @@ _finish_normal_body() {
     return 1
   fi
 
-  cp_public="$(checkpoint_public "$latest_cp")"
+  read -r cp_public _ <<< "$(checkpoint_parse "$latest_cp")"
   PRE_FINISH_HEAD="$(git rev-parse "$LOCAL_BASE")"
   RANGE_START="$cp_public"
   RANGE_END="$PUBLIC_BASE_HEAD"

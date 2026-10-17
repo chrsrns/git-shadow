@@ -5,37 +5,6 @@
 #          (feature start --worktree / feature finish --keep-worktree).
 # -------------------------------------------------------------------
 
-# Resolve a path to absolute canonical form, tolerating components that do
-# not exist yet (worktree targets are usually created by `git worktree add`).
-_worktree_abs() {
-  local path="$1"
-  if [[ "$path" != /* ]]; then
-    path="$PWD/$path"
-  fi
-  if command -v realpath >/dev/null 2>&1; then
-    realpath -m "$path"
-    return
-  fi
-  if command -v readlink >/dev/null 2>&1 && readlink -m / >/dev/null 2>&1; then
-    readlink -m "$path"
-    return
-  fi
-  printf '%s\n' "$path"
-}
-
-# Expand a leading ~ or ~/ in a configured path to $HOME.
-_worktree_expand_tilde() {
-  local path="$1"
-  # shellcheck disable=SC2088  # tildes are matched literally here and expanded manually below
-  if [[ "$path" == "~" ]]; then
-    printf '%s\n' "$HOME"
-  elif [[ "$path" == "~/"* ]]; then
-    printf '%s/%s\n' "$HOME" "${path#"~/"}"
-  else
-    printf '%s\n' "$path"
-  fi
-}
-
 # Print one `path<TAB>branch` record per registered worktree from a single
 # `git worktree list --porcelain` parse. `branch` is `-` for a detached or
 # bare entry. Every registry consumer builds on these records so the
@@ -59,7 +28,7 @@ worktree_records() {
 }
 
 # Print the registered worktree paths, one per line, from worktree_records.
-_worktree_list_paths() {
+worktree_paths() {
   worktree_records | cut -f1
 }
 
@@ -83,7 +52,7 @@ worktree_path_for() {
     ui_info  "Or omit --worktree / use --worktree-dir <path> instead."
     return 1
   fi
-  root="$(_worktree_expand_tilde "$root")"
+  root="$(expand_tilde "$root")"
   if [[ "$root" != /* ]]; then
     ui_error "WORKTREE_ROOT must be an absolute path (got: '${WORKTREE_ROOT}')."
     return 1
@@ -103,7 +72,7 @@ worktree_path_for() {
 worktree_validate_path() {
   local path="$1" branch="${2:-}"
   local abs
-  abs="$(_worktree_abs "$path")"
+  abs="$(abs_path_m "$path")"
 
   local wt
   while IFS= read -r wt; do
@@ -112,7 +81,7 @@ worktree_validate_path() {
       ui_error "Path is already registered as a worktree: $abs"
       return 1
     fi
-  done < <(_worktree_list_paths)
+  done < <(worktree_paths)
 
   if [[ -d "$abs" && -n "$(ls -A "$abs" 2>/dev/null)" ]]; then
     ui_error "Worktree path exists and is not empty: $abs"
@@ -137,7 +106,7 @@ worktree_validate_path() {
 worktree_add() {
   local local_branch="$1" path="$2"
   local abs
-  abs="$(_worktree_abs "$path")"
+  abs="$(abs_path_m "$path")"
 
   mkdir -p "$(dirname "$abs")" || return 1
   git worktree add "$abs" "$local_branch" || return 1
@@ -150,7 +119,7 @@ worktree_add() {
     if [[ "$abs" == "$wt/"* && ${#wt} -gt ${#container} ]]; then
       container="$wt"
     fi
-  done < <(_worktree_list_paths)
+  done < <(worktree_paths)
 
   if [[ -n "$container" ]]; then
     local relpath="${abs#"$container"/}"
@@ -164,7 +133,7 @@ worktree_add() {
   # Propagate the main checkout's project config so load_env finds it
   # inside the new worktree (the file is gitignored, never carried over).
   local main_wt
-  main_wt="$(_worktree_list_paths | head -1)"
+  main_wt="$(worktree_paths | head -1)"
   if [[ -n "$main_wt" && -f "$main_wt/.git-shadow.env" && ! -e "$abs/.git-shadow.env" ]]; then
     cp "$main_wt/.git-shadow.env" "$abs/.git-shadow.env"
   fi
@@ -205,12 +174,12 @@ worktree_remove() {
   local path="$1"
   local force="${2:-}"
   local abs
-  abs="$(_worktree_abs "$path")"
+  abs="$(abs_path_m "$path")"
 
   if [[ ! -d "$abs" ]]; then
-    if _worktree_list_paths | grep -qxF "$abs"; then
+    if worktree_paths | grep -qxF "$abs"; then
       git worktree prune
-      if _worktree_list_paths | grep -qxF "$abs"; then
+      if worktree_paths | grep -qxF "$abs"; then
         ui_error "Stale worktree registration for '$abs' could not be cleared."
         ui_info  "Run 'git worktree prune' manually, then retry."
         return 1

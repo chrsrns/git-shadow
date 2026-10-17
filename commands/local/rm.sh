@@ -67,10 +67,10 @@ else
   rm -f "$SIDECAR_ABS"
 fi
 
-if ! git -C "$REPO_ROOT" diff --cached --quiet; then
+if index_dirty; then
   env GIT_SHADOW=1 git -C "$REPO_ROOT" commit -m "[MEMORY] remove local patch for $RELPATH" -- "$SIDECAR" >/dev/null
 fi
 
-rmdir "$(dirname "$SIDECAR_ABS")" 2>/dev/null || true
+patches_prune_empty_parents "$SIDECAR_ABS"
 
 ui_ok "Removed local patch for '$RELPATH'."

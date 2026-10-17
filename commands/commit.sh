@@ -31,23 +31,7 @@ fi
 require_local_branch "git shadow commit"
 
 # Abort on in-progress operations.
-cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"
-merge_head_file="$(git rev-parse --git-path MERGE_HEAD)"
-rebase_merge_dir="$(git rev-parse --git-path rebase-merge)"
-rebase_apply_dir="$(git rev-parse --git-path rebase-apply)"
-
-if [[ -f "$cherry_pick_head_file" ]]; then
-  ui_error "A cherry-pick is still in progress."
-  exit 1
-fi
-if [[ -f "$merge_head_file" ]]; then
-  ui_error "A merge is still in progress."
-  exit 1
-fi
-if [[ -d "$rebase_merge_dir" || -d "$rebase_apply_dir" ]]; then
-  ui_error "A rebase is still in progress."
-  exit 1
-fi
+require_no_in_progress_git_op
 
 # Parse arguments.
 PUBLIC_MESSAGE=""

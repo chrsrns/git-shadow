@@ -302,8 +302,10 @@ require_local_branch() {
   fi
 }
 
-# Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
-ensure_clean_repo() {
+# Abort when a cherry-pick, merge, or rebase is in progress; each state
+# is named in the refusal. Used by ensure_clean_repo and by command
+# leaves that tolerate a dirty tree but not a mid-operation repo.
+require_no_in_progress_git_op() {
   local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir
   cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"
   merge_head_file="$(git rev-parse --git-path MERGE_HEAD)"
@@ -311,19 +313,24 @@ ensure_clean_repo() {
   rebase_apply_dir="$(git rev-parse --git-path rebase-apply)"
 
   if [[ -f "$cherry_pick_head_file" ]]; then
-    echo "❌ A cherry-pick is still in progress." >&2
+    ui_error "A cherry-pick is still in progress."
     exit 1
   fi
 
   if [[ -f "$merge_head_file" ]]; then
-    echo "❌ A merge is still in progress." >&2
+    ui_error "A merge is still in progress."
     exit 1
   fi
 
   if [[ -d "$rebase_merge_dir" || -d "$rebase_apply_dir" ]]; then
-    echo "❌ A rebase is still in progress." >&2
+    ui_error "A rebase is still in progress."
     exit 1
   fi
+}
+
+# Ensure repo is in a clean state (no ongoing rebase/merge/cherry-pick, no dirty tree)
+ensure_clean_repo() {
+  require_no_in_progress_git_op
 
   if ! patches_overlay_clean; then
     if ! git diff --cached --quiet; then

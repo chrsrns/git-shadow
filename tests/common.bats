@@ -277,3 +277,49 @@ f one.txt" ]
   [ "$status" -eq 0 ]
   [ "$output" = "feat/x" ]
 }
+
+@test "require_no_in_progress_git_op aborts naming a cherry-pick" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  touch "$(git rev-parse --git-path CHERRY_PICK_HEAD)"
+  run require_no_in_progress_git_op
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cherry-pick is still in progress"* ]]
+}
+
+@test "require_no_in_progress_git_op aborts naming a merge" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  touch "$(git rev-parse --git-path MERGE_HEAD)"
+  run require_no_in_progress_git_op
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"merge is still in progress"* ]]
+}
+
+@test "require_no_in_progress_git_op aborts naming a rebase" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  mkdir -p "$(git rev-parse --git-path rebase-merge)"
+  run require_no_in_progress_git_op
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"rebase is still in progress"* ]]
+}
+
+@test "require_no_in_progress_git_op passes on a clean state" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  run require_no_in_progress_git_op
+  [ "$status" -eq 0 ]
+}

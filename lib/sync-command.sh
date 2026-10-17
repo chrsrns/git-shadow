@@ -231,8 +231,7 @@ EOF
   fi
 
   local cp_public cp_local cp_pids
-  cp_public="$(checkpoint_public "$latest_cp")"
-  cp_local="$(checkpoint_local "$latest_cp")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$latest_cp")"
   cp_pids="$(checkpoint_pids "$latest_cp")"
 
   local public_head local_head

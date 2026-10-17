@@ -48,8 +48,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+read -r CP_PUBLIC CP_LOCAL <<< "$(checkpoint_parse "$LATEST_CP")"
 
 # The public branch HEAD must be the checkpointed public SHA.
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"

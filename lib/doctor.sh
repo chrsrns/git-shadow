@@ -95,8 +95,7 @@ doctor_checkpoint_summary() {
   fi
 
   local cp_public cp_local
-  cp_public="$(checkpoint_public "$cp")"
-  cp_local="$(checkpoint_local "$cp")"
+  read -r cp_public cp_local <<< "$(checkpoint_parse "$cp")"
 
   if ! branch_exists "$public_branch"; then
     ui_warn "checkpoints: '$local_branch' public:${cp_public:0:7} local:${cp_local:0:7} — public branch '$public_branch' missing"

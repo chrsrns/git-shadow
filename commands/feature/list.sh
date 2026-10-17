@@ -78,7 +78,7 @@ for name in "${names[@]}"; do
     publishable=0
   else
     checkpoint_str="$(git log -1 --format='%s' "$cp")"
-    cp_local="$(checkpoint_local "$cp")"
+    read -r _ cp_local <<< "$(checkpoint_parse "$cp")"
     if ! publishable="$(check_publishable_count "$local_ref" "$cp_local" 2>/dev/null)"; then
       publishable=0
     fi

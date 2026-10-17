@@ -791,7 +791,7 @@ _finish_normal_body() {
     return 1
   fi
 
-  cp_public="$(checkpoint_public "$latest_cp")"
+  read -r cp_public _ <<< "$(checkpoint_parse "$latest_cp")"
   PRE_FINISH_HEAD="$(git rev-parse "$LOCAL_BASE")"
   RANGE_START="$cp_public"
   RANGE_END="$PUBLIC_BASE_HEAD"

@@ -194,8 +194,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-PUBLIC_CP="$(checkpoint_public "$LATEST_CP")"
-LOCAL_CP="$(checkpoint_local "$LATEST_CP")"
+read -r PUBLIC_CP LOCAL_CP <<< "$(checkpoint_parse "$LATEST_CP")"
 
 if branch_exists "$PUBLIC_FEATURE"; then
   ui_error "Branch already exists: $PUBLIC_FEATURE"

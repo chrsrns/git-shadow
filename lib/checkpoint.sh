@@ -47,16 +47,11 @@ checkpoint_create() {
   git rev-parse HEAD
 }
 
-# Parse the subject of a checkpoint commit and extract the public sha.
-checkpoint_public() {
-  local sha="$1"
-  git log -1 --format='%s' "$sha" | sed -n 's/^\[CHECKPOINT\] public:\([^ ]*\) local:\([^ ]*\).*/\1/p'
-}
-
-# Parse the subject of a checkpoint commit and extract the local sha.
-checkpoint_local() {
-  local sha="$1"
-  git log -1 --format='%s' "$sha" | sed -n 's/^\[CHECKPOINT\] public:\([^ ]*\) local:\([^ ]*\).*/\2/p'
+# Parse the subject of a checkpoint commit in a single git log pass.
+# Prints "<public_sha> <local_sha>", or nothing for a non-checkpoint
+# subject.
+checkpoint_parse() {
+  git log -1 --format='%s' "$1" | sed -n 's/^\[CHECKPOINT\] public:\([^ ]*\) local:\([^ ]*\).*/\1 \2/p'
 }
 
 # Print the patch-ids stored in the checkpoint body, space separated.

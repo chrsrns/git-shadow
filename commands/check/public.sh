@@ -57,8 +57,7 @@ if [[ -z "$LATEST_CP" ]]; then
   exit 1
 fi
 
-CP_PUBLIC="$(checkpoint_public "$LATEST_CP")"
-CP_LOCAL="$(checkpoint_local "$LATEST_CP")"
+read -r CP_PUBLIC CP_LOCAL <<< "$(checkpoint_parse "$LATEST_CP")"
 PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
 LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 

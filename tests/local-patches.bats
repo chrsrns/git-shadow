@@ -478,3 +478,48 @@ teardown() {
 
   rm -rf "$OUTSIDE_DIR"
 }
+
+@test "local rm prunes empty nested sidecar parent dirs" {
+  git shadow feature start my-feature
+  mkdir -p a/b/c
+  echo "base" > a/b/c/deep.txt
+  git add a/b/c/deep.txt
+  GIT_SHADOW=1 git commit -qm "public deep file"
+  echo "local" >> a/b/c/deep.txt
+  git shadow local add a/b/c/deep.txt
+  [ -f .git-shadow/patches/a/b/c/deep.txt.patch ]
+
+  run git shadow local rm a/b/c/deep.txt
+  [ "$status" -eq 0 ]
+  [ ! -d .git-shadow/patches/a ]
+}
+
+@test "local add empty delta leaves no nested sidecar dirs" {
+  git shadow feature start my-feature
+  mkdir -p a/b/c
+  echo "base" > a/b/c/deep.txt
+  git add a/b/c/deep.txt
+  GIT_SHADOW=1 git commit -qm "public deep file"
+
+  run git shadow local add a/b/c/deep.txt
+  [ "$status" -ne 0 ]
+  [ ! -d .git-shadow/patches/a ]
+}
+
+@test "local rm keeps a populated sidecar parent dir" {
+  git shadow feature start my-feature
+  mkdir -p a
+  echo "base1" > a/one.txt
+  echo "base2" > a/two.txt
+  git add a/one.txt a/two.txt
+  GIT_SHADOW=1 git commit -qm "public pair"
+  echo "local" >> a/one.txt
+  echo "local" >> a/two.txt
+  git shadow local add a/one.txt
+  git shadow local add a/two.txt
+
+  run git shadow local rm a/one.txt
+  [ "$status" -eq 0 ]
+  [ -f .git-shadow/patches/a/two.txt.patch ]
+  [ -d .git-shadow/patches/a ]
+}

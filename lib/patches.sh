@@ -152,6 +152,20 @@ patches_normalize_path() {
   printf '%s\n' "${abs#"$root"/}"
 }
 
+# Remove the empty parent directories of <sidecar_abs>, walking up to
+# (not including) the .git-shadow/patches root. Stops at the first
+# non-empty level and at the patches root itself.
+patches_prune_empty_parents() {
+  local sidecar_abs="$1" root base dir
+  root="$(repo_root)" || return 0
+  base="$root/$PATCHES_DIR"
+  dir="$(dirname "$sidecar_abs")"
+  while [[ "$dir" == "$base/"* ]]; do
+    rmdir "$dir" 2>/dev/null || break
+    dir="$(dirname "$dir")"
+  done
+}
+
 # List all existing sidecar relpaths, one per line, sorted.
 patches_list_sidecars() {
   local root
@@ -221,7 +235,7 @@ patches_store() {
   local numstat
   numstat="$(git -C "$root" diff --numstat HEAD -- "$relpath" 2>/dev/null | head -1)"
   set -- $numstat
-  if [[ "$1" = "-" && "$2" = "-" ]]; then
+  if [[ "${1:-}" = "-" && "${2:-}" = "-" ]]; then
     ui_error "patches_store: '$relpath' is binary. Binary patches are not supported."
     return 1
   fi
@@ -231,7 +245,7 @@ patches_store() {
   git -C "$root" diff --no-ext-diff --no-color HEAD -- "$relpath" > "$sidecar_abs"
   if [[ ! -s "$sidecar_abs" ]]; then
     rm -f "$sidecar_abs"
-    rmdir "$(dirname "$sidecar_abs")" 2>/dev/null || true
+    patches_prune_empty_parents "$sidecar_abs"
     ui_error "patches_store: no working-tree delta for '$relpath'."
     return 1
   fi

@@ -64,15 +64,15 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 source_tmp="$TMP_DIR/source"
-if ! git show "HEAD:$FILE" > "$source_tmp" 2>/dev/null; then
+if ! rev_blob_to HEAD "$FILE" "$source_tmp"; then
   ui_error "File not found in HEAD: $FILE"
   exit 1
 fi
 
 ann_path=".git-shadow/annotations/$FILE"
-if git rev-parse "HEAD:$ann_path" >/dev/null 2>&1; then
+if rev_path_exists HEAD "$ann_path"; then
   ann_tmp="$TMP_DIR/annotations"
-  git show "HEAD:$ann_path" > "$ann_tmp" 2>/dev/null || true
+  rev_blob_to HEAD "$ann_path" "$ann_tmp" || true
   if ! annotations_render "$source_tmp" "$ann_tmp"; then
     ui_error "Failed to render annotations for $FILE"
     exit 1

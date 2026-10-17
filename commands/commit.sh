@@ -128,7 +128,7 @@ _is_binary() {
 # Helper: determine if a file exists in HEAD.
 _in_head() {
   local path="$1"
-  git rev-parse "HEAD:$path" >/dev/null 2>&1
+  rev_path_exists HEAD "$path"
 }
 
 # Process staged source files.
@@ -142,10 +142,10 @@ for path in "${STAGED[@]}"; do
     # sidecar is already tracked. The staged version wins for keys it
     # contains; committed-only records are kept.
     committed_ann="$TMP_DIR/committed_ann_${relpath////_}.md"
-    if [[ -f "$REPO_ROOT/$relpath" ]] && git show "HEAD:$relpath" > "$committed_ann" 2>/dev/null; then
+    if [[ -f "$REPO_ROOT/$relpath" ]] && rev_blob_to HEAD "$relpath" "$committed_ann"; then
       staged_ann="$TMP_DIR/staged_ann_${relpath////_}.md"
       merged_ann="$TMP_DIR/merged_ann_${relpath////_}.md"
-      git show ":$relpath" > "$staged_ann"
+      rev_blob_to "" "$relpath" "$staged_ann"
       if annotations_merge "$committed_ann" "$staged_ann" "$merged_ann" replace; then
         cp "$merged_ann" "$REPO_ROOT/$relpath"
       fi
@@ -163,13 +163,13 @@ for path in "${STAGED[@]}"; do
 
   # Export staged content to a temp file.
   staged_tmp="$TMP_DIR/staged_${relpath////_}"
-  git show :"$relpath" > "$staged_tmp"
+  rev_blob_to "" "$relpath" "$staged_tmp"
 
   # If a local patch is stored for this path, subtract it from the staged
   # blob before marker extraction so the public commit contains clean source.
   work_tmp="$staged_tmp"
   if [[ -f "$REPO_ROOT/.git-shadow/patches/$relpath.patch" ]] || \
-     git cat-file -e "HEAD:.git-shadow/patches/$relpath.patch" 2>/dev/null; then
+     rev_path_exists HEAD ".git-shadow/patches/$relpath.patch"; then
     public_tmp="$TMP_DIR/public_${relpath////_}"
     if ! patches_subtract "$relpath" "$staged_tmp" "$public_tmp"; then
       ui_error "Staged content for '$relpath' does not match the stored local patch. Refresh with 'git shadow local add'."
@@ -207,7 +207,7 @@ for path in "${STAGED[@]}"; do
   if [[ -f "$REPO_ROOT/.git-shadow/annotations/$relpath" ]]; then
     existing_ann="$REPO_ROOT/.git-shadow/annotations/$relpath"
   # Otherwise, try the committed version and re-anchor it.
-  elif git show "HEAD:.git-shadow/annotations/$relpath" > "$TMP_DIR/existing_${relpath////_}.md" 2>/dev/null; then
+  elif rev_blob_to HEAD ".git-shadow/annotations/$relpath" "$TMP_DIR/existing_${relpath////_}.md"; then
     reanchored_tmp="$TMP_DIR/reanchored_${relpath////_}.md"
     if annotations_reanchor "$work_tmp" "$TMP_DIR/existing_${relpath////_}.md" "$reanchored_tmp" 2>/dev/null; then
       existing_ann="$reanchored_tmp"

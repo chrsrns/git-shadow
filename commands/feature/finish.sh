@@ -171,7 +171,7 @@ finish_merge_sidecars() {
       cp "$REPO_ROOT/$source_path" "$source_tmp"
 
       # Re-anchor the current base sidecar (if any).
-      if git show "HEAD:$ann_path" > "$base_ann_tmp" 2>/dev/null; then
+      if rev_blob_to HEAD "$ann_path" "$base_ann_tmp"; then
         annotations_reanchor "$source_tmp" "$base_ann_tmp" "$new_base_ann" 2>/dev/null || true
       else
         : > "$new_base_ann"
@@ -180,7 +180,7 @@ finish_merge_sidecars() {
       mkdir -p "$REPO_ROOT/$(dirname "$ann_path")"
       if [[ "$status" != "D" ]]; then
         # Re-anchor the feature sidecar and merge with the base sidecar.
-        if git show "$sha:$ann_path" > "$feature_ann_tmp" 2>/dev/null; then
+        if rev_blob_to "$sha" "$ann_path" "$feature_ann_tmp"; then
           annotations_reanchor "$source_tmp" "$feature_ann_tmp" "$new_feature_ann" 2>/dev/null || true
           annotations_merge "$new_base_ann" "$new_feature_ann" "$merged_ann" append --warn-differing
           cp "$merged_ann" "$REPO_ROOT/$ann_path"

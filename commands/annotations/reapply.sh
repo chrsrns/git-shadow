@@ -108,7 +108,7 @@ _has_non_marker_changes() {
 
   # Subtract any local patch overlay from the marker-free working copy.
   if [[ -f "$REPO_ROOT/.git-shadow/patches/$relpath.patch" ]]; then
-    if git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
+    if rev_blob_to HEAD "$relpath" "$head_tmp"; then
       # Skip subtraction when the marker-free copy already matches HEAD,
       # meaning the patch overlay is not currently applied.
       if ! diff -q "$head_tmp" "$clean_tmp" >/dev/null 2>&1; then
@@ -122,7 +122,7 @@ _has_non_marker_changes() {
     fi
   fi
 
-  if git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
+  if rev_blob_to HEAD "$relpath" "$head_tmp"; then
     if diff -q "$head_tmp" "$clean_tmp" >/dev/null 2>&1; then
       # Only marker and/or patch overlay changes.
       return 1
@@ -148,7 +148,7 @@ _annotations_reapply_body() {
     fi
 
     head_tmp="$TMP_DIR/head_${relpath////_}"
-    if ! git show "HEAD:$relpath" > "$head_tmp" 2>/dev/null; then
+    if ! rev_blob_to HEAD "$relpath" "$head_tmp"; then
       # Source file not in HEAD; likely a new file. We cannot reapply to a base
       # that does not exist, so warn and continue.
       ui_warn "Source $relpath not found in HEAD; skipping reapply."

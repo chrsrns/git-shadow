@@ -193,7 +193,7 @@ patches_store() {
   # The path must be public-tracked: present in HEAD and introduced by at
   # least one non-[MEMORY] commit. On @local, HEAD alone is not the oracle —
   # [MEMORY]-only files live there too and must be rejected.
-  if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
+  if ! rev_path_exists HEAD "$relpath"; then
     ui_error "patches_store: '$relpath' is not public-tracked. [MEMORY] commits are for new local files."
     return 1
   fi
@@ -255,6 +255,19 @@ patches_store() {
 # HEAD:<relpath> or missing base file).  The temp tree is removed on every
 # exit path.
 _patches_apply_ladder() {
+  local tmp_dir
+  tmp_dir="$(mktemp -d)" || return 1
+
+  # A RETURN trap cannot own this cleanup: under functrace (e.g. bats) it
+  # fires on nested function returns too, deleting the temp tree mid-ladder.
+  local rc=0
+  _patches_apply_ladder_work "$tmp_dir" "$@" || rc=$?
+  rm -rf "$tmp_dir"
+  return "$rc"
+}
+
+_patches_apply_ladder_work() {
+  local tmp_dir="$1"; shift
   local relpath="${1#./}"
   local sidecar_source="$2"
   local base_source="$3"
@@ -267,20 +280,15 @@ _patches_apply_ladder() {
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
 
-  local tmp_dir
-  tmp_dir="$(mktemp -d)"
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -rf "$tmp_dir"; trap - RETURN' RETURN
-
   # Resolve the sidecar content.
   local sidecar_file="$root/$sidecar"
   if [[ ! -f "$sidecar_file" ]]; then
     if [[ "$sidecar_source" == "worktree-or-head" ]] && \
-       git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
+       rev_path_exists HEAD "$sidecar"; then
       # The sidecar may exist only in HEAD (deleted in the worktree, not yet
       # committed); use the committed copy so the ladder still runs.
       sidecar_file="$tmp_dir/head_sidecar.patch"
-      if ! git show "HEAD:$sidecar" > "$sidecar_file" 2>/dev/null; then
+      if ! rev_blob_to HEAD "$sidecar" "$sidecar_file"; then
         return 2
       fi
     else
@@ -292,7 +300,7 @@ _patches_apply_ladder() {
   local base_file="$base_source"
   if [[ "$base_source" == "HEAD" ]]; then
     base_file="$tmp_dir/base.content"
-    if ! git show "HEAD:$relpath" > "$base_file" 2>/dev/null; then
+    if ! rev_blob_to HEAD "$relpath" "$base_file"; then
       return 3
     fi
   else
@@ -695,7 +703,7 @@ patches_reapply() {
     fi
 
     # Skip if the source file no longer exists in HEAD (public-tracked).
-    if ! git rev-parse "HEAD:$relpath" >/dev/null 2>&1; then
+    if ! rev_path_exists HEAD "$relpath"; then
       ui_warn "patches_reapply: source '$relpath' no longer in HEAD; skipping."
       continue
     fi
@@ -761,7 +769,7 @@ patches_reapply() {
       ui_warn "patches_reapply: cannot reapply patch for '$relpath' (orphan). Restore with 'git shadow local add'."
       if git -C "$root" checkout -q HEAD -- "$relpath" 2>/dev/null; then
         :
-      elif git show "HEAD:$relpath" > "$root/$relpath" 2>/dev/null; then
+      elif rev_blob_to HEAD "$relpath" "$root/$relpath"; then
         :
       fi
       continue

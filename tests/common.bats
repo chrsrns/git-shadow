@@ -150,3 +150,75 @@ f one.txt" ]
   [ "$status" -eq 0 ]
   [ "$output" = "/abs/path" ]
 }
+
+@test "rev_path_exists finds a HEAD blob" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo x > f.txt
+  git add f.txt
+  git commit -qm init
+  run rev_path_exists HEAD f.txt
+  [ "$status" -eq 0 ]
+}
+
+@test "rev_path_exists returns 1 for a missing path" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  run rev_path_exists HEAD missing.txt
+  [ "$status" -eq 1 ]
+}
+
+@test "rev_path_exists probes the staged index on an empty rev" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  echo staged > new.txt
+  run rev_path_exists "" new.txt
+  [ "$status" -eq 1 ]
+  git add new.txt
+  run rev_path_exists "" new.txt
+  [ "$status" -eq 0 ]
+}
+
+@test "rev_blob_to writes a HEAD blob to a file" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  echo blob-content > f.txt
+  git add f.txt
+  git commit -qm init
+  run rev_blob_to HEAD f.txt out.txt
+  [ "$status" -eq 0 ]
+  [ "$(cat out.txt)" = "blob-content" ]
+}
+
+@test "rev_blob_to returns 1 on a missing object" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  run rev_blob_to HEAD missing.txt out.txt
+  [ "$status" -eq 1 ]
+}
+
+@test "rev_blob_to reads the staged blob on an empty rev" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  echo staged-content > s.txt
+  git add s.txt
+  run rev_blob_to "" s.txt out.txt
+  [ "$status" -eq 0 ]
+  [ "$(cat out.txt)" = "staged-content" ]
+}

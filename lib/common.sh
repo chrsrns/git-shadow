@@ -167,6 +167,19 @@ branch_exists() {
   git show-ref --verify --quiet "refs/heads/$1"
 }
 
+# Return 0 iff object <rev>:<path> exists. An empty <rev> probes the
+# staged index (":<path>").
+rev_path_exists() {
+  git cat-file -e "$1:$2" 2>/dev/null || return 1
+}
+
+# Write the <rev>:<path> blob to file <out>. Git's stderr is suppressed —
+# a missing or unreadable object surfaces only as return 1. An empty
+# <rev> reads the staged blob (":<path>").
+rev_blob_to() {
+  git show "$1:$2" > "$3" 2>/dev/null || return 1
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

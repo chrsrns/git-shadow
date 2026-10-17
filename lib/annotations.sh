@@ -146,8 +146,8 @@ annotations_reanchor_all() {
     ann_tmp="$tmp_dir/ann_${sidecar////_}"
     new_tmp="$tmp_dir/new_${sidecar////_}"
 
-    if git cat-file -e "HEAD:$source_path" 2>/dev/null; then
-      if ! git show "HEAD:$source_path" > "$source_tmp" 2>/dev/null; then
+    if rev_path_exists HEAD "$source_path"; then
+      if ! rev_blob_to HEAD "$source_path" "$source_tmp"; then
         ui_error "annotations_reanchor_all: cannot read source '$source_path' at HEAD"
         failed=1
         break
@@ -156,8 +156,8 @@ annotations_reanchor_all() {
       if ! tr -d '\0' < "$source_tmp" | diff -q - "$source_tmp" >/dev/null 2>&1; then
         continue
       fi
-      if git cat-file -e "HEAD:$sidecar" 2>/dev/null; then
-        if ! git show "HEAD:$sidecar" > "$ann_tmp" 2>/dev/null; then
+      if rev_path_exists HEAD "$sidecar"; then
+        if ! rev_blob_to HEAD "$sidecar" "$ann_tmp"; then
           ui_error "annotations_reanchor_all: cannot read sidecar '$sidecar' at HEAD"
           failed=1
           break

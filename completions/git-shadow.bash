@@ -41,7 +41,7 @@ _git_shadow() {
 
   # Complete top-level command
   if [[ $pos -le 0 ]]; then
-    mapfile -t COMPREPLY < <(compgen -W "version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config help -h --help" -- "$cur")
+    mapfile -t COMPREPLY < <(compgen -W "version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config agents help -h --help" -- "$cur")
     return
   fi
 
@@ -122,6 +122,13 @@ _git_shadow() {
         mapfile -t COMPREPLY < <(compgen -W "public help -h --help" -- "$cur")
       else
         mapfile -t COMPREPLY < <(compgen -W "$branches -h --help" -- "$cur")
+      fi
+      ;;
+    agents)
+      if [[ $pos -eq 1 ]]; then
+        mapfile -t COMPREPLY < <(compgen -W "sync help -h --help" -- "$cur")
+      else
+        mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur")
       fi
       ;;
     completion)

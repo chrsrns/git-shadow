@@ -306,28 +306,48 @@ require_local_branch() {
   fi
 }
 
-# Abort when a cherry-pick, merge, or rebase is in progress; each state
-# is named in the refusal. Used by ensure_clean_repo and by command
-# leaves that tolerate a dirty tree but not a mid-operation repo.
-require_no_in_progress_git_op() {
-  local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir
+# Print the name of an in-progress native Git operation — cherry-pick,
+# merge, rebase, or revert — and return 0; return 1 when none exists.
+# The single probe set behind require_no_in_progress_git_op, also usable
+# by callers that need a non-exiting check (doctor --fix refusals).
+in_progress_git_op() {
+  local cherry_pick_head_file merge_head_file rebase_merge_dir rebase_apply_dir revert_head_file
   cherry_pick_head_file="$(git rev-parse --git-path CHERRY_PICK_HEAD)"
   merge_head_file="$(git rev-parse --git-path MERGE_HEAD)"
   rebase_merge_dir="$(git rev-parse --git-path rebase-merge)"
   rebase_apply_dir="$(git rev-parse --git-path rebase-apply)"
+  revert_head_file="$(git rev-parse --git-path REVERT_HEAD)"
 
   if [[ -f "$cherry_pick_head_file" ]]; then
-    ui_error "A cherry-pick is still in progress."
-    exit 1
+    printf 'cherry-pick\n'
+    return 0
   fi
 
   if [[ -f "$merge_head_file" ]]; then
-    ui_error "A merge is still in progress."
-    exit 1
+    printf 'merge\n'
+    return 0
   fi
 
   if [[ -d "$rebase_merge_dir" || -d "$rebase_apply_dir" ]]; then
-    ui_error "A rebase is still in progress."
+    printf 'rebase\n'
+    return 0
+  fi
+
+  if [[ -f "$revert_head_file" ]]; then
+    printf 'revert\n'
+    return 0
+  fi
+
+  return 1
+}
+
+# Abort when a cherry-pick, merge, rebase, or revert is in progress; the
+# state is named in the refusal. Used by ensure_clean_repo and by command
+# leaves that tolerate a dirty tree but not a mid-operation repo.
+require_no_in_progress_git_op() {
+  local op
+  if op="$(in_progress_git_op)"; then
+    ui_error "A $op is still in progress."
     exit 1
   fi
 }

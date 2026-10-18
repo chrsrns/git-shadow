@@ -16,6 +16,8 @@
     "commands/",
     "config/",
     "lib/",
+    "AGENTS.template.md",
+    "AGENTS.template.ultra.md",
     "VERSION"
   ],
   "scripts": {

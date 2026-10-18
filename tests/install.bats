@@ -40,6 +40,7 @@ make_bare_toolkit() {
   mkdir -p "$BIN_DIR/repo" && cd "$BIN_DIR/repo" && git init -q
   git config user.name "Test" && git config user.email "t@t.com"
   "$BIN_DIR/git-shadow" install-hooks >/dev/null
+  "$BIN_DIR/git-shadow" agents sync >/dev/null
   run "$BIN_DIR/git-shadow" doctor
   [ "$status" -eq 0 ]
 }

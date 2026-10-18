@@ -83,6 +83,18 @@ _bash_complete() {
   [[ "$output" == *"--abort"* ]]
 }
 
+@test "bash completion suggests agents subcommands" {
+  run _bash_complete 2 git-shadow agents ''
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync"* ]]
+}
+
+@test "bash completion suggests agents at top level" {
+  run _bash_complete 1 git-shadow ''
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"agents"* ]]
+}
+
 @test "bash completion suggests config subcommands" {
   run _bash_complete 2 git-shadow config ''
   [ "$status" -eq 0 ]
@@ -219,6 +231,7 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
     typeset -f _git_shadow_feature_subcommands >/dev/null || exit 1
     typeset -f _git_shadow_config >/dev/null || exit 1
     typeset -f _git_shadow_config_subcommands >/dev/null || exit 1
+    typeset -f _git_shadow_agents_subcommands >/dev/null || exit 1
     echo ok
   "
   [ "$status" -eq 0 ]
@@ -233,6 +246,7 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"status"* ]]
   [[ "$output" == *"config"* ]]
   [[ "$output" == *"doctor"* ]]
+  [[ "$output" == *"agents"* ]]
 }
 
 @test "zsh completion _git_shadow_feature_subcommands body mentions start publish finish" {
@@ -298,6 +312,14 @@ COMPLETION_FISH="$REPO_ROOT/completions/git-shadow.fish"
   [[ "$output" == *"push"* ]]
   [[ "$output" == *"check"* ]]
   [[ "$output" == *"commit"* ]]
+  [[ "$output" == *"agents"* ]]
+}
+
+@test "fish completion suggests agents subcommands" {
+  command -v fish >/dev/null 2>&1 || skip "fish not installed"
+  run fish -c "source '$COMPLETION_FISH'; complete -C 'git-shadow agents '"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"sync"* ]]
 }
 
 @test "fish completion suggests feature subcommands" {

@@ -314,6 +314,30 @@ f one.txt" ]
   [[ "$output" == *"rebase is still in progress"* ]]
 }
 
+@test "require_no_in_progress_git_op aborts naming a revert" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  touch "$(git rev-parse --git-path REVERT_HEAD)"
+  run require_no_in_progress_git_op
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"revert is still in progress"* ]]
+}
+
+@test "ensure_clean_repo aborts on a stopped revert like a stopped cherry-pick" {
+  git init -q repo
+  cd repo
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git commit --allow-empty -qm init
+  touch "$(git rev-parse --git-path REVERT_HEAD)"
+  run ensure_clean_repo
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"revert is still in progress"* ]]
+}
+
 @test "require_no_in_progress_git_op passes on a clean state" {
   git init -q repo
   cd repo

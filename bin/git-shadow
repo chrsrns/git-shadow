@@ -53,6 +53,7 @@ Commands:
   git shadow re-anchor [<branch@local>] [<ignored>...]
   git shadow push <branch> [<ignored>...]
   git shadow check public [<public-branch>] [<ignored>...]
+  git shadow agents sync [<ignored>...]
   git shadow config list [--json] [<ignored>...]
   git shadow config show [--json] [<ignored>...]
   git shadow config get <KEY> [--json] [<ignored>...]

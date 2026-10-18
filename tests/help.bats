@@ -426,7 +426,7 @@ _repo_snapshot() {
 
 @test "help on mutating leaves changes nothing" {
   local before after leaf words
-  local mutating="commit install-hooks completion/install local/add local/rm local/apply local/diff annotations/reapply config/set config/unset feature/start feature/publish feature/finish feature/sync base/sync push re-anchor check/public doctor status version show feature/list config/list config/show config/get"
+  local mutating="commit install-hooks completion/install local/add local/rm local/apply local/diff annotations/reapply config/set config/unset feature/start feature/publish feature/finish feature/sync base/sync push re-anchor check/public doctor status version show feature/list config/list config/show config/get agents/sync"
   for leaf in $mutating; do
     before="$(_repo_snapshot)"
     words="$(tr '/' ' ' <<< "$leaf")"

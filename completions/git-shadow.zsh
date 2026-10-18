@@ -29,6 +29,7 @@ _git_shadow() {
         commit)     _arguments '-m[public commit message]:message:' '--message[public commit message]:message:' '(-h --help)'{-h,--help}'[show usage]' ;;
         show)       _arguments '--with-annotations[render the annotated view]' '--color[accepted no-op]' '(-h --help)'{-h,--help}'[show usage]' ;;
         annotations) _git_shadow_annotations ;;
+        agents)     _arguments '1: :_git_shadow_agents_subcommands' '(-h --help)'{-h,--help}'[show usage]' ;;
         local)      _git_shadow_local ;;
         completion) _arguments '1: :_git_shadow_completion_subcommands' '(-h --help)'{-h,--help}'[show usage]' ;;
         push|re-anchor) _arguments '*:branch:__git_refs2' '(-h --help)'{-h,--help}'[show usage]' ;;
@@ -48,6 +49,7 @@ _git_shadow_commands() {
     'commit:split staged changes into public and [MEMORY] commits'
     'show:render source with local annotations'
     'annotations:manage local annotation sidecars'
+    'agents:sync the managed AGENTS.local.md block'
     'local:manage local patch sidecars'
     'completion:manage shell completion'
     'feature:manage the feature branch lifecycle'
@@ -117,6 +119,15 @@ _git_shadow_feature_subcommands() {
     'finish:finalize the feature and integrate [MEMORY] commits'
     'sync:apply public net diff onto the @local feature branch'
     'list:list open feature pairs'
+    'help:show group help'
+  )
+  _describe 'subcommand' subcommands
+}
+
+_git_shadow_agents_subcommands() {
+  local subcommands
+  subcommands=(
+    'sync:create or refresh the managed AGENTS.local.md block'
     'help:show group help'
   )
   _describe 'subcommand' subcommands

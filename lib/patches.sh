@@ -86,14 +86,34 @@ patches_transaction() {
   return "$status"
 }
 
-# Abort if a paused sync or finish state exists.
-patches_require_no_paused_op() {
+# Print 'sync' or 'finish' when a paused operation state exists and
+# return 0; return 1 when neither exists. The non-exiting half of
+# patches_require_no_paused_op — usable by callers that must refuse an
+# action without aborting the process (doctor --fix).
+patches_paused_op() {
   if state_active "$(sync_state_file)"; then
-    ui_error "A sync is in progress. Resolve or run 'git shadow feature sync --abort' / 'git shadow base sync --abort'."
-    exit 1
+    printf 'sync\n'
+    return 0
   fi
   if state_active "$(finish_state_file)"; then
-    ui_error "A finish is in progress. Resolve or run 'git shadow feature finish --abort'."
+    printf 'finish\n'
+    return 0
+  fi
+  return 1
+}
+
+# Abort if a paused sync or finish state exists.
+patches_require_no_paused_op() {
+  local op
+  if op="$(patches_paused_op)"; then
+    case "$op" in
+      sync)
+        ui_error "A sync is in progress. Resolve or run 'git shadow feature sync --abort' / 'git shadow base sync --abort'."
+        ;;
+      finish)
+        ui_error "A finish is in progress. Resolve or run 'git shadow feature finish --abort'."
+        ;;
+    esac
     exit 1
   fi
 }

@@ -14,7 +14,7 @@ complete -c git-shadow -f
 # Top-level commands
 # ---------------------------------------------------------------------------
 
-set -l top_cmds version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config
+set -l top_cmds version install-hooks doctor status commit show annotations local completion feature base re-anchor push check config agents
 
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a version              -d "show the current version"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a install-hooks        -d "install pre-commit and pre-push git hooks"
@@ -30,6 +30,7 @@ complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a re-anch
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a push                 -d "push a public branch with GIT_SHADOW=1"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a check                -d "audit a public branch"
 complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a config               -d "manage git-shadow configuration"
+complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a agents               -d "sync the managed AGENTS.local.md block"
 
 # ---------------------------------------------------------------------------
 # feature subcommands and flags
@@ -109,6 +110,14 @@ set -l annotations_subcmds reapply
 complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and not __fish_seen_subcommand_from $annotations_subcmds" -a reapply -d "write stored markers into the working tree"
 
 complete -c git-shadow -n "__fish_seen_subcommand_from annotations; and __fish_seen_subcommand_from reapply" -a "(__fish_complete_path)" -d "source path"
+
+# ---------------------------------------------------------------------------
+# agents subcommands and flags
+# ---------------------------------------------------------------------------
+
+set -l agents_subcmds sync
+
+complete -c git-shadow -n "__fish_seen_subcommand_from agents; and not __fish_seen_subcommand_from $agents_subcmds" -a sync -d "create or refresh the managed AGENTS.local.md block"
 
 # ---------------------------------------------------------------------------
 # local subcommands and flags

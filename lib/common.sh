@@ -63,6 +63,10 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/worktree.sh"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/patches.sh"
 
+# Load managed AGENTS.local.md block helpers
+# shellcheck disable=SC1091  # resolved relative to this script location at runtime
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/agents-block.sh"
+
 # Resolve absolute paths
 abs_path() {
   local path="$1"

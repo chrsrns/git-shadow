@@ -66,6 +66,15 @@ Use `git commit -m "[MEMORY] <subject>"` for notes, scratch files, plans, debug 
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
 
+## Managed AGENTS.local.md block
+
+`git shadow agents sync` creates or refreshes the managed git-shadow section in `AGENTS.local.md` at the repository root — run it from any branch, including public ones, and from any directory. The section is delimited by the whole-line markers `<!-- git-shadow:agents begin -->` and `<!-- git-shadow:agents end -->`; keep marker mentions mid-line like this, because a whole-line copy counts as a real marker and there is no escape syntax. Edit outside the markers only — the block is tool-owned and inside-block edits are discarded on regeneration.
+
+- `git shadow doctor` warns when the file is missing, lacks the block, or the block is stale or malformed; `git shadow agents sync` and `git shadow doctor --fix` repair everything except malformed markers (fix those by hand). A `missing` or `absent` warning is deliberate — the remedy is installing the block.
+- The rendered flavor comes from `AGENTS_TEMPLATE` (`full` or `ultra`, default `full`). Config resolution stays cwd-scoped, so a project-tier flavor is only visible to commands run from the directory holding `.git-shadow.env`.
+- `agents sync` writes the working tree only and stages nothing — a staged file ends `MM` afterwards. It refuses during paused sync/finish and native merge/rebase/cherry-pick/revert states, and it writes only the invoking worktree's file.
+- The file is not exempt from dirt checks. Untracked → `git commit -m "[MEMORY] ..."` it on a `@local` branch or add it to `.gitignore`; public-tracked → a public commit (never `[MEMORY]`). On a public branch the remedies are `.gitignore` or a public commit. `git shadow commit` on a staged `AGENTS.local.md` publishes it like any other public file. If it is overlaid by a `.git-shadow/patches/` sidecar, syncing turns the sidecar `patch-stale` — refresh with `git shadow local add AGENTS.local.md`.
+
 ## Agent behavior rules
 
 1. Default to the shadow branch
@@ -253,7 +262,7 @@ If you are asked to finalize work, prefer publication through git shadow rather 
 - Run `git shadow check public <branch>` to audit a public branch for unpromoted files or leaked local-only content.
 - The pre-commit hook rejects public-tracked files that contain `///` or `// @local` markers and rejects staged paths that have a `.git-shadow/patches/` sidecar, unless `GIT_SHADOW=1` is set.
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
-- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, doc-comment directives in public trees or the staged index, base/base@local drift without a patch sidecar, unpromoted files, `SPEC.md` integrity (duplicate row IDs and a `union` merge driver), orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
+- Run `git shadow doctor` for a read-only repo diagnostic: version skew, in-progress sync/finish state, per-`@local` checkpoint summary, hook status, the `AGENTS.local.md` managed block (staleness and marker health), doc-comment directives in public trees or the staged index, base/base@local drift without a patch sidecar, unpromoted files, `SPEC.md` integrity (duplicate row IDs and a `union` merge driver), orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). It exits 1 on any warning.
 
 ## Git shadow configuration
 

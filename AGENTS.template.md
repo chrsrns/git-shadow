@@ -122,15 +122,6 @@ git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 - `git shadow feature publish` runs a diff-based check pass and also scans the replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
 - Run `git shadow doctor` for a read-only repo diagnostic: version skew, paused sync/finish state, per-`@local` checkpoint summary, hooks (install status and freshness), the `AGENTS.local.md` managed block (staleness and marker health), orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, unpromoted files, `SPEC.md` integrity (duplicate row IDs and a `union` merge driver), and worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on any warning.
 
-### AGENTS.local.md managed block
-
-`git shadow agents sync` creates or refreshes the managed git-shadow section in `AGENTS.local.md` at the repository root — run it from any branch, including public ones, and from any directory. The section is delimited by the whole-line markers `<!-- git-shadow:agents begin -->` and `<!-- git-shadow:agents end -->`; keep marker mentions mid-line like this, because a whole-line copy counts as a real marker and there is no escape syntax. Edit outside the markers only — the block is tool-owned and inside-block edits are discarded on regeneration.
-
-- `git shadow doctor` warns when the file is missing, lacks the block, or the block is stale or malformed; `git shadow agents sync` and `git shadow doctor --fix` repair everything except malformed markers (fix those by hand). A `missing` or `absent` warning is deliberate — the remedy is installing the block.
-- The rendered flavor comes from `AGENTS_TEMPLATE` (`full` or `ultra`, default `full`). Config resolution stays cwd-scoped, so a project-tier flavor is only visible to commands run from the directory holding `.git-shadow.env`.
-- `agents sync` writes the working tree only and stages nothing — a staged file ends `MM` afterwards. It refuses during paused sync/finish and native merge/rebase/cherry-pick/revert states, and it writes only the invoking worktree's file.
-- The file is not exempt from dirt checks. Untracked → `git commit -m "[MEMORY] ..."` it on a `@local` branch or add it to `.gitignore`; public-tracked → a public commit (never `[MEMORY]`). On a public branch the remedies are `.gitignore` or a public commit. `git shadow commit` on a staged `AGENTS.local.md` publishes it like any other public file. If it is overlaid by a `.git-shadow/patches/` sidecar, syncing turns the sidecar `patch-stale` — refresh with `git shadow local add AGENTS.local.md`.
-
 ### Agent decision rule
 
 If change helps thinking, keep in `feature/x@local` (usually `[MEMORY]`).

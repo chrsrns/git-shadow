@@ -100,10 +100,6 @@ Configure it with `git shadow config set WORKTREE_ROOT <absolute-path> --project
 - `git shadow feature publish` runs diff-based check pass + scans replayed tree for local markers and `.git-shadow/annotations/` or `.git-shadow/patches/` paths.
 - `git shadow doctor` — read-only diagnostic: version skew, paused sync/finish, `@local` checkpoints, hooks (install status and freshness), `AGENTS.local.md` managed block (staleness, marker health), orphan `.git-shadow/annotations/` records, orphan `.git-shadow/patches/` sidecars, unpromoted files, `SPEC.md` integrity (duplicate row IDs, `union` merge driver), worktree health (`WORKTREE_ROOT` validity, stale or orphaned worktree registrations, base branches held by other worktrees). Exits 1 on warning.
 
-### AGENTS.local.md managed block
-
-`git shadow agents sync` creates/refreshes the managed block in the root `AGENTS.local.md`, delimited by the whole-line markers `<!-- git-shadow:agents begin -->` / `<!-- git-shadow:agents end -->` (mid-line mentions only — no escape syntax). The block is tool-owned: edit outside the markers, inside edits are discarded on regen. `git shadow doctor` warns on missing/absent/stale/malformed (missing/absent is deliberate); `agents sync` and `doctor --fix` repair all but malformed. Flavor: `AGENTS_TEMPLATE` = `full` | `ultra` (default `full`), cwd-scoped config. Working-tree write only, stages nothing (staged file → `MM`); refuses during paused sync/finish and native merge/rebase/cherry-pick/revert; per-worktree scope. Not dirt-exempt — untracked → `[MEMORY]` commit or `.gitignore`; public-tracked → public commit (`git shadow commit` publishes it); overlaid file → sidecar goes `patch-stale`, refresh with `git shadow local add`.
-
 ### Decision rule
 
 Thinking → `feature/x@local` (usually `[MEMORY]`).

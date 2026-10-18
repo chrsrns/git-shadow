@@ -52,16 +52,4 @@ case "$state" in
   stale)   ui_ok "agents: refreshed managed block in $AGENTS_LOCAL_FILE" ;;
 esac
 
-# The file is not exempt from dirt checks — name the remedy by
-# trackedness before the next mutating op trips over it: public-tracked
-# takes a public commit, anything else takes [MEMORY] or .gitignore.
-if ! git -C "$root" ls-files --error-unmatch "$AGENTS_LOCAL_FILE" >/dev/null 2>&1; then
-  ui_info "$AGENTS_LOCAL_FILE is untracked — 'git commit -m \"[MEMORY] ...\"' it on a @local branch or add it to .gitignore before the next mutating op."
-else
-  public_branch="$(public_branch_from_any "$(current_branch || true)")"
-  if [[ -n "$public_branch" ]] && git -C "$root" cat-file -e "$public_branch:$AGENTS_LOCAL_FILE" 2>/dev/null; then
-    ui_info "$AGENTS_LOCAL_FILE is public-tracked — commit the update as a public commit, not [MEMORY]."
-  else
-    ui_info "$AGENTS_LOCAL_FILE is tracked — re-commit the update with 'git commit -m \"[MEMORY] ...\"'."
-  fi
-fi
+agents_block_dirt_remedy "$root"

@@ -78,8 +78,8 @@ _agents_marker_lines() {
 
 # Print '<begin_line> <end_line>' when file $1 has exactly one begin and
 # one end marker in begin<end order; return 1 otherwise (absent file,
-# absent/unpaired/reversed/duplicated markers all reject).
-agents_block_bounds() {
+# absent/unpaired/reversed/duplicated markers all reject). Internal.
+_agents_block_bounds() {
   local file="$1"
   [[ -f "$file" ]] || return 1
   local begins ends
@@ -91,11 +91,11 @@ agents_block_bounds() {
 
 # Print the installed begin-through-end block from file $1 (raw bytes).
 # Returns 1 on absent/unpaired/reversed/duplicated markers or a missing
-# file — the same rejection set as agents_block_bounds.
+# file — the same rejection set as _agents_block_bounds.
 agents_block_extract() {
   local file="$1"
   local bounds
-  bounds="$(agents_block_bounds "$file")" || return 1
+  bounds="$(_agents_block_bounds "$file")" || return 1
   sed -n "${bounds%% *},${bounds##* }p" "$file"
 }
 
@@ -206,4 +206,25 @@ agents_block_install() {
     tail -n "+$((ends + 1))" "$file"
   } > "$tmp" || { rm -f "$tmp"; return 1; }
   mv "$tmp" "$file" || { rm -f "$tmp"; return 1; }
+}
+
+# Print the dirt remedy for AGENTS.local.md under repo root $1, routed
+# by trackedness: untracked → [MEMORY]-commit or .gitignore; public-
+# tracked → a public commit; otherwise tracked → a [MEMORY] re-commit.
+# The file is not exempt from dirt checks — name the remedy before the
+# next mutating op trips over it. Used by `agents sync` and the
+# `doctor --fix` agents repair.
+agents_block_dirt_remedy() {
+  local root="$1"
+  local public_branch
+  if ! git -C "$root" ls-files --error-unmatch "$AGENTS_LOCAL_FILE" >/dev/null 2>&1; then
+    ui_info "$AGENTS_LOCAL_FILE is untracked — 'git commit -m \"[MEMORY] ...\"' it on a @local branch or add it to .gitignore before the next mutating op."
+  else
+    public_branch="$(public_branch_from_any "$(current_branch || true)")"
+    if [[ -n "$public_branch" ]] && git -C "$root" cat-file -e "$public_branch:$AGENTS_LOCAL_FILE" 2>/dev/null; then
+      ui_info "$AGENTS_LOCAL_FILE is public-tracked — commit the update as a public commit, not [MEMORY]."
+    else
+      ui_info "$AGENTS_LOCAL_FILE is tracked — re-commit the update with 'git commit -m \"[MEMORY] ...\"'."
+    fi
+  fi
 }

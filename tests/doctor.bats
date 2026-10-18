@@ -739,3 +739,22 @@ STATE_EOF
   [[ "$output" == *"revert is in progress"* ]]
   [ ! -e AGENTS.local.md ]
 }
+
+@test "doctor --fix names the untracked-file remedy after repair" {
+  rm AGENTS.local.md
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"is untracked —"* ]]
+  [[ "$output" == *"MEMORY"* || "$output" == *".gitignore"* ]]
+}
+
+@test "doctor --fix names the tracked-file remedy after repair" {
+  git add -f AGENTS.local.md
+  git commit -qm "[MEMORY] track agents file"
+  sed -i 's/## Git Shadow workflow for AI agents/## Tampered heading/' AGENTS.local.md
+  run git shadow doctor --fix
+  # Exit 1: the carried 'check public' dirty-tree warnings are not
+  # re-run post-fix even though the repair cleaned the file.
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"is tracked — re-commit"* ]]
+}

@@ -652,6 +652,7 @@ doctor_fix() {
         recheck_agents=1
         if agents_block_install "$agents_target"; then
           ui_ok "fix: reconciled managed block in $AGENTS_LOCAL_FILE"
+          agents_block_dirt_remedy "$(repo_root_or_pwd)"
         else
           ui_warn "fix: failed to reconcile managed block in $AGENTS_LOCAL_FILE"
           agents_repair_failed=$((agents_repair_failed + 1))

@@ -16,6 +16,13 @@ setup() {
   export PATH="$TOOLKIT_ROOT/bin:$PATH"
 
   git shadow feature start test-feature
+
+  # A healthy fixture carries a current managed AGENTS.local.md block —
+  # the agents doctor check warns on a missing file by design. The file
+  # stays untracked, so .gitignore it (an exempt path) to keep the tree
+  # clean for ensure_clean_repo callers like 'check public'.
+  git shadow agents sync >/dev/null
+  printf 'AGENTS.local.md\n' > .gitignore
 }
 
 teardown() {
@@ -619,4 +626,116 @@ SPEC_EOF
   run git shadow doctor
   [ "$status" -eq 0 ]
   [[ "$output" != *"without a patch sidecar"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# AGENTS.local.md managed block
+# ---------------------------------------------------------------------------
+
+@test "doctor warns when AGENTS.local.md is missing" {
+  rm AGENTS.local.md
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"agents:"* ]]
+  [[ "$output" == *"missing"* ]]
+  [[ "$output" == *"git shadow agents sync"* ]]
+}
+
+@test "doctor warns when AGENTS.local.md lacks the managed block" {
+  printf 'user prose only\n' > AGENTS.local.md
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"lacks the managed git-shadow block"* ]]
+}
+
+@test "doctor warns when the managed block is stale" {
+  sed -i 's/## Git Shadow workflow for AI agents/## Tampered heading/' AGENTS.local.md
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"managed block is stale"* ]]
+}
+
+@test "doctor warns on malformed markers and does not name a repair" {
+  printf '<!-- git-shadow:agents begin -->\n<!-- git-shadow:agents begin -->\n' > AGENTS.local.md
+  run git shadow doctor
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"malformed"* ]]
+  [[ "$output" == *"manually"* ]]
+}
+
+@test "doctor reports a current managed block" {
+  run git shadow doctor
+  [[ "$output" == *"agents: AGENTS.local.md managed block is current"* ]]
+}
+
+@test "doctor --fix creates a missing AGENTS.local.md" {
+  rm AGENTS.local.md
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  [ -f AGENTS.local.md ]
+  [[ "$(head -1 AGENTS.local.md)" == "<!-- git-shadow:agents begin -->" ]]
+}
+
+@test "doctor --fix appends the block to a markerless file" {
+  printf 'user prose\n' > AGENTS.local.md
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  [[ "$(head -1 AGENTS.local.md)" == "user prose" ]]
+  [[ "$(cat AGENTS.local.md)" == *"<!-- git-shadow:agents begin -->"* ]]
+}
+
+@test "doctor --fix repairs a stale block preserving outside content" {
+  { printf 'before\n'; cat AGENTS.local.md; printf 'after\n'; } > tmp && mv tmp AGENTS.local.md
+  sed -i 's/## Git Shadow workflow for AI agents/## Tampered heading/' AGENTS.local.md
+  run git shadow doctor --fix
+  [ "$status" -eq 0 ]
+  [[ "$(head -1 AGENTS.local.md)" == "before" ]]
+  [[ "$(tail -1 AGENTS.local.md)" == "after" ]]
+  [[ "$(cat AGENTS.local.md)" == *"## Git Shadow workflow for AI agents"* ]]
+}
+
+@test "doctor --fix leaves malformed markers report-only" {
+  printf '<!-- git-shadow:agents begin -->\n<!-- git-shadow:agents begin -->\n' > AGENTS.local.md
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$(cat AGENTS.local.md)" != *"<!-- git-shadow:agents end -->"* ]]
+  [[ "$output" == *"malformed"* ]]
+}
+
+
+@test "doctor --fix refuses the agents repair while a sync is paused" {
+  rm AGENTS.local.md
+  cat > .git/git-shadow-sync <<'STATE_EOF'
+mode=feature
+public_branch=test-feature
+local_branch=test-feature@local
+STATE_EOF
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"repair refused"* ]]
+  [[ "$output" == *"sync is in progress"* ]]
+  # Two warnings total: the paused-state check and the refused repair —
+  # the carried agents failure and the refusal count once, not twice.
+  [[ "$output" == *"post-fix 2 warning"* ]]
+  [ ! -e AGENTS.local.md ]
+}
+
+@test "doctor --fix refuses the agents repair during a native merge" {
+  rm AGENTS.local.md
+  git rev-parse HEAD > .git/MERGE_HEAD
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"repair refused"* ]]
+  [[ "$output" == *"merge is in progress"* ]]
+  [ ! -e AGENTS.local.md ]
+}
+
+@test "doctor --fix refuses the agents repair during a native revert" {
+  rm AGENTS.local.md
+  git rev-parse HEAD > .git/REVERT_HEAD
+  run git shadow doctor --fix
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"repair refused"* ]]
+  [[ "$output" == *"revert is in progress"* ]]
+  [ ! -e AGENTS.local.md ]
 }

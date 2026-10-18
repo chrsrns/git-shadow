@@ -171,6 +171,40 @@ doctor_hooks_check() {
   return $issues
 }
 
+# Report the managed-block state of AGENTS.local.md — missing, absent,
+# stale, or malformed all warn (malformed stays report-only for --fix);
+# a propagated render failure warns; current is clean. Resolved at
+# repo_root_or_pwd like the other tolerant scans.
+doctor_agents_check() {
+  local toplevel target state
+  toplevel="$(repo_root_or_pwd)"
+  target="$toplevel/$AGENTS_LOCAL_FILE"
+
+  if ! state="$(agents_block_state "$target")"; then
+    ui_warn "agents: cannot render the managed block — 'git shadow agents sync' fails the same way"
+    return 1
+  fi
+  case "$state" in
+    current)
+      ui_ok "agents: $AGENTS_LOCAL_FILE managed block is current"
+      return 0
+      ;;
+    missing)
+      ui_warn "agents: $AGENTS_LOCAL_FILE is missing — run 'git shadow agents sync'"
+      ;;
+    absent)
+      ui_warn "agents: $AGENTS_LOCAL_FILE lacks the managed git-shadow block — run 'git shadow agents sync'"
+      ;;
+    stale)
+      ui_warn "agents: $AGENTS_LOCAL_FILE managed block is stale — run 'git shadow agents sync'"
+      ;;
+    malformed)
+      ui_warn "agents: $AGENTS_LOCAL_FILE has malformed git-shadow markers — fix them manually"
+      ;;
+  esac
+  return 1
+}
+
 # Doc-comment directives (C# XML doc / TypeScript triple-slash tags) that
 # look like local `///` annotations but are regular documentation. Hardcoded
 # so the false-positive scan stays stable and reviewable.
@@ -498,6 +532,7 @@ doctor_run() {
   fi
 
   _doctor_tally doctor_hooks_check
+  _doctor_tally doctor_agents_check
   _doctor_tally doctor_doc_directives_check
 
   # Unpromoted files for every public branch with a local counterpart (V99).
@@ -537,8 +572,11 @@ doctor_fix() {
 
   local worktree_repair_failed=0
   local hook_repairs_failed=0
+  local agents_repair_failed=0
+  local agents_refused=0
   local recheck_worktree=0
   local recheck_hooks=0
+  local recheck_agents=0
 
   # Stale worktree registrations: `prune` alone defaults to a 3-month expire
   # and would leave fresh entries behind, so expire immediately.
@@ -592,6 +630,36 @@ doctor_fix() {
     fi
   done
 
+  # Managed AGENTS.local.md block: create/append/regenerate via
+  # agents_block_install. Malformed markers are report-only, and a
+  # paused sync/finish or an in-progress native merge/rebase/
+  # cherry-pick/revert refuses the repair — warn, count once, continue;
+  # no recheck runs on a refusal (the refusal is the counted warning).
+  local agents_target agents_state
+  agents_target="$(repo_root_or_pwd)/$AGENTS_LOCAL_FILE"
+  if ! agents_state="$(agents_block_state "$agents_target")"; then
+    agents_state="render-failed"
+  fi
+  case "$agents_state" in
+    current|malformed)
+      ;;
+    *)
+      local paused_op
+      if paused_op="$(patches_paused_op)" || paused_op="$(in_progress_git_op)"; then
+        ui_warn "fix: $AGENTS_LOCAL_FILE repair refused — a $paused_op is in progress"
+        agents_refused=$((agents_refused + 1))
+      else
+        recheck_agents=1
+        if agents_block_install "$agents_target"; then
+          ui_ok "fix: reconciled managed block in $AGENTS_LOCAL_FILE"
+        else
+          ui_warn "fix: failed to reconcile managed block in $AGENTS_LOCAL_FILE"
+          agents_repair_failed=$((agents_repair_failed + 1))
+        fi
+      fi
+      ;;
+  esac
+
   # Post-fix count: baseline failures on unaffected checks carry over;
   # repaired checks are re-run; a failed repair adds a warning only when
   # the re-run check did not already surface that failure (V174).
@@ -600,19 +668,25 @@ doctor_fix() {
     for check in "${DOCTOR_FAILED_CHECKS[@]}"; do
       [[ "$check" == "doctor_hooks_check" && $recheck_hooks -eq 1 ]] && continue
       [[ "$check" == "doctor_worktree_check" && $recheck_worktree -eq 1 ]] && continue
+      [[ "$check" == "doctor_agents_check" && $recheck_agents -eq 1 ]] && continue
+      [[ "$check" == "doctor_agents_check" && $agents_refused -gt 0 ]] && continue
       post=$((post + 1))
     done
   fi
-  local hook_fail=0 wt_fail=0
+  local hook_fail=0 wt_fail=0 agents_fail=0
   if [[ $recheck_hooks -eq 1 ]]; then
     doctor_hooks_check || hook_fail=1
   fi
   if [[ $recheck_worktree -eq 1 ]]; then
     doctor_worktree_check || wt_fail=1
   fi
-  post=$((post + hook_fail + wt_fail))
+  if [[ $recheck_agents -eq 1 ]]; then
+    doctor_agents_check || agents_fail=1
+  fi
+  post=$((post + hook_fail + wt_fail + agents_fail + agents_refused))
   [[ $hook_fail -eq 0 ]] && post=$((post + hook_repairs_failed))
   [[ $wt_fail -eq 0 ]] && post=$((post + worktree_repair_failed))
+  [[ $agents_fail -eq 0 && $agents_refused -eq 0 ]] && post=$((post + agents_repair_failed))
 
   DOCTOR_WARNINGS=$post
   printf 'doctor: post-fix %d warning(s)/error(s)\n' "$post"

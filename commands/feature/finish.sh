@@ -44,8 +44,9 @@ finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
   current_top="$(abs_path_m "$(repo_root)")"
-  local path held
-  while IFS=$'\t' read -r path held; do
+  local path held rec_locked
+  # shellcheck disable=SC2034  # third record field consumed by other readers; required so the branch field does not fold
+  while IFS=$'\t' read -r path held rec_locked; do
     [[ -z "$path" ]] && continue
     if [[ "$path" != "$current_top" \
        && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
@@ -80,6 +81,24 @@ finish_check_feature_worktree() {
   finish_resolve_worktree
   [[ -z "$FINISH_WORKTREE" ]] && return 0
   [[ "$KEEP_WORKTREE" -eq 1 ]] && return 0
+
+  # The main worktree is never a removal candidate: `git worktree remove`
+  # refuses it and the revert/env-deletion machinery must never touch the
+  # user's primary checkout. FINISH_WORKTREE already excludes the invoking
+  # toplevel, so equality here means a named finish from another checkout.
+  local main_top
+  main_top="$(worktree_paths | head -1)"
+  if [[ -n "$main_top" && "$FINISH_WORKTREE" == "$main_top" ]]; then
+    ui_error "Cannot remove worktree '$FINISH_WORKTREE': it is the main worktree ('$FEATURE_LOCAL_BRANCH' is checked out there)."
+    ui_info  "Free '$FEATURE_LOCAL_BRANCH' in the main checkout (git checkout --detach), then re-run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH'."
+    return 1
+  fi
+
+  if worktree_is_locked "$FINISH_WORKTREE"; then
+    ui_error "Feature worktree '$FINISH_WORKTREE' is locked."
+    ui_info  "Run 'git worktree unlock \"$FINISH_WORKTREE\"', or keep it with --keep-worktree."
+    return 1
+  fi
   [[ ! -d "$FINISH_WORKTREE" ]] && return 0   # stale registration
 
   local cwd
@@ -98,6 +117,55 @@ finish_check_feature_worktree() {
     ui_info  "Or run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH' from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
     return 1
   fi
+
+  # Enumerate ?? records directly — the classifier exempts .git-shadow.env,
+  # .gitignore and registered-worktree dirs, but `git worktree remove`
+  # refuses them identically. Fail closed on enumeration failure. Runs in
+  # a subshell inside the target worktree (V235).
+  local untracked_enum
+  untracked_enum="$(mktemp)" || return 1
+  if ! ( cd "$FINISH_WORKTREE" && patches_untracked_records ) > "$untracked_enum"; then
+    rm -f "$untracked_enum"
+    ui_error "Unable to enumerate untracked files in '$FINISH_WORKTREE'."
+    return 1
+  fi
+  local urec
+  local -a untracked_paths=()
+  while IFS= read -r -d '' urec || [[ -n "$urec" ]]; do
+    [[ -z "$urec" || "$urec" == .git-shadow.env ]] && continue
+    untracked_paths+=("$urec")
+  done < "$untracked_enum"
+  rm -f "$untracked_enum"
+  if [[ ${#untracked_paths[@]} -gt 0 ]]; then
+    ui_error "Feature worktree '$FINISH_WORKTREE' contains untracked files 'git worktree remove' refuses:"
+    printf '  ?? %s\n' "${untracked_paths[@]}" >&2
+    ui_info  "Commit, move, or delete them, then retry; or keep it with --keep-worktree."
+    return 1
+  fi
+  return 0
+}
+
+# Restore every `patch`-classed source file inside <worktree> to HEAD so a
+# plain `git worktree remove` is not refused by an applied overlay. The
+# overlay content is already preserved on the base by the [MEMORY] replay.
+# `patch`-class only: at-HEAD paths skip as no-ops and `patch-stale` paths
+# stay, so a mid-run edit still blocks removal instead of being clobbered
+# (V276). Runs inside the target worktree so path classification resolves
+# against it (V220/V235).
+finish_revert_worktree_overlays() {
+  local worktree="$1"
+  local rec status class path
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    status="${rec%%$'\t'*}"
+    class="$(printf '%s' "$rec" | cut -f2)"
+    [[ "$class" != "patch" ]] && continue
+    path="$(printf '%s' "$rec" | cut -f3)"
+    if ! git -C "$worktree" checkout -q HEAD -- "$path"; then
+      ui_error "Failed to revert patch overlay on '$path' in '$worktree'."
+      return 1
+    fi
+  done < <(cd "$worktree" && patches_dirty_records)
   return 0
 }
 
@@ -109,6 +177,29 @@ finish_check_feature_worktree() {
 finish_cleanup_feature() {
   local worktree="$FINISH_WORKTREE"
   if [[ -n "$worktree" && "$KEEP_WORKTREE" -eq 0 ]]; then
+    # Re-probe the main-worktree exclusion — a mid-run relocation of
+    # <name>@local into the main checkout, or the --continue path that
+    # bypasses finish_check_feature_worktree, must not run the revert,
+    # env deletion, or removal against the user's primary checkout.
+    local main_top
+    main_top="$(worktree_paths | head -1)"
+    if [[ -n "$main_top" && "$worktree" == "$main_top" ]]; then
+      ui_error "Cannot remove worktree '$worktree': it is the main worktree ('$FEATURE_LOCAL_BRANCH' is checked out there)."
+      ui_info  "Free '$FEATURE_LOCAL_BRANCH' in the main checkout (git checkout --detach), then re-run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH'."
+      return 1
+    fi
+    # Re-probe the lock before removal regardless of directory presence: a
+    # mid-run lock must not reach the prune path (prune skips locked
+    # registrations) and a locked live tree must not reach `git worktree
+    # remove`.
+    if worktree_is_locked "$worktree"; then
+      ui_error "Feature worktree '$worktree' is locked."
+      ui_info  "Run 'git worktree unlock \"$worktree\"', then retry."
+      return 1
+    fi
+    if [[ -d "$worktree" ]] && ! finish_revert_worktree_overlays "$worktree"; then
+      return 1
+    fi
     if [[ -d "$worktree" ]] && worktree_is_dirty "$worktree"; then
       ui_error "Feature worktree '$worktree' is dirty; refusing to remove it."
       ( cd "$worktree" && patches_dirty_table >&2 ) \
@@ -116,16 +207,38 @@ finish_cleanup_feature() {
       ui_info  "Commit or stash the work, then run: git worktree remove '$worktree'"
       return 1
     fi
+    # Drop the toolkit-owned .git-shadow.env copy (worktree_add recreates
+    # it) — untracked files refuse `git worktree remove`. Only when the
+    # path is untracked here; a tracked or modified copy stays for the
+    # dirt gate. Runs after the re-check so an abort leaves the worktree
+    # fully configured.
+    if [[ -f "$worktree/.git-shadow.env" ]] &&
+       ! git -C "$worktree" ls-files --error-unmatch -- .git-shadow.env >/dev/null 2>&1; then
+      rm -f -- "$worktree/.git-shadow.env" || return 1
+    fi
     ui_shadow "Removing feature worktree '$worktree'"
     worktree_remove "$worktree" || return 1
   fi
   if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
-    git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1 || true
+    # A still-existing branch after a failed delete is a real failure; a
+    # missing one is a legitimate partial-retry state.
+    local deleted_public=0 deleted_local=0
+    if git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1; then
+      deleted_public=1
+    elif git show-ref --verify --quiet "refs/heads/$FEATURE_PUBLIC_BRANCH"; then
+      ui_warn "Could not delete public feature branch '$FEATURE_PUBLIC_BRANCH'."
+    fi
     if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
-      git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1 || true
-      ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
+      if git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1; then
+        deleted_local=1
+      elif git show-ref --verify --quiet "refs/heads/$FEATURE_LOCAL_BRANCH"; then
+        ui_warn "Could not delete local feature branch '$FEATURE_LOCAL_BRANCH'."
+      fi
+      [[ "$deleted_public" -eq 1 && "$deleted_local" -eq 1 ]] && \
+        ui_info "Deleted feature branches '$FEATURE_PUBLIC_BRANCH' and '$FEATURE_LOCAL_BRANCH'."
     else
-      ui_info "Deleted public feature branch '$FEATURE_PUBLIC_BRANCH' (kept '$FEATURE_LOCAL_BRANCH')."
+      [[ "$deleted_public" -eq 1 ]] && \
+        ui_info "Deleted public feature branch '$FEATURE_PUBLIC_BRANCH' (kept '$FEATURE_LOCAL_BRANCH')."
     fi
   fi
 }
@@ -359,8 +472,20 @@ finish_finalize() {
 
   local -a pids=()
   [[ -n "$PIDS_BASE" ]] && read -ra pids <<< "$PIDS_BASE"
-  if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${pids[@]}" >/dev/null; then
-    return 1
+  # Skip the final checkpoint when the local base tip already IS the
+  # checkpoint covering RANGE_END — e.g. a retry after a post-checkpoint
+  # cleanup failure. Any commit above it ([SYNC], replayed or recorded
+  # [MEMORY]) makes the tip non-checkpoint and the checkpoint is written.
+  local tip_cp tip_public _
+  tip_cp="$(checkpoint_latest "$LOCAL_BASE")"
+  tip_public=""
+  if [[ -n "$tip_cp" && "$tip_cp" == "$(git rev-parse "$LOCAL_BASE")" ]]; then
+    read -r tip_public _ <<< "$(checkpoint_parse "$tip_cp")"
+  fi
+  if [[ "$tip_public" != "$RANGE_END" ]]; then
+    if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${pids[@]}" >/dev/null; then
+      return 1
+    fi
   fi
 
   finish_resolve_worktree

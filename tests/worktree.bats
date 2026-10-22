@@ -641,3 +641,45 @@ HOOK
   [ "$status" -eq 1 ]
   [[ "$output" == *"dirty.txt [untracked]"* ]]
 }
+
+@test "worktree_records reports the locked flag" {
+  git worktree add -q "$TEST_DIR/wt1" "feat-x@local"
+  run worktree_records
+  [ "$status" -eq 0 ]
+  worktree_records | grep -qF "$TEST_DIR/wt1	feat-x@local	-"
+  git worktree lock "$TEST_DIR/wt1"
+  worktree_records | grep -qF "$TEST_DIR/wt1	feat-x@local	1"
+}
+
+@test "feature finish aborts pre-mutation on a locked feature worktree" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  git worktree lock "$TEST_DIR/wt-feat"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"locked"* ]]
+  [[ "$output" == *"git worktree unlock"* ]]
+  # Nothing mutated: worktree still registered, branches still exist.
+  git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature finish aborts on a locked stale registration naming unlock" {
+  _setup_finished_worktree_feature "$TEST_DIR/wt-feat"
+  git worktree lock "$TEST_DIR/wt-feat"
+  rm -rf "$TEST_DIR/wt-feat"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"unlock"* ]]
+  git show-ref --verify --quiet "refs/heads/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "worktree_orphans still matches @local branches on widened records" {
+  git worktree add -q "$TEST_DIR/wt1" "feat-x@local"
+  git worktree lock "$TEST_DIR/wt1"
+  git update-ref -d "refs/heads/feat-x@local"
+  run worktree_orphans
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"$TEST_DIR/wt1"* ]]
+}

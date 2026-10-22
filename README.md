@@ -320,7 +320,7 @@ This command:
 * pulls the public base branch (default: `main`)
 * syncs the public base into `main@local` using net diff
 * cherry-picks each `[MEMORY]` commit from `feature/x@local` onto `main@local`
-* creates a new `[CHECKPOINT]` on `main@local`
+* creates a new `[CHECKPOINT]` on `main@local` (skipped when the `main@local` tip already is a `[CHECKPOINT]` covering the current public head, e.g. on a retry)
 * deletes the feature branches
 
 (every branch naming is configurable inside your own `.env` file)

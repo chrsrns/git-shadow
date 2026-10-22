@@ -5,26 +5,39 @@
 #          (feature start --worktree / feature finish --keep-worktree).
 # -------------------------------------------------------------------
 
-# Print one `path<TAB>branch` record per registered worktree from a single
-# `git worktree list --porcelain` parse. `branch` is `-` for a detached or
-# bare entry. Every registry consumer builds on these records so the
+# Print one `path<TAB>branch<TAB>locked` record per registered worktree from
+# a single `git worktree list --porcelain` parse. `branch` is `-` for a
+# detached or bare entry; `locked` is `1` on a `locked`/`locked <reason>`
+# record, else `-`. Every registry consumer builds on these records so the
 # porcelain format is known in exactly one place (V168).
 worktree_records() {
-  local path="" branch="" line
+  local path="" branch="" locked="-" line
   while IFS= read -r line || [[ -n "$line" ]]; do
     case "$line" in
       worktree\ *)          path="${line#worktree }" ;;
       branch\ refs/heads/*) branch="${line#branch refs/heads/}" ;;
       detached)             branch="-" ;;
       bare)                 branch="-" ;;
+      locked|locked\ *)     locked="1" ;;
       "")
         if [[ -n "$path" ]]; then
-          printf '%s\t%s\n' "$path" "${branch:--}"
+          printf '%s\t%s\t%s\n' "$path" "${branch:--}" "$locked"
         fi
-        path=""; branch=""
+        path=""; branch=""; locked="-"
         ;;
     esac
   done < <(git worktree list --porcelain; printf '\n')
+}
+
+# Return 0 when the worktree registered at <path> is locked.
+worktree_is_locked() {
+  local target
+  target="$(abs_path_m "$1")" || return 1
+  local rec_path rec_branch rec_locked
+  while IFS=$'\t' read -r rec_path rec_branch rec_locked; do
+    [[ "$rec_path" == "$target" && "$rec_locked" == "1" ]] && return 0
+  done < <(worktree_records)
+  return 1
 }
 
 # Print the registered worktree paths, one per line, from worktree_records.
@@ -154,8 +167,9 @@ worktree_is_dirty() {
 # Print the registered worktree path for <local_branch>, or return 1.
 worktree_find_for_branch() {
   local branch="$1"
-  local path rec_branch
-  while IFS=$'\t' read -r path rec_branch; do
+  # shellcheck disable=SC2034  # third record field consumed by other readers; required so the branch field does not fold
+  local path rec_branch rec_locked
+  while IFS=$'\t' read -r path rec_branch rec_locked; do
     if [[ "$rec_branch" == "$branch" ]]; then
       printf '%s\n' "$path"
       return 0
@@ -198,8 +212,8 @@ worktree_remove() {
 # its directory is missing, or its @local branch no longer exists.
 # Read-only; used by `git shadow doctor`.
 worktree_orphans() {
-  local path branch
-  while IFS=$'\t' read -r path branch; do
+  local path branch rec_locked
+  while IFS=$'\t' read -r path branch rec_locked; do
     [[ -z "$path" ]] && continue
     if [[ ! -d "$path" ]]; then
       printf '%s\t%s\n' "$path" "$branch"

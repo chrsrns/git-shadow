@@ -56,6 +56,7 @@ git shadow push feature/x
 - `git shadow status` reports `local-patches` (`[patch]` count) + `unpatched-dirty` (paths failing the clean-tree check) — JSON `local_patches`/`unpatched_dirty`.
 - `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
+- An applied overlay is never dirt and never blocks mutating ops (`feature start`, `feature sync`, `base sync`, `feature publish`, `feature finish`, `re-anchor`, `git shadow commit`) — strip + reapply is automatic. ⊥ `local rm --revert` before these ops; only `[patch-stale]`/`[dirty]`/`[staged]`/`[untracked]` block.
 
 ### When public branch changes
 
@@ -84,9 +85,13 @@ git shadow feature finish <name>
 git shadow push <public-base-branch>
 ```
 
+No `git shadow feature sync` needed before `git shadow feature finish` — finish pulls the base,
+verifies the merge (incl. squash), applies the base net diff, replays `[MEMORY]` itself.
+
 If the feature is in a worktree, `git shadow feature finish` removes it before deleting branches.
 Use `--keep-worktree` to keep both the worktree and `feature/x@local`.
 A dirty worktree or `cwd` inside the worktree aborts `finish` before any change.
+Any untracked file in the worktree other than toplevel `.git-shadow.env` aborts too — commit it, move it, or `--keep-worktree`.
 `--keep-worktree`/`--keep-branches` persist in the paused finish state, so
 `--continue` and `--mark-applied` honor them; re-supplying a flag widens the stored value.
 

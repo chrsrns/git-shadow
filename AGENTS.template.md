@@ -38,6 +38,7 @@ Use **git shadow** to keep thinking work in `@local` and clean work in public br
 - `git shadow status` also reports `local-patches` (paths classed `[patch]`) and `unpatched-dirty` (paths that would abort a clean-tree check: `[patch-stale]`/`[dirty]`/`[staged]`/`[untracked]`) — JSON keys `local_patches`/`unpatched_dirty`.
 - If `git shadow local apply` warns that a sidecar is an orphan, the source no longer matches. Refresh the sidecar with `git shadow local add <path>` or remove it.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction, so the public commit never contains the local overlay.
+- An applied overlay never counts as dirt and never blocks `feature start`, `feature sync`, `base sync`, `feature publish`, `feature finish`, `re-anchor`, or `git shadow commit` — each strips and reapplies overlays automatically (`git shadow commit` subtracts it from the commit instead). Do not `git shadow local rm --revert` before these ops; only `[patch-stale]`/`[dirty]`/`[staged]`/`[untracked]` block.
 
 ### Typical workflow
 
@@ -98,6 +99,10 @@ git shadow feature finish <name>
 
 git shadow push <public-base-branch>
 ```
+
+`git shadow feature sync` is not needed before `git shadow feature finish` — finish pulls the
+public base, verifies the merge (including squash merges), applies the base net diff, and
+replays `[MEMORY]` commits itself.
 
 If the feature lives in a worktree, `git shadow feature finish` removes the worktree before deleting
 the feature branches — use `--keep-worktree` to keep both it and `feature/x@local`.

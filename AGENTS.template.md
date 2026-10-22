@@ -107,6 +107,7 @@ replays `[MEMORY]` commits itself.
 If the feature lives in a worktree, `git shadow feature finish` removes the worktree before deleting
 the feature branches — use `--keep-worktree` to keep both it and `feature/x@local`.
 A dirty worktree or a `cd` inside it aborts `finish` before any change.
+So does any untracked file in the worktree other than a toplevel `.git-shadow.env` — commit it, move it, or use `--keep-worktree`.
 
 `--keep-worktree` and `--keep-branches` are stored in the paused finish state, so
 `git shadow feature finish --continue` and `git shadow feature finish --mark-applied`

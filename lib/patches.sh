@@ -475,6 +475,35 @@ patches_dirty_records() {
   return 0
 }
 
+# Emit one NUL-delimited `??` relpath record per untracked path, sharing
+# the same `git status` enumeration as patches_dirty_records — callers
+# that must see classifier-exempt paths (.git-shadow.env, .gitignore,
+# registered-worktree dirs) cannot use patches_dirty_records, which drops
+# clean records. Buffers the enumeration so its exit status stays
+# observable — process substitution would hide the failure. Returns 1
+# when the enumeration fails.
+patches_untracked_records() {
+  local root
+  root="$(repo_root)" || return 1
+
+  local enum_out
+  enum_out="$(mktemp)" || return 1
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
+
+  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+    return 1
+  fi
+
+  local rec
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    [[ "${rec:0:2}" == "??" ]] && printf '%s\0' "${rec:3}"
+  done < "$enum_out"
+
+  return 0
+}
+
 # Print the classified dirt table — `XY <path> [<class>]`, one line per
 # dirty `git status` record; `clean` records are dropped.
 #

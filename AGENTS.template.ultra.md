@@ -91,6 +91,7 @@ verifies the merge (incl. squash), applies the base net diff, replays `[MEMORY]`
 If the feature is in a worktree, `git shadow feature finish` removes it before deleting branches.
 Use `--keep-worktree` to keep both the worktree and `feature/x@local`.
 A dirty worktree or `cwd` inside the worktree aborts `finish` before any change.
+Any untracked file in the worktree other than toplevel `.git-shadow.env` aborts too — commit it, move it, or `--keep-worktree`.
 `--keep-worktree`/`--keep-branches` persist in the paused finish state, so
 `--continue` and `--mark-applied` honor them; re-supplying a flag widens the stored value.
 

@@ -494,8 +494,9 @@ doctor_worktree_check() {
     done <<< "$orphans"
   fi
 
-  local path held
-  while IFS=$'\t' read -r path held; do
+  local path held rec_locked
+  # shellcheck disable=SC2034  # third record field consumed by other readers; required so the branch field does not fold
+  while IFS=$'\t' read -r path held rec_locked; do
     [[ -z "$path" ]] && continue
     if [[ "$path" != "$current_top" && -d "$path" \
        && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then

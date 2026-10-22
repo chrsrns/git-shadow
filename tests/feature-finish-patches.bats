@@ -95,3 +95,52 @@ teardown() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"orphan sidecar"* ]]
 }
+
+_setup_overlay_worktree_feature() {
+  git shadow feature start wt-feat >/dev/null
+  echo "wf" > wf.txt
+  git add wf.txt
+  git commit -qm "feat: wf"
+  git shadow feature publish >/dev/null
+  git checkout -q main
+  git merge -q --no-edit wt-feat
+  git checkout -q "main@local"
+  git worktree add -q "$TEST_DIR/wt-feat" "wt-feat@local"
+}
+
+@test "feature finish removes a worktree whose only dirt is an applied overlay" {
+  _setup_overlay_worktree_feature
+  ( cd "$TEST_DIR/wt-feat" && printf 'A\nB local\nC\n' > file.txt && git shadow local add file.txt >/dev/null )
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 0 ]
+  [ ! -d "$TEST_DIR/wt-feat" ]
+  ! git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  ! git show-ref --verify --quiet "refs/heads/wt-feat@local"
+  [ -f "${TEST_DIR}/.git-shadow/patches/file.txt.patch" ]
+}
+
+@test "feature finish aborts on a patch-stale overlay worktree" {
+  _setup_overlay_worktree_feature
+  ( cd "$TEST_DIR/wt-feat" && printf 'A\nB local\nC\n' > file.txt && git shadow local add file.txt >/dev/null && printf 'A\nB other\nC\n' > file.txt )
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  git worktree list --porcelain | grep -qxF "worktree $TEST_DIR/wt-feat"
+  git show-ref --verify --quiet "refs/heads/wt-feat@local"
+}
+
+@test "feature finish retry after post-checkpoint cleanup failure adds no checkpoint" {
+  _setup_overlay_worktree_feature
+  ( cd "$TEST_DIR/wt-feat" && printf 'A\nB local\nC\n' > file.txt && git shadow local add file.txt >/dev/null )
+  # An untracked .git-shadow.env is exempt from the dirt classifier but
+  # `git worktree remove` refuses it — the finish dies at cleanup, after
+  # the replay and checkpoint already landed.
+  echo "K=V" > "$TEST_DIR/wt-feat/.git-shadow.env"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 1 ]
+  cp_count="$(git log --format='%s' main@local | grep -c '^\[CHECKPOINT\]')"
+  rm -f "$TEST_DIR/wt-feat/.git-shadow.env"
+  run git shadow feature finish wt-feat --no-pull
+  [ "$status" -eq 0 ]
+  [ "$(git log --format='%s' main@local | grep -c '^\[CHECKPOINT\]')" = "$cp_count" ]
+  [ ! -d "$TEST_DIR/wt-feat" ]
+}

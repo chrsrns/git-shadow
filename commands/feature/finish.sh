@@ -44,8 +44,9 @@ finish_check_base_exclusivity() {
   local public_base="$1" local_base="$2" feature_name="${3:-<name>}"
   local current_top
   current_top="$(abs_path_m "$(repo_root)")"
-  local path held
-  while IFS=$'\t' read -r path held; do
+  local path held rec_locked
+  # shellcheck disable=SC2034  # third record field consumed by other readers; required so the branch field does not fold
+  while IFS=$'\t' read -r path held rec_locked; do
     [[ -z "$path" ]] && continue
     if [[ "$path" != "$current_top" \
        && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
@@ -80,6 +81,11 @@ finish_check_feature_worktree() {
   finish_resolve_worktree
   [[ -z "$FINISH_WORKTREE" ]] && return 0
   [[ "$KEEP_WORKTREE" -eq 1 ]] && return 0
+  if worktree_is_locked "$FINISH_WORKTREE"; then
+    ui_error "Feature worktree '$FINISH_WORKTREE' is locked."
+    ui_info  "Run 'git worktree unlock \"$FINISH_WORKTREE\"', or keep it with --keep-worktree."
+    return 1
+  fi
   [[ ! -d "$FINISH_WORKTREE" ]] && return 0   # stale registration
 
   local cwd
@@ -101,6 +107,27 @@ finish_check_feature_worktree() {
   return 0
 }
 
+# Restore every `patch`-classed source file inside <worktree> to HEAD so a
+# plain `git worktree remove` is not refused by an applied overlay. The
+# overlay content is already preserved on the base by the [MEMORY] replay.
+# `patch`-class only: at-HEAD paths skip as no-ops and `patch-stale` paths
+# stay, so a mid-run edit still blocks removal instead of being clobbered
+# (V276). Runs inside the target worktree so path classification resolves
+# against it (V220/V235).
+finish_revert_worktree_overlays() {
+  local worktree="$1"
+  local rec status class path
+  while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
+    [[ -z "$rec" ]] && continue
+    status="${rec%%$'\t'*}"
+    class="$(printf '%s' "$rec" | cut -f2)"
+    [[ "$class" != "patch" ]] && continue
+    path="$(printf '%s' "$rec" | cut -f3)"
+    git -C "$worktree" checkout -q HEAD -- "$path" || return 1
+  done < <(cd "$worktree" && patches_dirty_records)
+  return 0
+}
+
 # Success-path cleanup: remove the feature worktree (unless kept) before
 # deleting the feature branches. --keep-worktree preserves the worktree
 # and <name>@local; --keep-branches preserves both branches.
@@ -109,6 +136,18 @@ finish_check_feature_worktree() {
 finish_cleanup_feature() {
   local worktree="$FINISH_WORKTREE"
   if [[ -n "$worktree" && "$KEEP_WORKTREE" -eq 0 ]]; then
+    # Re-probe the lock before removal regardless of directory presence: a
+    # mid-run lock must not reach the prune path (prune skips locked
+    # registrations) and a locked live tree must not reach `git worktree
+    # remove`.
+    if worktree_is_locked "$worktree"; then
+      ui_error "Feature worktree '$worktree' is locked."
+      ui_info  "Run 'git worktree unlock \"$worktree\"', then retry."
+      return 1
+    fi
+    if [[ -d "$worktree" ]] && ! finish_revert_worktree_overlays "$worktree"; then
+      return 1
+    fi
     if [[ -d "$worktree" ]] && worktree_is_dirty "$worktree"; then
       ui_error "Feature worktree '$worktree' is dirty; refusing to remove it."
       ( cd "$worktree" && patches_dirty_table >&2 ) \
@@ -359,8 +398,20 @@ finish_finalize() {
 
   local -a pids=()
   [[ -n "$PIDS_BASE" ]] && read -ra pids <<< "$PIDS_BASE"
-  if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${pids[@]}" >/dev/null; then
-    return 1
+  # Skip the final checkpoint when the local base tip already IS the
+  # checkpoint covering RANGE_END — e.g. a retry after a post-checkpoint
+  # cleanup failure. Any commit above it ([SYNC], replayed or recorded
+  # [MEMORY]) makes the tip non-checkpoint and the checkpoint is written.
+  local tip_cp tip_public _
+  tip_cp="$(checkpoint_latest "$LOCAL_BASE")"
+  tip_public=""
+  if [[ -n "$tip_cp" && "$tip_cp" == "$(git rev-parse "$LOCAL_BASE")" ]]; then
+    read -r tip_public _ <<< "$(checkpoint_parse "$tip_cp")"
+  fi
+  if [[ "$tip_public" != "$RANGE_END" ]]; then
+    if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${pids[@]}" >/dev/null; then
+      return 1
+    fi
   fi
 
   finish_resolve_worktree

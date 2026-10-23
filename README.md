@@ -131,9 +131,11 @@ Configuration is loaded from three levels, in order of priority:
 
 | Level | Path | Scope |
 |-------|------|-------|
-| Project | `.git-shadow.env` in the repo root | per-repository |
+| Project | `.git-shadow.env` at the worktree toplevel | per-repository (each linked worktree has its own; `feature start --worktree` copies it from the invoking checkout, else the main checkout) |
 | User | `~/.config/git-shadow/config.env` | global for current user |
 | Defaults | `config/defaults.env` (shipped) | built-in fallback |
+
+`SHADOW_COMMIT_PREFIX` drives memory-commit classification: a commit whose subject begins with the prefix (or the literal `[MEMORY]`) stays on `@local` — excluded from publish, replayed by `feature finish`. Reconfiguring it is safe for history, but an empty/blank value or one beginning with `[CHECKPOINT]`/`[SYNC]` is invalid and warns on load. Note that the prefix is matched literally — pick a value no public commit should carry, or those commits classify as memory too. Manually committing `[CHECKPOINT]`/`[SYNC]`/prefix-led subjects on `@local` bypasses the tool's message guards; `checkpoint_latest` skips unparseable checkpoint subjects, but deliberate forged checkpoint subjects remain user responsibility.
 
 The `git shadow config` command lets you inspect and manage configuration directly from the CLI:
 

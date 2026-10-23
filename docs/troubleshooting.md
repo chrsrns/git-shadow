@@ -231,7 +231,16 @@ checkpoint public SHA <sha> is not an ancestor of <public-branch>
    ```bash
    git diff feature/login feature/login@local
    ```
-   Move local-only changes into new `[MEMORY]` files and then `re-anchor`.
+   Move local-only changes into new `[MEMORY]` files and then `re-anchor`. When the difference is the *rewritten public content* itself (the rewrite changed file contents, not just history), apply the remote tree onto the `@local` branch and commit:
+
+   ```bash
+   git checkout feature/login@local
+   git checkout origin/feature/login -- :/
+   git commit -m "apply rewritten public tree"
+   git shadow re-anchor feature/login@local
+   ```
+
+**Finish variant — rewritten then merged:** if `git shadow feature finish` aborts "not merged" but the feature *was* merged remotely as a rewrite, the local public ref is stale. When the remote branch still exists, `git shadow re-anchor <name>@local` resets it (or repoint directly: `git fetch origin <name>` + `git branch -f <name> origin/<name>`). When the remote branch was deleted post-merge and the merge is known to have completed: `git branch -f <name> <base>` (or `git update-ref refs/heads/<name> <base>` if `<name>` is checked out in a worktree), then re-run `finish`. Do not run `re-anchor` against a deleted remote branch — with no remote ref it silently re-anchors at the stale local head and the abort returns.
 
 ---
 
@@ -311,6 +320,8 @@ Use **`re-anchor`** when:
 `re-anchor` discards the previous checkpoint and starts a new one from the current public and `@local` trees. It requires the `@local` tree to contain the new public tree for every public-tracked file; otherwise it aborts.
 
 If both fail, the public and local lines have truly diverged. Resolve the content differences manually, then `re-anchor`.
+
+Two caveats: `re-anchor` is not the recovery when the remote branch was deleted — with no remote ref it re-anchors at the stale local head; use the `git branch -f` repoint in §4's finish variant instead (asserting the merge completed). And when `feature finish` aborts "not merged" on a rewritten-then-merged feature, see §4's finish variant — the local public ref is stale, not unmerged.
 
 ---
 

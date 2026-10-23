@@ -882,3 +882,138 @@ EOF2
 
   git cat-file -e "main@local:.git-shadow/annotations/sub/app.js"
 }
+
+# Build an origin remote where test-feature was rewritten (new content)
+# and squash-merged into main; the local test-feature ref stays stale.
+_ff_origin_rewritten_merge() {
+  ORIGIN_DIR="$(mktemp -d)"
+  git clone -q --bare . "$ORIGIN_DIR"
+  git remote add origin "$ORIGIN_DIR"
+  GIT_SHADOW=1 git push -q origin main
+  GIT_SHADOW=1 git push -q origin test-feature
+
+  REMOTE_WORK="$(mktemp -d)"
+  git clone -q "$ORIGIN_DIR" "$REMOTE_WORK"
+  (
+    cd "$REMOTE_WORK"
+    git config user.name "Test User"
+    git config user.email "test@example.com"
+    git checkout -q test-feature
+    echo "rewritten feature code" > feature.txt
+    git add feature.txt
+    git commit -q --amend -m "feat: feature code (rewritten)"
+    git push -q --force origin test-feature
+
+    # Squash-merge the rewritten feature into main so no local feature
+    # sha is an ancestor of main and the trees differ.
+    git checkout -q main
+    git reset -q --hard HEAD^
+    git merge -q --squash test-feature
+    git commit -qm "merge rewritten test-feature"
+    git push -q --force origin main
+  )
+
+  git fetch -q origin
+  git checkout -q main
+  git reset -q --hard origin/main
+  git checkout -q "test-feature@local"
+}
+
+_ff_cleanup_origin() {
+  rm -rf "$ORIGIN_DIR" "$REMOTE_WORK"
+}
+
+@test "finish merged-check prints differing paths and re-anchor hint for a rewritten remote head" {
+  _ff_origin_rewritten_merge
+
+  run git shadow feature finish --no-pull
+  _ff_cleanup_origin
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"differs at 'feature.txt'"* ]]
+  [[ "$output" == *"re-anchor"* ]]
+}
+
+@test "finish merged-check names git branch -f recipe when the remote branch is gone" {
+  _ff_origin_rewritten_merge
+  # Delete on the remote side so the local tracking ref survives — a
+  # `git push --delete` would prune it too, which a real remote-side
+  # deletion never does.
+  git -C "$ORIGIN_DIR" update-ref -d refs/heads/test-feature
+
+  run git shadow feature finish --no-pull
+  _ff_cleanup_origin
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"git branch -f"* ]]
+  [[ "$output" != *"re-anchor"* ]]
+}
+
+@test "finish merged-check keeps the plain message for a never-pushed feature" {
+  ORIGIN_DIR="$(mktemp -d)"
+  git clone -q --bare . "$ORIGIN_DIR"
+  git remote add origin "$ORIGIN_DIR"
+  GIT_SHADOW=1 git push -q origin main
+
+  # Unmerge locally so the merged-check fails.
+  git checkout -q main
+  git reset -q --hard HEAD^
+  git checkout -q "test-feature@local"
+
+  run git shadow feature finish --no-pull
+  rm -rf "$ORIGIN_DIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Merge it first"* ]]
+  [[ "$output" != *"re-anchor"* ]]
+  [[ "$output" != *"git branch -f"* ]]
+}
+
+@test "finish merged-check keeps the plain message when local public head is ahead of remote" {
+  ORIGIN_DIR="$(mktemp -d)"
+  git clone -q --bare . "$ORIGIN_DIR"
+  git remote add origin "$ORIGIN_DIR"
+  GIT_SHADOW=1 git push -q origin main
+  GIT_SHADOW=1 git push -q origin test-feature
+  git fetch -q origin
+
+  # Local public branch ahead of the remote head; feature unmerged.
+  git checkout -q main
+  git reset -q --hard HEAD^
+  git checkout -q test-feature
+  echo "extra" > extra.txt
+  git add extra.txt
+  GIT_SHADOW=1 git commit -qm "feat: extra commit"
+  git checkout -q "test-feature@local"
+
+  run git shadow feature finish --no-pull
+  rm -rf "$ORIGIN_DIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Merge it first"* ]]
+  [[ "$output" != *"re-anchor"* ]]
+  [[ "$output" != *"git branch -f"* ]]
+}
+
+@test "finish merged-check keeps the plain message when the remote probe fails" {
+  git remote add origin /nonexistent-ff-probe
+
+  # Unmerge locally so the merged-check fails.
+  git checkout -q main
+  git reset -q --hard HEAD^
+  git checkout -q "test-feature@local"
+
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Merge it first"* ]]
+  [[ "$output" != *"re-anchor"* ]]
+  [[ "$output" != *"git branch -f"* ]]
+}
+
+@test "finish merged-check keeps the plain message for a genuinely unmerged feature" {
+  git checkout -q main
+  git reset -q --hard HEAD^
+  git checkout -q "test-feature@local"
+
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Merge it first"* ]]
+  [[ "$output" != *"re-anchor"* ]]
+  [[ "$output" != *"git branch -f"* ]]
+}

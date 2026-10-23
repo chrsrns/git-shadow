@@ -366,6 +366,13 @@ git shadow base sync --recover
 git shadow re-anchor main@local
 ```
 
+## Recover a feature branch that was rewritten and merged
+
+If `git shadow feature finish` aborts with "not merged" after the remote feature branch was rewritten and merged (e.g. a squashed MR), the local public ref is stale — it still points at the pre-rewrite SHA, so neither the ancestry check nor the tree check recognizes the merge. The abort prints the differing public-tracked paths and names the recovery that fits:
+
+- **Remote branch still exists:** `git shadow re-anchor <name>@local` fetches the remote head, resets the stale local ref to it, and writes a fresh checkpoint. Re-run `finish`. If `re-anchor` aborts because `<name>@local` does not contain the rewritten public tree, apply it first (`git checkout <name>@local` + `git checkout origin/<name> -- :/` + commit), or simply repoint the stale ref — `git fetch origin <name>` + `git branch -f <name> origin/<name>` — since finish's merged-check compares the public tree to the base, never `<name>@local`.
+- **Remote branch was deleted after merging:** repoint the stale local ref to any commit whose tree is contained in the base (the merge commit or the base tip): `git branch -f <name> <base>`, then re-run `finish`. Use `git update-ref refs/heads/<name> <base>` when `<name>` is checked out in a worktree. Only do this when you know the merge completed before deletion — a declined MR deletes the remote branch too, and this recipe finishes the feature regardless.
+
 ## Land a commit directly on a public branch
 
 For release chores, hotfixes, or other changes that should not go through a feature pair, commit straight on the public base and let `base sync` absorb it:

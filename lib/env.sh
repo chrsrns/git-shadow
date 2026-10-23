@@ -53,4 +53,11 @@ load_env() {
 
   # 3. Project-level config (optional, from current working directory)
   _load_config_file "$PWD/.git-shadow.env" 1
+
+  # Warn on an invalid effective SHADOW_COMMIT_PREFIX (V288): a colliding
+  # prefix emits sidecar subjects the literal consumers misread; an
+  # empty/blank prefix emits unclassifiable subjects.
+  if [[ -z "${SHADOW_COMMIT_PREFIX:-}" || "$SHADOW_COMMIT_PREFIX" =~ ^[[:space:]]*$ || "$SHADOW_COMMIT_PREFIX" == "[CHECKPOINT]"* || "$SHADOW_COMMIT_PREFIX" == "[SYNC]"* ]]; then
+    printf '⚠️  [git-shadow] SHADOW_COMMIT_PREFIX "%s" is invalid (empty, blank, or collides with [CHECKPOINT]/[SYNC]).\n' "${SHADOW_COMMIT_PREFIX:-}" >&2
+  fi
 }

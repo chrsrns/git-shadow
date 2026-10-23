@@ -66,9 +66,18 @@ if [[ -z "$PUBLIC_MESSAGE" ]]; then
   exit 1
 fi
 
-# Disallow public messages that match the shadow commit filter.
+# Disallow public messages that match the shadow commit filter, classify as
+# memory-class, or carry a toolkit-internal subject prefix.
 if [[ "$PUBLIC_MESSAGE" =~ $SHADOW_COMMIT_FILTER ]]; then
   ui_error "Public commit message matches shadow commit filter ($SHADOW_COMMIT_FILTER)."
+  exit 1
+fi
+if commit_subject_is_memory "$PUBLIC_MESSAGE"; then
+  ui_error "Public commit message uses the memory-commit prefix ($SHADOW_COMMIT_PREFIX or [MEMORY])."
+  exit 1
+fi
+if [[ "$PUBLIC_MESSAGE" == "[CHECKPOINT]"* || "$PUBLIC_MESSAGE" == "[SYNC]"* ]]; then
+  ui_error "Public commit message uses a toolkit-internal subject prefix ([CHECKPOINT]/[SYNC])."
   exit 1
 fi
 

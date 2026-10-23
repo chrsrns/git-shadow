@@ -51,7 +51,7 @@ checkpoint_create() {
 # Prints "<public_sha> <local_sha>", or nothing for a non-checkpoint
 # subject.
 checkpoint_parse() {
-  git log -1 --format='%s' "$1" | sed -n 's/^\[CHECKPOINT\] public:\([^ ]*\) local:\([^ ]*\).*/\1 \2/p'
+  git log -1 --format='%s' "$1" | sed -n 's/^\[CHECKPOINT\] public:\([0-9a-fA-F]\{1,\}\) local:\([0-9a-fA-F]\{1,\}\).*/\1 \2/p'
 }
 
 # Print the patch-ids stored in the checkpoint body, space separated.
@@ -68,5 +68,15 @@ checkpoint_pids() {
 # Prints the SHA, or nothing if none is found.
 checkpoint_latest() {
   local ref="$1"
-  git log -1 --format='%H' --extended-regexp --grep='^\[CHECKPOINT\]' "$ref" 2>/dev/null || true
+  local sha
+  # Walk [CHECKPOINT]-led candidates newest-first; return the first whose
+  # subject checkpoint_parse accepts (V289) — a malformed or colliding
+  # commit is skipped, never terminal.
+  while IFS= read -r sha; do
+    [[ -n "$sha" ]] || continue
+    if [[ -n "$(checkpoint_parse "$sha")" ]]; then
+      printf '%s\n' "$sha"
+      return 0
+    fi
+  done < <(git log --format='%H' --extended-regexp --grep='^\[CHECKPOINT\]' "$ref" 2>/dev/null)
 }

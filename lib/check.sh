@@ -14,6 +14,18 @@
 # in chronological order.  [MEMORY] and [CHECKPOINT] commits are skipped.
 # On feature branches (any @local branch other than the local base), merge
 # commits and commits reachable from the local base are excluded too — they
+# Return 0 iff <subject> is memory-class: begins with SHADOW_COMMIT_PREFIX
+# (literal match, non-empty prefix only) or literal "[MEMORY]". Literal
+# "[CHECKPOINT]"/"[SYNC]" subjects are never memory-class (V283).
+commit_subject_is_memory() {
+  local subject="$1"
+  [[ "$subject" == "[CHECKPOINT]"* || "$subject" == "[SYNC]"* ]] && return 1
+  if [[ -n "${SHADOW_COMMIT_PREFIX:-}" && "$subject" == "$SHADOW_COMMIT_PREFIX"* ]]; then
+    return 0
+  fi
+  [[ "$subject" == "[MEMORY]"* ]]
+}
+
 # already live on the public base and cannot replay onto the feature base.
 check_public_commits() {
   local local_branch="$1"
@@ -36,7 +48,7 @@ check_public_commits() {
   local sha subject parents
   for sha in $revlist; do
     subject="$(git log -1 --format='%s' "$sha")"
-    if [[ "$subject" == "[MEMORY]"* || "$subject" == "[CHECKPOINT]"* || "$subject" == "[SYNC]"* ]]; then
+    if commit_subject_is_memory "$subject" || [[ "$subject" == "[CHECKPOINT]"* || "$subject" == "[SYNC]"* ]]; then
       continue
     fi
     if [[ $exclude_feature -eq 1 ]]; then

@@ -359,3 +359,11 @@ teardown() {
   run git shadow config show
   [[ "$output" == *"TOTALLY_UNKNOWN_KEY"* ]] || [[ "${lines[@]}" == *"TOTALLY_UNKNOWN_KEY"* ]]
 }
+
+@test "config set --project-config from a subdirectory writes the toplevel file" {
+  mkdir -p sub/deeper
+  (cd sub/deeper && git shadow config set ANNOTATION_FUZZY_THRESHOLD 0.5 --project-config >/dev/null)
+  [ -f .git-shadow.env ]
+  grep -q 'ANNOTATION_FUZZY_THRESHOLD' .git-shadow.env
+  [ ! -f sub/deeper/.git-shadow.env ]
+}

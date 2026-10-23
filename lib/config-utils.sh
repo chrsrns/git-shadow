@@ -20,7 +20,9 @@ user_config_path() {
 }
 
 project_config_path() {
-  printf '%s\n' "$PWD/.git-shadow.env"
+  local dir
+  dir="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
+  printf '%s\n' "$dir/.git-shadow.env"
 }
 
 # ---------------------------------------------------------------------------

@@ -706,3 +706,26 @@ HOOK
   worktree_add "feat-y@local" "$TEST_DIR/wt-new" >/dev/null
   [ ! -f "$TEST_DIR/wt-new/.git-shadow.env" ]
 }
+
+@test "sync_stage_all unstages a manually-added in-repo worktree and warns" {
+  git branch "feat-y@local"
+  git worktree add -q "$TEST_DIR/wt-inner" "feat-y@local"  # manual: bypasses info/exclude
+  echo change >> file.txt
+  run sync_stage_all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"wt-inner"* ]] || [[ "$output" == *"Unstaged"* ]]
+  # no gitlink staged
+  run git -C "$TEST_DIR" diff --cached --name-only
+  [[ "$output" != *"wt-inner"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "sync_stage_all leaves an out-of-repo worktree and the invoking toplevel untouched" {
+  git branch "feat-y@local"
+  git worktree add -q "$TEST_DIR/wts/outside" "feat-y@local"
+  echo change >> file.txt
+  run sync_stage_all
+  [ "$status" -eq 0 ]
+  run git -C "$TEST_DIR" diff --cached --name-only
+  [[ "$output" == *"file.txt"* ]]
+}

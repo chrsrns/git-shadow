@@ -91,6 +91,23 @@ sync_stage_all() {
   root="$(repo_root)"
   git -C "$root" add -A -- .
   git -C "$root" reset -q -- .git-shadow.env 2>/dev/null || true
+
+  # Unstage registered-worktree toplevels strictly nested under the
+  # invoking toplevel (V287): a manually-added in-repo worktree bypasses
+  # worktree_add's info/exclude write and would otherwise commit as a
+  # 160000 gitlink. The invoking toplevel itself and out-of-repo paths
+  # are skipped — unstaging "." would drop the whole net diff.
+  local wt_path wt_branch wt_locked rel
+  while IFS=$'\t' read -r wt_path wt_branch wt_locked; do
+    [[ -n "$wt_path" ]] || continue
+    rel="$(realpath -m --relative-to="$root" "$wt_path" 2>/dev/null)" || continue
+    [[ "$rel" == "." || "$rel" == ../* || "$rel" == /* || -z "$rel" ]] && continue
+    if git -C "$root" diff --cached --quiet -- ":(literal)$rel"; then
+      continue
+    fi
+    ui_warn "Unstaged swept worktree directory: $rel"
+    git -C "$root" reset -q -- ":(literal)$rel" 2>/dev/null || true
+  done < <(worktree_records)
 }
 
 # Apply the net diff from start..end to the current working tree using a

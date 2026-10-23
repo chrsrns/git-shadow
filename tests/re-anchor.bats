@@ -221,3 +221,67 @@ EOF
   [ "$(git branch --show-current)" = "feature-foo@local" ]
   [ "$(cat file.txt)" = $'v2\nlocal tweak' ]
 }
+
+@test "re-anchor aborts when the public branch is checked out in another worktree" {
+  WT_DIR="$(mktemp -d)/wt-feature"
+  git worktree add -q "$WT_DIR" feature-foo
+
+  git checkout -q feature-foo@local
+  local before="$(git rev-parse feature-foo)"
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$WT_DIR"* ]]
+  [[ "$output" == *"detach"* ]]
+
+  # The public ref is unchanged.
+  [ "$(git rev-parse feature-foo)" = "$before" ]
+
+  git worktree remove --force "$WT_DIR"
+}
+
+@test "re-anchor from a checkout holding the public branch still fast-forwards" {
+  # Invoking checkout holds feature-foo — the merge/reset path applies.
+  git checkout -q feature-foo
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse feature-foo)" = "$(git rev-parse origin/feature-foo)" ]
+}
+
+@test "re-anchor moves the ref when the public branch is checked out nowhere" {
+  git checkout -q feature-foo@local
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse feature-foo)" = "$(git rev-parse origin/feature-foo)" ]
+}
+
+@test "re-anchor keeps the local public head when it is ahead of remote" {
+  # Publish an extra commit so the local public head is ahead of remote.
+  echo "local extra" > local-extra.txt
+  git add local-extra.txt
+  git commit -qm "feat: local extra"
+  git shadow feature publish
+  local_head="$(git rev-parse feature-foo)"
+
+  # Remote head = local's parent — strictly an ancestor → keep-local leg.
+  git -C "$ORIGIN_DIR" update-ref refs/heads/feature-foo "$(git rev-parse feature-foo^)"
+
+  run git shadow re-anchor feature-foo@local
+  [ "$status" -eq 0 ]
+  [ "$(git rev-parse feature-foo)" = "$local_head" ]
+}
+
+@test "re-anchor aborts when the public branch is held by the main worktree" {
+  # Main worktree holds feature-foo; invoke re-anchor from a linked worktree.
+  git checkout -q feature-foo
+  INVOKE_WT="$(mktemp -d)/invoke"
+  git worktree add -q "$INVOKE_WT" feature-foo@local
+
+  cd "$INVOKE_WT"
+  run git shadow re-anchor feature-foo@local
+  cd "$TEST_DIR"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"$TEST_DIR"* ]]
+
+  git worktree remove --force "$INVOKE_WT"
+  git checkout -q feature-foo@local
+}

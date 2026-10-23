@@ -143,12 +143,20 @@ worktree_add() {
       printf '/%s/\n' "$relpath" >> "$exclude_file"
   fi
 
-  # Propagate the main checkout's project config so load_env finds it
-  # inside the new worktree (the file is gitignored, never carried over).
-  local main_wt
+  # Propagate project config so load_env finds it inside the new worktree
+  # (the file is gitignored, never carried over). Source order: invoking
+  # checkout's toplevel, then the main checkout's (V286).
+  local main_wt inv_top env_src
   main_wt="$(worktree_paths | head -1)"
-  if [[ -n "$main_wt" && -f "$main_wt/.git-shadow.env" && ! -e "$abs/.git-shadow.env" ]]; then
-    cp "$main_wt/.git-shadow.env" "$abs/.git-shadow.env"
+  inv_top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  env_src=""
+  if [[ -n "$inv_top" && -f "$inv_top/.git-shadow.env" ]]; then
+    env_src="$inv_top"
+  elif [[ -n "$main_wt" && -f "$main_wt/.git-shadow.env" ]]; then
+    env_src="$main_wt"
+  fi
+  if [[ -n "$env_src" && ! -e "$abs/.git-shadow.env" ]]; then
+    cp "$env_src/.git-shadow.env" "$abs/.git-shadow.env"
   fi
 }
 

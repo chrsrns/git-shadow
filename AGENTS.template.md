@@ -72,6 +72,7 @@ git shadow push feature/x
 - Conflict during sync: resolve, then `git shadow feature sync --continue`.
 - Abort sync: `git shadow feature sync --abort`.
 - Public base force-pushed or rewritten, patch-ids do not match: `git shadow re-anchor feature/x@local`.
+- `feature finish` aborts "not merged" but the feature was rewritten and merged remotely (stale local public ref): `git shadow re-anchor feature/x@local` when the remote branch still exists; when the remote branch was deleted after the merge completed, `git branch -f feature/x <base>` (`git update-ref refs/heads/feature/x <base>` if `feature/x` is checked out in a worktree), then re-run `finish`. Do not `re-anchor` against a deleted remote branch — it silently re-anchors at the stale head.
 - Release/hotfix directly on a public branch: `GIT_SHADOW=1 git commit` on `main`, `git shadow push main`, then `git shadow base sync` absorbs it onto `main@local`.
 
 ### Catching up a long-lived feature with an advanced base

@@ -259,6 +259,38 @@ finish_collect_applied() {
   done < <(git log --grep='^\[MEMORY\]' --format='%b' "$LOCAL_BASE")
 }
 
+# Print a merged-check recovery hint (V280). The remote-branch liveness probe
+# is `git ls-remote --heads origin refs/heads/<name>` — exact ref match,
+# prompts suppressed. Returns 0 when a recovery was printed, 1 for the plain
+# case. Reads FEATURE_PUBLIC_BRANCH, FEATURE_LOCAL_BRANCH, PUBLIC_BASE.
+finish_merge_recovery_hint() {
+  local remote_out remote_head
+  if ! remote_out="$(GIT_TERMINAL_PROMPT=0 git ls-remote --heads origin "refs/heads/$FEATURE_PUBLIC_BRANCH" 2>/dev/null)"; then
+    return 1
+  fi
+  if [[ -n "$remote_out" ]]; then
+    remote_head="${remote_out%%[[:space:]]*}"
+    # A remote head that is not an ancestor of the local public ref means the
+    # remote branch moved past it (a rewrite left the local ref behind). A sha
+    # absent from the object store errors here and correctly reads as
+    # not-an-ancestor.
+    if ! git merge-base --is-ancestor "$remote_head" "$FEATURE_PUBLIC_BRANCH" 2>/dev/null; then
+      ui_info "If the public branch was rewritten and merged remotely, run 'git shadow re-anchor $FEATURE_LOCAL_BRANCH' to reset the stale local ref, then re-run finish."
+      return 0
+    fi
+    return 1
+  fi
+  # The remote branch is gone. The tracking ref proves it once existed
+  # remotely — without it the feature was never pushed and there is nothing
+  # to recover. Deleted-remote alone cannot prove the merge completed, so the
+  # recipe stays conditional on the user asserting it did.
+  if git rev-parse --verify --quiet "refs/remotes/origin/$FEATURE_PUBLIC_BRANCH" >/dev/null; then
+    ui_info "Remote branch '$FEATURE_PUBLIC_BRANCH' is gone. If the merge completed before it was deleted, repoint the stale local ref with 'git branch -f $FEATURE_PUBLIC_BRANCH $PUBLIC_BASE' and re-run finish."
+    return 0
+  fi
+  return 1
+}
+
 # Re-anchor and merge .git-shadow/annotations sidecars from a [MEMORY] commit
 # onto the current base. The source for re-anchoring is the working-tree file
 # (the resolved/applied source), not HEAD.
@@ -858,8 +890,9 @@ _finish_normal_body() {
   # feature commits), so fall back to checking that the feature's public
   # tree is contained in the base tree.
   if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" \
-     && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" 2>/dev/null; then
-    ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths). Merge it first."
+     && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE"; then
+    ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths)."
+    finish_merge_recovery_hint || ui_error "Merge it first."
     return 1
   fi
 

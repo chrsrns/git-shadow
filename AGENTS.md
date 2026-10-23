@@ -164,6 +164,8 @@ Use `--abort` to stop an in-progress sync.
 
 If the public branch was force-pushed or rewritten and patch-id recovery cannot match, use `git shadow re-anchor <branch@local>`.
 
+If `git shadow feature finish` aborts "not merged" but the feature was rewritten and merged remotely, the local public ref is stale: run `git shadow re-anchor <name>@local` when the remote branch still exists. When the remote branch was deleted after the merge completed, repoint it with `git branch -f <name> <base>` (`git update-ref refs/heads/<name> <base>` if `<name>` is checked out in a worktree), then re-run `finish`. See `docs/troubleshooting.md` §4 for the content-differing and deleted-remote details.
+
 ### Catching up a long-lived feature with an advanced base
 
 `git shadow base sync` only updates `<base>@local`. It does not pull new base commits into an existing feature branch. `git shadow feature sync` only applies changes from the feature's own public branch; it does not pull base commits.

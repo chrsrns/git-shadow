@@ -64,6 +64,18 @@ LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 # Re-anchor body: executed inside patches_transaction so sidecars are stripped
 # before any checkout and re-applied on every return/exit path.
 _reanchor_body() {
+  # Worktree-aware ref move (V282): the public branch checked out in a
+  # worktree other than this one cannot be moved — merge/reset would corrupt
+  # that worktree's view — so abort naming it before any mutation.
+  local held_path invoking_top
+  held_path="$(worktree_find_for_branch "$PUBLIC_BRANCH" 2>/dev/null || true)"
+  invoking_top="$(git rev-parse --show-toplevel)"
+  if [[ -n "$held_path" && "$held_path" != "$invoking_top" ]]; then
+    ui_error "Public branch '$PUBLIC_BRANCH' is checked out in worktree '$held_path'."
+    ui_info  "Detach it there first (git -C \"$held_path\" checkout --detach), then re-run re-anchor."
+    return 1
+  fi
+
   # ---------------------------------------------------------------------------
   # Fetch and fast-forward / reset the public branch
   # ---------------------------------------------------------------------------
@@ -73,17 +85,22 @@ _reanchor_body() {
       remote_ref="origin/$PUBLIC_BRANCH"
       if git rev-parse --verify --quiet "$remote_ref" >/dev/null 2>&1; then
         NEW_PUBLIC_HEAD="$(git rev-parse "$remote_ref")"
-        git checkout -q "$PUBLIC_BRANCH" >/dev/null 2>&1
         if git merge-base --is-ancestor "$NEW_PUBLIC_HEAD" "$(git rev-parse "$PUBLIC_BRANCH")"; then
           # Local public is ahead of or equal to remote; keep it.
           NEW_PUBLIC_HEAD="$(git rev-parse "$PUBLIC_BRANCH")"
-        else
-          # Try fast-forward, otherwise reset.
+        elif [[ -n "$held_path" ]]; then
+          # The invoking checkout holds the branch: merge/reset moves ref and
+          # worktree atomically (we are already on it).
           if git merge --ff-only --no-edit "$NEW_PUBLIC_HEAD" >/dev/null 2>&1; then
             :
           else
             git reset --hard "$NEW_PUBLIC_HEAD" >/dev/null 2>&1
           fi
+        else
+          # Checked out nowhere: move the ref itself — never merge/reset into
+          # an unrelated checkout.
+          git branch -f "$PUBLIC_BRANCH" "$NEW_PUBLIC_HEAD" >/dev/null 2>&1 \
+            || git update-ref "refs/heads/$PUBLIC_BRANCH" "$NEW_PUBLIC_HEAD"
         fi
       fi
     fi

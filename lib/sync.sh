@@ -97,8 +97,8 @@ sync_stage_all() {
   # worktree_add's info/exclude write and would otherwise commit as a
   # 160000 gitlink. The invoking toplevel itself and out-of-repo paths
   # are skipped — unstaging "." would drop the whole net diff.
-  local wt_path wt_branch wt_locked rel
-  while IFS=$'\t' read -r wt_path wt_branch wt_locked; do
+  local wt_path rel
+  while IFS=$'\t' read -r wt_path _; do
     [[ -n "$wt_path" ]] || continue
     rel="$(realpath -m --relative-to="$root" "$wt_path" 2>/dev/null)" || continue
     [[ "$rel" == "." || "$rel" == ../* || "$rel" == /* || -z "$rel" ]] && continue

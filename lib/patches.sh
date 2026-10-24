@@ -234,7 +234,11 @@ patches_store() {
 
   local add_subjects
   add_subjects="$(git -C "$root" log --diff-filter=A --format='%s' HEAD -- "$relpath" 2>/dev/null)"
-  if [[ -z "$add_subjects" ]] || ! grep -qv '^\[MEMORY\]' <<< "$add_subjects"; then
+  local all_memory=1 add_subject
+  while IFS= read -r add_subject; do
+    commit_subject_is_memory "$add_subject" || { all_memory=0; break; }
+  done <<< "$add_subjects"
+  if [[ -z "$add_subjects" || $all_memory -eq 1 ]]; then
     ui_error "patches_store: '$relpath' exists only via [MEMORY] commits. [MEMORY] commits are for new local files."
     return 1
   fi
@@ -931,8 +935,8 @@ patches_subtract() {
 # Default message: [MEMORY] local patches
 patches_commit() {
   local msg="[MEMORY] local patches"
-  if [[ "${1:-}" == "[MEMORY]"* ]]; then
-    # Optional [MEMORY] message supplied first.
+  if commit_subject_is_memory "${1:-}"; then
+    # Optional memory-prefixed message supplied first.
     msg="$1"
     shift
   fi

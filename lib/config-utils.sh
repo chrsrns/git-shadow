@@ -20,7 +20,9 @@ user_config_path() {
 }
 
 project_config_path() {
-  printf '%s\n' "$PWD/.git-shadow.env"
+  local dir
+  dir="$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")"
+  printf '%s\n' "$dir/.git-shadow.env"
 }
 
 # ---------------------------------------------------------------------------
@@ -205,5 +207,16 @@ json_escape() {
   local s="$1"
   s="${s//\\/\\\\}"   # backslash
   s="${s//\"/\\\"}"   # double-quote
-  printf '%s' "$s"
+  # Control bytes U+0000-U+001F emit as \uXXXX (V285); LC_ALL=C keeps
+  # byte offsets stable under multibyte locales.
+  local i byte out=""
+  local LC_ALL=C
+  for (( i=0; i<${#s}; i++ )); do
+    byte="${s:i:1}"
+    if [[ "$byte" < ' ' ]]; then
+      printf -v byte '\\u%04x' "'$byte"
+    fi
+    out+="$byte"
+  done
+  printf '%s' "$out"
 }

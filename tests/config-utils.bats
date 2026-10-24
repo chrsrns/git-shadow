@@ -69,3 +69,11 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = 'café' ]
 }
+
+@test "json_escape emits control bytes as \\uXXXX" {
+  run json_escape "$(printf 'a\tb\nc\rd')"
+  [ "$status" -eq 0 ]
+  [ "$output" = 'a\u0009b\u000ac\u000dd' ]
+  # parseable JSON
+  printf '"%s"' "$output" | python3 -c 'import json,sys; assert json.load(sys.stdin) == "a\tb\nc\rd"'
+}

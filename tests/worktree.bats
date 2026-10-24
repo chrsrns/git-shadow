@@ -683,3 +683,49 @@ HOOK
   [ "$status" -eq 0 ]
   [[ "$output" == *"$TEST_DIR/wt1"* ]]
 }
+
+@test "worktree_add copies env from the invoking checkout's toplevel first" {
+  # linked worktree with env, main checkout without
+  git worktree add -q "$TEST_DIR/wt-src" "feat-x@local"
+  printf 'LOCAL_SUFFIX="@src"\n' > "$TEST_DIR/wt-src/.git-shadow.env"
+  git branch "feat-y@local"
+  (cd "$TEST_DIR/wt-src" && worktree_add "feat-y@local" "$TEST_DIR/wt-new" >/dev/null)
+  [ -f "$TEST_DIR/wt-new/.git-shadow.env" ]
+  grep -q 'LOCAL_SUFFIX="@src"' "$TEST_DIR/wt-new/.git-shadow.env"
+}
+
+@test "worktree_add falls back to the main checkout's env" {
+  printf 'LOCAL_SUFFIX="@main"\n' > "$TEST_DIR/.git-shadow.env"
+  git branch "feat-y@local"
+  worktree_add "feat-y@local" "$TEST_DIR/wt-new" >/dev/null
+  grep -q 'LOCAL_SUFFIX="@main"' "$TEST_DIR/wt-new/.git-shadow.env"
+}
+
+@test "worktree_add copies nothing when neither checkout has env" {
+  git branch "feat-y@local"
+  worktree_add "feat-y@local" "$TEST_DIR/wt-new" >/dev/null
+  [ ! -f "$TEST_DIR/wt-new/.git-shadow.env" ]
+}
+
+@test "sync_stage_all unstages a manually-added in-repo worktree and warns" {
+  git branch "feat-y@local"
+  git worktree add -q "$TEST_DIR/wt-inner" "feat-y@local"  # manual: bypasses info/exclude
+  echo change >> file.txt
+  run sync_stage_all
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"wt-inner"* ]] || [[ "$output" == *"Unstaged"* ]]
+  # no gitlink staged
+  run git -C "$TEST_DIR" diff --cached --name-only
+  [[ "$output" != *"wt-inner"* ]]
+  [[ "$output" == *"file.txt"* ]]
+}
+
+@test "sync_stage_all leaves an out-of-repo worktree and the invoking toplevel untouched" {
+  git branch "feat-y@local"
+  git worktree add -q "$TEST_DIR/wts/outside" "feat-y@local"
+  echo change >> file.txt
+  run sync_stage_all
+  [ "$status" -eq 0 ]
+  run git -C "$TEST_DIR" diff --cached --name-only
+  [[ "$output" == *"file.txt"* ]]
+}

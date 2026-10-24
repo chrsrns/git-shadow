@@ -256,7 +256,10 @@ finish_collect_applied() {
     elif [[ "$line" =~ ^git-shadow-source-pid:[[:space:]]*(.+)$ ]]; then
       APPLIED_MEMORY_PIDS+=("${BASH_REMATCH[1]}")
     fi
-  done < <(git log --grep='^\[MEMORY\]' --format='%b' "$LOCAL_BASE")
+  done < <(while IFS= read -r mem_sha; do
+    mem_subject="$(git log -1 --format='%s' "$mem_sha")"
+    commit_subject_is_memory "$mem_subject" && git log -1 --format='%b' "$mem_sha"
+  done <<< "$(git log --format='%H' "$LOCAL_BASE")")
 }
 
 # Print a merged-check recovery hint (V280). The remote-branch liveness probe
@@ -906,7 +909,7 @@ _finish_normal_body() {
   while IFS= read -r sha; do
     [[ -z "$sha" ]] && continue
     subject="$(git log -1 --format='%s' "$sha")"
-    if [[ "$subject" == "[MEMORY]"* ]]; then
+    if commit_subject_is_memory "$subject"; then
       memory_shas+=("$sha")
     fi
   done < <(git rev-list --reverse "${merge_base}..$FEATURE_LOCAL_BRANCH")

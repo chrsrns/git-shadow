@@ -65,3 +65,24 @@ EOF
   run load_env
   [[ "$output" != *"Unknown config key"* ]]
 }
+@test "load_env anchors project config to the worktree toplevel from a subdirectory" {
+  git init -q
+  printf 'LOCAL_SUFFIX="@toplevel"\n' > "$PWD/.git-shadow.env"
+  mkdir -p sub/deeper
+  cd sub/deeper
+  source "$TOOLKIT_ROOT/lib/env.sh"
+  unset LOCAL_SUFFIX
+  load_env
+  [ "$LOCAL_SUFFIX" = "@toplevel" ]
+}
+
+@test "load_env does not read a subdirectory .git-shadow.env" {
+  git init -q
+  mkdir -p sub
+  printf 'LOCAL_SUFFIX="@subdir"\n' > "sub/.git-shadow.env"
+  cd sub
+  source "$TOOLKIT_ROOT/lib/env.sh"
+  unset LOCAL_SUFFIX
+  load_env
+  [ "$LOCAL_SUFFIX" = "@local" ]
+}

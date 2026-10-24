@@ -99,7 +99,7 @@ while IFS= read -r file; do
   # not the most recent one, so a [MEMORY]-created file later modified by a
   # public commit is still flagged.
   creation_subject="$(git log --diff-filter=A -n 1 --format='%s' "${CP_LOCAL}..${LOCAL_HEAD}" -- "$file" 2>/dev/null)" || true
-  if [[ -n "$creation_subject" && "$creation_subject" == "[MEMORY]"* ]]; then
+  if [[ -n "$creation_subject" ]] && commit_subject_is_memory "$creation_subject"; then
     UNPROMOTED+=("$file")
   fi
 done < <(git ls-tree -r --name-only "$PUBLIC_HEAD")

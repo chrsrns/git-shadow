@@ -79,7 +79,7 @@ _reanchor_body() {
   # that worktree's view — so abort naming it before any mutation.
   local held_path invoking_top
   held_path="$(worktree_find_for_branch "$PUBLIC_BRANCH" 2>/dev/null || true)"
-  invoking_top="$(git rev-parse --show-toplevel)"
+  invoking_top="$(repo_root)"
   if [[ -n "$held_path" && "$held_path" != "$invoking_top" ]]; then
     ui_error "Public branch '$PUBLIC_BRANCH' is checked out in worktree '$held_path'."
     ui_info  "Detach it there first (git -C \"$held_path\" checkout --detach), then re-run re-anchor."

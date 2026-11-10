@@ -225,13 +225,13 @@ finish_cleanup_feature() {
     local deleted_public=0 deleted_local=0
     if git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1; then
       deleted_public=1
-    elif git show-ref --verify --quiet "refs/heads/$FEATURE_PUBLIC_BRANCH"; then
+    elif branch_exists "$FEATURE_PUBLIC_BRANCH"; then
       ui_warn "Could not delete public feature branch '$FEATURE_PUBLIC_BRANCH'."
     fi
     if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
       if git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1; then
         deleted_local=1
-      elif git show-ref --verify --quiet "refs/heads/$FEATURE_LOCAL_BRANCH"; then
+      elif branch_exists "$FEATURE_LOCAL_BRANCH"; then
         ui_warn "Could not delete local feature branch '$FEATURE_LOCAL_BRANCH'."
       fi
       [[ "$deleted_public" -eq 1 && "$deleted_local" -eq 1 ]] && \

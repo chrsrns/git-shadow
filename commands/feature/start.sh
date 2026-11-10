@@ -23,6 +23,7 @@ source "$_GS_LIB/common.sh"
 # ---------------------------------------------------------------------------
 if [[ $# -eq 0 ]]; then
   enter_project '.'
+  patches_require_no_paused_op
   ensure_clean_repo
 
   CURRENT_BRANCH="$(current_branch)"
@@ -53,9 +54,8 @@ if [[ $# -eq 0 ]]; then
   fi
 
   _feature_start_noarg_body() {
-    git checkout "$LOCAL_BASE"
+    checkout_branch_verified "$LOCAL_BASE" || return 1
     "$TOOLKIT_ROOT/commands/base/sync.sh"
-    return 0
   }
 
   if ! patches_transaction _feature_start_noarg_body; then
@@ -139,6 +139,7 @@ if ! git check-ref-format --branch "$FEATURE_NAME" >/dev/null 2>&1; then
 fi
 
 enter_project '.'
+patches_require_no_paused_op
 ensure_clean_repo
 
 CURRENT_BRANCH="$(current_branch)"
@@ -147,9 +148,16 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-# Determine the base pair from the current branch.
-PUBLIC_BASE="$(public_branch_from_any "$CURRENT_BRANCH")"
-LOCAL_BASE="$(local_branch_from_any "$CURRENT_BRANCH")"
+# Features only ever branch from the configured base pair — a stacked
+# pair off a feature checkpoint is not supported.
+if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE_BRANCH" &&
+      "$CURRENT_BRANCH" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+  ui_error "'git shadow feature start' must run from '$PUBLIC_BASE_BRANCH' or '${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}' (current: '$CURRENT_BRANCH')."
+  exit 1
+fi
+
+PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
+LOCAL_BASE="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
 
 # Resolve and validate the worktree target before any mutation.
 WORKTREE_PATH=""
@@ -178,11 +186,8 @@ fi
 
 # Run base sync from the local base.
 _feature_start_base_body() {
-  if [[ "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
-    git checkout "$LOCAL_BASE"
-  fi
+  checkout_branch_verified "$LOCAL_BASE" || return 1
   "$TOOLKIT_ROOT/commands/base/sync.sh"
-  return 0
 }
 
 patches_transaction _feature_start_base_body
@@ -241,7 +246,7 @@ _feature_start_feature_body() {
     _wt_abs="$(abs_path_m "$WORKTREE_PATH")"
   else
     ui_shadow "Switching to local working branch '$LOCAL_FEATURE'"
-    git checkout "$LOCAL_FEATURE"
+    checkout_branch_verified "$LOCAL_FEATURE" || return 1
 
     ui_shadow "Adding initial checkpoint to '$LOCAL_FEATURE'"
     _new_checkpoint="$(checkpoint_create "$PUBLIC_CP" "$LOCAL_CP")"

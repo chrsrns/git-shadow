@@ -879,7 +879,9 @@ _finish_normal_body() {
   # ---------------------------------------------------------------------------
   if [[ "$NO_PULL" -eq 0 ]]; then
     ui_git "Pulling latest changes for '$PUBLIC_BASE'"
-    git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
+    if ! checkout_branch_verified "$PUBLIC_BASE"; then
+      return 1
+    fi
     if ! git pull >/dev/null 2>&1; then
       ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
     fi
@@ -943,7 +945,9 @@ _finish_normal_body() {
   # Apply the public base net diff to the local base.
   # ---------------------------------------------------------------------------
   ui_shadow "Checkout '$LOCAL_BASE'"
-  git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
+  if ! checkout_branch_verified "$LOCAL_BASE"; then
+    return 1
+  fi
 
   local latest_cp cp_public
   latest_cp="$(checkpoint_latest "$LOCAL_BASE")"

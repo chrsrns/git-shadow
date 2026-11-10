@@ -142,3 +142,22 @@ EOF
   git checkout -q test-feature
   ! git log --format='%s' | grep -q '^\[SYNC\]'
 }
+
+@test "feature publish aborts when replay temp branch cannot be created" {
+  # A leftover __shadow_check_tmp__ branch makes `checkout -b` fail; the
+  # publish must abort before any pick lands on the invoking branch.
+  git checkout -q test-feature
+  echo "pub" > pub.txt
+  git add pub.txt
+  GIT_SHADOW=1 git commit -qm "feat: pub"
+  git checkout -q "test-feature@local"
+  echo "v3" > app.ts
+  git add app.ts
+  git commit -qm "feat: more shadow work"
+  git branch "__shadow_check_tmp__"
+
+  before="$(git rev-parse test-feature@local)"
+  run git shadow feature publish
+  [ "$status" -eq 1 ]
+  [ "$(git rev-parse test-feature@local)" = "$before" ]
+}

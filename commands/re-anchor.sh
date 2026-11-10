@@ -64,6 +64,16 @@ LOCAL_HEAD="$(git rev-parse "$LOCAL_BRANCH")"
 # Re-anchor body: executed inside patches_transaction so sidecars are stripped
 # before any checkout and re-applied on every return/exit path.
 _reanchor_body() {
+  # Fail early when the local branch is held by a worktree other than this
+  # one — the checkout below cannot move it (holder-naming parity).
+  local local_held
+  local_held="$(worktree_find_for_branch "$LOCAL_BRANCH" 2>/dev/null || true)"
+  if [[ -n "$local_held" && "$local_held" != "$(repo_root)" ]]; then
+    ui_error "'$LOCAL_BRANCH' is checked out in worktree '$local_held'."
+    ui_info  "Run re-anchor from that worktree, or detach '$LOCAL_BRANCH' there first."
+    return 1
+  fi
+
   # Worktree-aware ref move (V282): the public branch checked out in a
   # worktree other than this one cannot be moved — merge/reset would corrupt
   # that worktree's view — so abort naming it before any mutation.
@@ -134,7 +144,9 @@ _reanchor_body() {
   done
   PIDS="${PIDS# }"
 
-  git checkout -q "$LOCAL_BRANCH" >/dev/null 2>&1
+  if ! checkout_branch_verified "$LOCAL_BRANCH"; then
+    return 1
+  fi
 
   if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$LOCAL_BRANCH" "$PUBLIC_HEAD" $PIDS)"; then
     return 1

@@ -1017,3 +1017,20 @@ _ff_cleanup_origin() {
   [[ "$output" != *"re-anchor"* ]]
   [[ "$output" != *"git branch -f"* ]]
 }
+
+@test "feature finish aborts when local-base checkout is refused" {
+  # .gitignore tracked on main@local but untracked+different on
+  # test-feature@local -> checkout main@local refuses (untracked overwrite).
+  git checkout -q "main@local"
+  echo "base ignores" > .gitignore
+  git add .gitignore
+  git commit -qm "chore: base ignores"
+  git checkout -q "test-feature@local"
+  echo "feature ignores" > .gitignore
+
+  before="$(git rev-parse test-feature@local)"
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 1 ]
+  [ "$(git rev-parse test-feature@local)" = "$before" ]
+  [[ "$(git log -1 --format='%s' test-feature@local)" != "[SYNC]"* ]]
+}

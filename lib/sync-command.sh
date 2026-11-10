@@ -31,7 +31,10 @@ _sync_abort_body() {
   local label="$1"
   local mode="$2"
   local conflicted="$3"
-  git checkout -q "$SYNC_LOCAL_BRANCH" >/dev/null 2>&1 || true
+  if ! checkout_branch_verified "$SYNC_LOCAL_BRANCH"; then
+    ui_info "Resolve the blocker, then re-run: git shadow $mode sync --abort"
+    return 1
+  fi
   git reset --hard "$SYNC_LOCAL_HEAD"
   sync_clear_state
   ui_ok "${label} sync aborted."
@@ -150,6 +153,13 @@ EOF
     fi
     if [[ "$SYNC_MODE" != "$mode" ]]; then
       ui_error "A sync is in progress, but it is not a $mode sync (mode=$SYNC_MODE)."
+      return 1
+    fi
+    if [[ "$(current_branch)" != "$SYNC_LOCAL_BRANCH" ]]; then
+      local held
+      held="$(worktree_find_for_branch "$SYNC_LOCAL_BRANCH" 2>/dev/null || true)"
+      ui_error "'git shadow $mode sync --continue' must run from the checkout holding '$SYNC_LOCAL_BRANCH'."
+      [[ -n "$held" ]] && ui_info "'$SYNC_LOCAL_BRANCH' is checked out in worktree '$held' — run there."
       return 1
     fi
     if sync_has_conflicts; then

@@ -362,3 +362,44 @@ EOF
   [[ "$output" == *" M sub/app.txt"* || "$output" == *"M sub/app.txt"* || "$output" == *"M  sub/app.txt"* ]]
   git log --format='%s' -3 | grep -q '^\[SYNC\]'
 }
+
+@test "feature sync --abort refuses when @local is held by another worktree" {
+  # Pause a sync inside a worktree holding feature-foo@local.
+  git checkout -q develop
+  git worktree add -q "$TEST_DIR/wt-feat" "feature-foo@local"
+  (cd wt-feat && echo "shadow version" > app.ts && git add app.ts && git commit -qm "chore: shadow tweak")
+  git checkout -q feature-foo
+  echo "public version" > app.ts
+  git add app.ts
+  GIT_SHADOW=1 git commit -qm "feat: public update"
+  (cd wt-feat && git shadow feature sync >/dev/null 2>&1 || true)
+  git checkout -q develop
+
+  before="$(git rev-parse develop)"
+  run git shadow feature sync --abort
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"wt-feat"* || "$output" == *"worktree"* ]]
+  [ "$(git rev-parse develop)" = "$before" ]
+  [ -f "$(git rev-parse --git-common-dir)/git-shadow-sync" ]
+}
+
+@test "feature sync --continue refuses from a checkout not holding @local" {
+  git checkout -q develop
+  git worktree add -q "$TEST_DIR/wt-feat" "feature-foo@local"
+  (cd wt-feat && echo "shadow version" > app.ts && git add app.ts && git commit -qm "chore: shadow tweak")
+  git checkout -q feature-foo
+  echo "public version" > app.ts
+  git add app.ts
+  GIT_SHADOW=1 git commit -qm "feat: public update"
+  (cd wt-feat && git shadow feature sync >/dev/null 2>&1 || true)
+  git checkout -q develop
+
+  # Staged foreign changes must never reach a [SYNC] commit.
+  echo "foreign" > foreign.ts
+  git add foreign.ts
+  run git shadow feature sync --continue
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"feature-foo@local"* ]]
+  [ "$(git log -1 --format='%s' develop)" = "initial" ]
+  [ -f "$(git rev-parse --git-common-dir)/git-shadow-sync" ]
+}

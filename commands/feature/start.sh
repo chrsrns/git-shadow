@@ -39,7 +39,13 @@ if [[ $# -eq 0 ]]; then
     exit 1
   fi
 
-  # Current branch is a public branch: ensure its local base exists and sync it.
+  # Only the configured public base may start a base pair.
+  if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE_BRANCH" ]]; then
+    ui_error "'git shadow feature start' must run from '$PUBLIC_BASE_BRANCH' or '${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}' (current: '$CURRENT_BRANCH')."
+    exit 1
+  fi
+
+  # Current branch is the public base: ensure its local base exists and sync it.
   PUBLIC_BASE="$CURRENT_BRANCH"
   LOCAL_BASE="${CURRENT_BRANCH}${LOCAL_SUFFIX}"
 

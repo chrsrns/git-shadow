@@ -131,3 +131,10 @@ teardown() {
   [[ "$output" == *"develop"* ]]
   ! git show-ref --verify --quiet refs/heads/feat-x
 }
+
+@test "bare feature start refuses from a non-base public branch" {
+  git checkout -q -b otherpub
+  run git shadow feature start
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"develop"* ]]
+}

@@ -10,8 +10,8 @@ set -euo pipefail
 _GS_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../lib" && pwd)"
 # shellcheck disable=SC1091  # resolved relative to this script location at runtime
 source "$_GS_LIB/help.sh"
-if gs_help_requested --worktree-dir -- "$@"; then
-  echo "Usage: git shadow feature start [<name> [--worktree|--worktree-dir <path>]]"
+if gs_help_requested --worktree-dir --onto -- "$@"; then
+  echo "Usage: git shadow feature start [<name> [--onto <parent>] [--worktree|--worktree-dir <path>]]"
   exit 0
 fi
 
@@ -76,18 +76,28 @@ fi
 # ---------------------------------------------------------------------------
 usage() {
   cat <<'EOF'
-Usage: git shadow feature start [<name> [--worktree|--worktree-dir <path>]]
+Usage: git shadow feature start [<name> [--onto <parent>] [--worktree|--worktree-dir <path>]]
 EOF
 }
 
 FEATURE_NAME=""
 WANT_WORKTREE=0
 WORKTREE_DIR_ARG=""
+ONTO_ARG=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --worktree)
       WANT_WORKTREE=1
+      ;;
+    --onto)
+      shift
+      if [[ $# -eq 0 || -z "$1" ]]; then
+        ui_error "--onto requires a parent branch name."
+        usage
+        exit 1
+      fi
+      ONTO_ARG="$1"
       ;;
     --worktree-dir)
       shift
@@ -154,16 +164,36 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-# Features only ever branch from the configured base pair — a stacked
-# pair off a feature checkpoint is not supported.
-if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE_BRANCH" &&
-      "$CURRENT_BRANCH" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
-  ui_error "'git shadow feature start' must run from '$PUBLIC_BASE_BRANCH' or '${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}' (current: '$CURRENT_BRANCH')."
+# Resolve the stacked parent: explicit --onto wins from any checkout; an
+# invoking feature @local implies stacking on its pair. Anything else
+# must run from the base pair.
+PARENT_PUBLIC=""
+if [[ -n "$ONTO_ARG" ]]; then
+  PARENT_PUBLIC="$(public_branch_from_any "$ONTO_ARG")"
+elif [[ "$CURRENT_BRANCH" =~ ${LOCAL_SUFFIX}$ &&
+        "$CURRENT_BRANCH" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+  PARENT_PUBLIC="$(public_branch_from_any "$CURRENT_BRANCH")"
+elif [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE_BRANCH" &&
+        "$CURRENT_BRANCH" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+  ui_error "'git shadow feature start' must run from '$PUBLIC_BASE_BRANCH', '${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}', or a feature '${LOCAL_SUFFIX}' branch — or pass '--onto' (current: '$CURRENT_BRANCH')."
   exit 1
 fi
 
-PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
-LOCAL_BASE="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+if [[ -n "$PARENT_PUBLIC" ]]; then
+  if [[ "$PARENT_PUBLIC" == "$FEATURE_NAME" ]]; then
+    ui_error "Cannot stack '$FEATURE_NAME' on itself."
+    exit 1
+  fi
+  if [[ "$PARENT_PUBLIC" == "$PUBLIC_BASE_BRANCH" ]]; then
+    ui_error "Cannot stack onto the base pair '$PUBLIC_BASE_BRANCH' — run 'git shadow feature start $FEATURE_NAME' from a base checkout instead."
+    exit 1
+  fi
+  if ! branch_exists "$PARENT_PUBLIC" || ! branch_exists "${PARENT_PUBLIC}${LOCAL_SUFFIX}"; then
+    ui_error "Stack parent pair does not exist: '$PARENT_PUBLIC' (needs both '$PARENT_PUBLIC' and '${PARENT_PUBLIC}${LOCAL_SUFFIX}')."
+    exit 1
+  fi
+  stack_validate_edge "$LOCAL_FEATURE" "$PARENT_PUBLIC" || exit 1
+fi
 
 # Resolve and validate the worktree target before any mutation.
 WORKTREE_PATH=""
@@ -180,32 +210,44 @@ if [[ "$USE_WORKTREE" -eq 1 ]]; then
   worktree_validate_path "$WORKTREE_PATH" "$LOCAL_FEATURE" || exit 1
 fi
 
-if ! branch_exists "$PUBLIC_BASE"; then
-  ui_error "Public base branch does not exist: $PUBLIC_BASE"
-  exit 1
+if [[ -n "$PARENT_PUBLIC" ]]; then
+  # Stacked mode derives the child from the parent's heads — no base
+  # sync and no base checkout; the base pair may be worktree-held.
+  PUBLIC_CP="$(git rev-parse "$PARENT_PUBLIC")"
+  LOCAL_CP="$(git rev-parse "${PARENT_PUBLIC}${LOCAL_SUFFIX}")"
+  CP_SOURCE="$PARENT_PUBLIC"
+else
+  PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
+  LOCAL_BASE="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+
+  if ! branch_exists "$PUBLIC_BASE"; then
+    ui_error "Public base branch does not exist: $PUBLIC_BASE"
+    exit 1
+  fi
+
+  if ! branch_exists "$LOCAL_BASE"; then
+    ui_info "Local base branch '$LOCAL_BASE' not found, creating from '$PUBLIC_BASE'."
+    git branch "$LOCAL_BASE" "$PUBLIC_BASE"
+  fi
+
+  # Run base sync from the local base.
+  _feature_start_base_body() {
+    checkout_branch_verified "$LOCAL_BASE" || return 1
+    "$TOOLKIT_ROOT/commands/base/sync.sh"
+  }
+
+  patches_transaction _feature_start_base_body
+
+  # The latest checkpoint on the local base is the branch point.
+  LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
+  if [[ -z "$LATEST_CP" ]]; then
+    ui_error "No checkpoint found on local base '$LOCAL_BASE' after sync."
+    exit 1
+  fi
+
+  read -r PUBLIC_CP LOCAL_CP <<< "$(checkpoint_parse "$LATEST_CP")"
+  CP_SOURCE="$PUBLIC_BASE"
 fi
-
-if ! branch_exists "$LOCAL_BASE"; then
-  ui_info "Local base branch '$LOCAL_BASE' not found, creating from '$PUBLIC_BASE'."
-  git branch "$LOCAL_BASE" "$PUBLIC_BASE"
-fi
-
-# Run base sync from the local base.
-_feature_start_base_body() {
-  checkout_branch_verified "$LOCAL_BASE" || return 1
-  "$TOOLKIT_ROOT/commands/base/sync.sh"
-}
-
-patches_transaction _feature_start_base_body
-
-# The latest checkpoint on the local base is the branch point.
-LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"
-if [[ -z "$LATEST_CP" ]]; then
-  ui_error "No checkpoint found on local base '$LOCAL_BASE' after sync."
-  exit 1
-fi
-
-read -r PUBLIC_CP LOCAL_CP <<< "$(checkpoint_parse "$LATEST_CP")"
 
 if branch_exists "$PUBLIC_FEATURE"; then
   ui_error "Branch already exists: $PUBLIC_FEATURE"
@@ -216,11 +258,17 @@ if branch_exists "$LOCAL_FEATURE"; then
   exit 1
 fi
 
-ui_git "Creating public feature branch '$PUBLIC_FEATURE' from '$PUBLIC_BASE'"
+ui_git "Creating public feature branch '$PUBLIC_FEATURE' from '$CP_SOURCE'"
 git branch "$PUBLIC_FEATURE" "$PUBLIC_CP"
 
-ui_shadow "Creating local feature branch '$LOCAL_FEATURE' from '$LOCAL_BASE'"
+ui_shadow "Creating local feature branch '$LOCAL_FEATURE' from '${CP_SOURCE}${LOCAL_SUFFIX}'"
 git branch "$LOCAL_FEATURE" "$LOCAL_CP"
+
+# Record the stack parent before any other mutation writes history; a
+# failed worktree path deletes both branches and the config with them.
+if [[ -n "$PARENT_PUBLIC" ]]; then
+  git config "branch.${LOCAL_FEATURE}.shadow-parent" "$PARENT_PUBLIC"
+fi
 
 _feature_start_feature_body() {
   if [[ "$USE_WORKTREE" -eq 1 ]]; then

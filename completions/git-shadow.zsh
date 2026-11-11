@@ -83,6 +83,7 @@ _git_shadow_feature() {
           ;;
         start)
           _arguments \
+            '--onto[stack the new pair on an existing feature pair]:parent:' \
             '--worktree[create a worktree under WORKTREE_ROOT for <name>@local]' \
             '--worktree-dir[create the feature worktree at the given path]:path:_files -/' \
             '(-h --help)'{-h,--help}'[show usage]'

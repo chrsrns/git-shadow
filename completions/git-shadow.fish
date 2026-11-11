@@ -49,6 +49,7 @@ complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l continue -d "resume after manual conflict resolution"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l abort    -d "abort the sync"
 
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l onto        -d "stack the new pair on an existing feature pair" -r
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree     -d "create a worktree under WORKTREE_ROOT for <name>@local"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree-dir -d "create the feature worktree at the given path" -r
 
@@ -179,10 +180,10 @@ complete -c git-shadow -n "__fish_seen_subcommand_from re-anchor push" -a "(git 
 function __git_shadow_expecting_value
   set -l tokens (commandline -poc)
   if string match -qr '\s$' -- "$(commandline -p)"
-    contains -- $tokens[-1] -m --message --worktree-dir --mark-applied
+    contains -- $tokens[-1] -m --message --worktree-dir --mark-applied --onto
   else
     set -l n (count $tokens)
-    test $n -ge 2; and contains -- $tokens[-2] -m --message --worktree-dir --mark-applied
+    test $n -ge 2; and contains -- $tokens[-2] -m --message --worktree-dir --mark-applied --onto
   end
 end
 

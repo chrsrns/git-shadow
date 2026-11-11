@@ -237,23 +237,23 @@ stack_parent_for() {
   git config --get "branch.$1.shadow-parent" 2>/dev/null || true
 }
 
-# Print <local_branch>'s effective local base: the live shadow-parent
-# pair's @local, else the base pair's @local. A parent pair is live only
-# when both <parent> and <parent><LOCAL_SUFFIX> exist; a dead or
-# half-dead link terminates the walk (never walked past to a
+# _stack_resolve <local_branch> [<pending_parent_public>]
+# Core shadow-parent chain walk. Prints the effective local base: the
+# first live parent pair's @local, else the base pair's @local. A parent
+# pair is live only when both <parent> and <parent><LOCAL_SUFFIX> exist;
+# a dead or half-dead link terminates the walk (never walked past to a
 # grandparent), as does a base-valued or unset shadow-parent.
-# The base pair itself always resolves to itself. Fails (return 1, error
-# naming the chain) on a shadow-parent cycle or a live-link depth > 8;
-# mutating callers must abort before mutation, read-only consumers
-# resolve the failure to the base pair (V295).
-stack_local_base() {
+# With <pending_parent_public>, <local_branch>'s stored link is replaced
+# by that value and <local_branch>'s own pair counts as live — validating
+# a link for a pair that may not exist yet.
+# Fails (return 1, error naming the chain) on a cycle or live-link
+# depth > 8.
+_stack_resolve() {
   local local_branch="$1"
+  local pending="${2-}"
+  local pending_active=$(( $# >= 2 ))
   local base_local="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
-
-  if [[ "$local_branch" == "$base_local" ]]; then
-    printf '%s\n' "$base_local"
-    return 0
-  fi
+  local self_public="${local_branch%${LOCAL_SUFFIX}}"
 
   local current="$local_branch" parent_public parent_local
   local immediate_parent_local="" depth=0
@@ -261,14 +261,23 @@ stack_local_base() {
   local chain="$local_branch"
   while :; do
     seen[$current]=1
-    parent_public="$(stack_parent_for "$current")"
+    if (( pending_active )); then
+      parent_public="$pending"
+      pending_active=0
+    else
+      parent_public="$(stack_parent_for "$current")"
+    fi
     # Unset or base-valued shadow-parent: terminal, counts no link.
     [[ -z "$parent_public" || "$parent_public" == "$PUBLIC_BASE_BRANCH" ]] && break
     parent_local="${parent_public}${LOCAL_SUFFIX}"
     # Dead or half-dead link: dangling — stop, effective base is the base
-    # pair unless a live immediate parent was already recorded.
-    if ! branch_exists "$parent_public" || ! branch_exists "$parent_local"; then
-      break
+    # pair unless a live immediate parent was already recorded. In
+    # pending mode the validated node counts as live so a stored link
+    # pointing back at it surfaces as a cycle.
+    if [[ "$parent_public" != "$self_public" || $# -lt 2 ]]; then
+      if ! branch_exists "$parent_public" || ! branch_exists "$parent_local"; then
+        break
+      fi
     fi
     [[ -z "$immediate_parent_local" ]] && immediate_parent_local="$parent_local"
     depth=$((depth + 1))
@@ -285,6 +294,28 @@ stack_local_base() {
   done
 
   printf '%s\n' "${immediate_parent_local:-$base_local}"
+}
+
+# Print <local_branch>'s effective local base (the chain walk). The base
+# pair itself always resolves to itself. Fails naming the chain on a
+# cycle or depth > 8; mutating callers must abort before mutation,
+# read-only consumers resolve the failure to the base pair (V295).
+stack_local_base() {
+  local local_branch="$1"
+  if [[ "$local_branch" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+    printf '%s\n' "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+    return 0
+  fi
+  _stack_resolve "$local_branch"
+}
+
+# Validate a pending shadow-parent link: with <local_branch>'s parent set
+# to <parent_public>, return 0 when the resulting chain is acyclic and
+# within depth, 1 naming the leg otherwise. <local_branch>'s pair counts
+# as live — validates links for pairs not yet created (feature start)
+# and rewrites on live pairs (feature reparent).
+stack_validate_edge() {
+  _stack_resolve "$1" "$2" >/dev/null
 }
 
 # Normalize the workspace path from config

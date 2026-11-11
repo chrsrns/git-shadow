@@ -52,7 +52,7 @@ _git_shadow() {
       else
         case "$subcmd" in
           sync)    mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort -h --help" -- "$cur") ;;
-          start)   mapfile -t COMPREPLY < <(compgen -W "--worktree --worktree-dir -h --help" -- "$cur") ;;
+          start)   mapfile -t COMPREPLY < <(compgen -W "--onto --worktree --worktree-dir -h --help" -- "$cur") ;;
           list)    mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur") ;;
           finish)  mapfile -t COMPREPLY < <(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied -h --help" -- "$cur") ;;
           publish) mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur") ;;

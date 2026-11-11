@@ -230,6 +230,63 @@ paired_public_branches() {
   done < <(local_branch_refs)
 }
 
+# Print the recorded shadow-parent (the parent's public branch name) for
+# <local_branch>, empty when unset. Reads
+# branch.<local_branch>.shadow-parent — the only provenance store.
+stack_parent_for() {
+  git config --get "branch.$1.shadow-parent" 2>/dev/null || true
+}
+
+# Print <local_branch>'s effective local base: the live shadow-parent
+# pair's @local, else the base pair's @local. A parent pair is live only
+# when both <parent> and <parent><LOCAL_SUFFIX> exist; a dead or
+# half-dead link terminates the walk (never walked past to a
+# grandparent), as does a base-valued or unset shadow-parent.
+# The base pair itself always resolves to itself. Fails (return 1, error
+# naming the chain) on a shadow-parent cycle or a live-link depth > 8;
+# mutating callers must abort before mutation, read-only consumers
+# resolve the failure to the base pair (V295).
+stack_local_base() {
+  local local_branch="$1"
+  local base_local="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+
+  if [[ "$local_branch" == "$base_local" ]]; then
+    printf '%s\n' "$base_local"
+    return 0
+  fi
+
+  local current="$local_branch" parent_public parent_local
+  local immediate_parent_local="" depth=0
+  local -A seen=()
+  local chain="$local_branch"
+  while :; do
+    seen[$current]=1
+    parent_public="$(stack_parent_for "$current")"
+    # Unset or base-valued shadow-parent: terminal, counts no link.
+    [[ -z "$parent_public" || "$parent_public" == "$PUBLIC_BASE_BRANCH" ]] && break
+    parent_local="${parent_public}${LOCAL_SUFFIX}"
+    # Dead or half-dead link: dangling — stop, effective base is the base
+    # pair unless a live immediate parent was already recorded.
+    if ! branch_exists "$parent_public" || ! branch_exists "$parent_local"; then
+      break
+    fi
+    [[ -z "$immediate_parent_local" ]] && immediate_parent_local="$parent_local"
+    depth=$((depth + 1))
+    if (( depth > 8 )); then
+      ui_error "Stack depth exceeds 8 following shadow-parent chain: $chain -> $parent_local"
+      return 1
+    fi
+    current="$parent_local"
+    chain="$chain -> $current"
+    if [[ -n "${seen[$current]:-}" ]]; then
+      ui_error "shadow-parent cycle: $chain"
+      return 1
+    fi
+  done
+
+  printf '%s\n' "${immediate_parent_local:-$base_local}"
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

@@ -293,6 +293,7 @@ _stack_resolve() {
     fi
   done
 
+  _STACK_DEPTH=$depth
   printf '%s\n' "${immediate_parent_local:-$base_local}"
 }
 
@@ -316,6 +317,24 @@ stack_local_base() {
 # and rewrites on live pairs (feature reparent).
 stack_validate_edge() {
   _stack_resolve "$1" "$2" >/dev/null
+}
+
+# Print the number of live shadow-parent links from <local_branch> up to
+# <target_local> when the target lies on its chain, nothing otherwise.
+# Dead links and cycles terminate the walk; bounded by the depth cap.
+_stack_links_to() {
+  local current="$1" target="$2" n=0 guard=0
+  while (( guard++ <= 16 )); do
+    [[ "$current" == "$target" ]] && { printf '%s\n' "$n"; return 0; }
+    local parent_public parent_local
+    parent_public="$(stack_parent_for "$current")"
+    [[ -z "$parent_public" || "$parent_public" == "$PUBLIC_BASE_BRANCH" ]] && break
+    parent_local="${parent_public}${LOCAL_SUFFIX}"
+    branch_exists "$parent_public" && branch_exists "$parent_local" || break
+    current="$parent_local"
+    n=$((n + 1))
+  done
+  return 1
 }
 
 # Normalize the workspace path from config

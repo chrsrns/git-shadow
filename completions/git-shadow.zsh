@@ -107,6 +107,11 @@ _git_shadow_feature() {
           _arguments \
             '(-h --help)'{-h,--help}'[show usage]'
           ;;
+        reparent)
+          _arguments \
+            '--onto[reparent onto an existing feature pair or the base pair]:parent:' \
+            '(-h --help)'{-h,--help}'[show usage]'
+          ;;
       esac
       ;;
   esac
@@ -120,6 +125,7 @@ _git_shadow_feature_subcommands() {
     'finish:finalize the feature and integrate [MEMORY] commits'
     'sync:apply public net diff onto the @local feature branch'
     'list:list open feature pairs'
+    'reparent:rewrite a feature pair'"'"'s shadow-parent'
     'help:show group help'
   )
   _describe 'subcommand' subcommands

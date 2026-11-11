@@ -36,19 +36,22 @@ complete -c git-shadow -n "not __fish_seen_subcommand_from $top_cmds" -a agents 
 # feature subcommands and flags
 # ---------------------------------------------------------------------------
 
-set -l feature_subcmds start publish finish sync list
+set -l feature_subcmds start publish finish sync list reparent
 
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a start   -d "create a new public/@local feature branch pair"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a publish -d "publish public commits from the @local feature branch"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a finish  -d "finalize the feature and integrate [MEMORY] commits"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a sync    -d "apply public net diff onto the @local feature branch"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a list    -d "list open feature pairs"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and not __fish_seen_subcommand_from $feature_subcmds" -a reparent -d "rewrite a feature pair's shadow-parent"
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from reparent" -l onto -d "reparent onto an existing feature pair or the base pair" -r
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from list" -l json -d "print the feature pairs as a JSON array"
 
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l recover  -d "recover after public history rewrite"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l continue -d "resume after manual conflict resolution"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from sync" -l abort    -d "abort the sync"
 
+complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l onto        -d "stack the new pair on an existing feature pair" -r
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree     -d "create a worktree under WORKTREE_ROOT for <name>@local"
 complete -c git-shadow -n "__fish_seen_subcommand_from feature; and __fish_seen_subcommand_from start" -l worktree-dir -d "create the feature worktree at the given path" -r
 
@@ -179,10 +182,10 @@ complete -c git-shadow -n "__fish_seen_subcommand_from re-anchor push" -a "(git 
 function __git_shadow_expecting_value
   set -l tokens (commandline -poc)
   if string match -qr '\s$' -- "$(commandline -p)"
-    contains -- $tokens[-1] -m --message --worktree-dir --mark-applied
+    contains -- $tokens[-1] -m --message --worktree-dir --mark-applied --onto
   else
     set -l n (count $tokens)
-    test $n -ge 2; and contains -- $tokens[-2] -m --message --worktree-dir --mark-applied
+    test $n -ge 2; and contains -- $tokens[-2] -m --message --worktree-dir --mark-applied --onto
   end
 end
 

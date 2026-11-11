@@ -122,6 +122,25 @@ Configure it once per project or user:
 git shadow config set WORKTREE_ROOT <absolute-path> --project-config
 ```
 
+### Stacked feature pairs
+
+A feature pair can be stacked on a parent feature pair (split MRs, follow-ups on unmerged work):
+
+```bash
+# from a checkout of <parent>@local, or from anywhere with --onto:
+git shadow feature start feature/x-part2
+git shadow feature start feature/x-part2 --onto feature/x
+```
+
+- The child's public branch starts at the parent's public head; `<name>@local` starts at `<parent>@local`'s head. The parent is stored in `branch.<name>@local.shadow-parent` — chains are single-parent, max depth 8, and the base pair cannot be a target.
+- `git shadow status` and `feature list` show the `parent` field; `doctor` warns on dangling parents, cycles, depth violations, and orphan config.
+- Publish stays parent-first only on content dependence: the check pass replays onto the parent's public head, so it fails when the parent's unpublished work differs on paths the child's replay expects; pure parent additions on untouched paths publish clean.
+- `feature finish` on a stacked pair targets the parent pair: the parent's public branch is pulled (use `--no-pull` when it has no upstream), the child's `[MEMORY]`s and net diff land on `<parent>@local`, and the parent's own unpublished backlog stays publishable. Named `feature finish <name>` also runs from the resolved parent pair checkout, including a worktree hosting `<parent>@local`.
+- A deleted parent pair leaves the child's `shadow-parent` dangling; the effective base auto-retargets to the base pair, and `status`/`list`/`doctor` surface it. `finish` warns naming each stranded child.
+- `git shadow feature reparent <name> --onto <parent>` rewrites the pointer config-only (safe while a sync or finish is paused); `--onto <base>` (either spelling) unstacks. Reparenting to a sibling does not move content — the child's publish check pass fails the tree-diff until the old parent finishes and the child re-anchors.
+- `finish --keep-worktree` keeps `<name>@local` with its `shadow-parent` still set — clear it with `git config --unset branch.<name>@local.shadow-parent` or a reparent.
+- No automatic restacking: `<child>@local` inherits the parent's later work only through `finish` replay or a manual `git rebase`.
+
 ### Safety and verification
 
 - Run `git shadow check public feature/x` before push to audit leaked local-only content.

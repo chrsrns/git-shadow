@@ -220,6 +220,76 @@ feature/login@local
 
 ---
 
+# Stack a feature on another feature
+
+A feature pair can be stacked on a parent feature pair — for a large
+change split across MRs, or a follow-up that depends on an unmerged
+review:
+
+```bash
+# from a checkout of the parent's @local:
+git shadow feature start feature/login-part2
+
+# or from anywhere, naming the parent (public or @local spelling):
+git shadow feature start feature/login-part2 --onto feature/login
+```
+
+The child's public branch starts at the parent's public head and the
+child's `@local` at the parent's `@local` head; the parent is recorded
+in `branch.<name>@local.shadow-parent`. Stacks are single-parent chains
+with a maximum depth of 8 — the base pair cannot be a stack target.
+
+Publishing is still parent-first only where the content depends on it:
+`feature publish` replays onto the parent's public head, so the check
+pass fails when the parent's unpublished work differs on a path the
+child's replay expects — while parent additions on paths the child
+never touches publish clean.
+
+Finishing a stacked child after its MR merges into the parent replays
+the child's `[MEMORY]` commits and net diff onto the *parent* pair,
+then the parent finishes into the base in turn — each pair's
+unpublished backlog survives:
+
+```bash
+# on feature/login-part2@local, or named from the parent pair checkout:
+git shadow feature finish
+git shadow feature finish feature/login-part2   # from feature/login@local
+```
+
+If the parent pair is deleted (finished or removed) while a child still
+points at it, the child's `shadow-parent` dangles and its effective base
+auto-retargets to the base pair — `status`, `feature list`, and `doctor`
+surface the condition. `finish` warns, naming each child it strands.
+
+Repoint or unstack a pair config-only (safe while a sync or finish is
+paused):
+
+```bash
+git shadow feature reparent feature/login-part2 --onto feature/other
+git shadow feature reparent feature/login-part2 --onto main      # unstack
+```
+
+Notes and edges:
+
+- `feature finish` on a stacked pair pulls the parent's *public* branch;
+  when the parent has no upstream (never pushed), use `--no-pull`.
+- `feature finish <name>` also runs from a checkout of the resolved
+  parent pair, including a dedicated worktree hosting `<parent>@local`.
+- `finish --keep-worktree` deletes the public branch but keeps
+  `<name>@local` — the `shadow-parent` config stays set on it until
+  `git config --unset branch.<name>@local.shadow-parent` or a reparent.
+- Reparenting onto a sibling (a different unmerged feature) moves the
+  provenance pointer only. The child's publish check pass then fails
+  the tree-diff until the old parent finishes and the child re-anchors
+  (`git shadow re-anchor <name>@local`) — the content the child was
+  built on still lives on the old parent's line.
+- Edge case: when the *local* half of a parent is deleted but the public
+  branch remains merged into the child's base, the child falls back to
+  the base pair — and non-`[MEMORY]` commits the parent had on its
+  `@local` (already merged) can enter the child's publishable range.
+
+---
+
 # Work locally
 
 Write your code normally on your "@local" branch.

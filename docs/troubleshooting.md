@@ -28,6 +28,7 @@ This page covers failure recovery for the most common situations where git shado
 12. [Committing directly on a public branch](#12-committing-directly-on-a-public-branch)
 13. [Worktree issues](#13-worktree-issues)
 14. [Local patches](#14-local-patches)
+15. [Stacked feature pairs](#15-stacked-feature-pairs)
 
 ---
 
@@ -579,3 +580,20 @@ This stores the change as a unified-diff sidecar in `.git-shadow/patches/package
 - **`git shadow local apply` warns "orphan sidecar."** The public source has changed in a way that the sidecar can no longer apply. The source is reset to `HEAD`. Refresh with `git shadow local add <path>` or remove the sidecar with `git shadow local rm <path>`.
 - **`git shadow annotations reapply` overwrites a local patch.** Before reapplying markers, `git shadow annotations reapply` strips patch overlays, writes markers, and reapplies patch overlays. If markers and patches overlap on the same lines the patch may fail and become an orphan. In that case refresh the sidecar.
 - **Working tree looks "dirty" when a patch is already applied.** `git shadow` operations treat a correctly-applied patch overlay as clean, so `ensure_clean_repo` does not force you to stash local config. A stale or mismatched overlay is still rejected.
+
+---
+
+## 15. Stacked feature pairs
+
+**Scenario:** A feature pair is stacked on a parent feature pair — `feature start <name>` run on `<parent>@local`, or `--onto <parent>` from any checkout. The parent is recorded in `branch.<name>@local.shadow-parent`.
+
+**Common symptoms and recovery:**
+
+- **`feature publish` fails the check pass on a stacked child.** The replay targets the parent's public head; when the parent's unpublished work differs on a path the child's replay expects, `check_tree_matches` fails — this is the intended parent-first ordering signal. Publish the parent first (or reparent if the merge actually landed in the base). Pure parent additions on paths the child never touches do publish clean.
+- **`feature finish` reports "not merged" but the MR landed in `main`, not the parent.** The error names `git shadow feature reparent <name> --onto <base>` — repoint the pair at the base and re-run finish.
+- **`feature finish` fails pulling a parent public branch with no upstream.** The parent was never pushed; use `feature finish --no-pull`.
+- **`status` or `feature list` shows a `parent` that no longer exists.** The `shadow-parent` dangles after the parent pair was finished or deleted — the effective base auto-retargets to the base pair, and `doctor` names it. Repoint with `feature reparent` or clear it with `git config --unset branch.<name>@local.shadow-parent`.
+- **`feature reparent` to a sibling succeeds but the child still fails publish.** Reparenting moves the pointer only, not content — the child's tree was built on the old parent's line. Finish the old parent (or re-anchor the child with `git shadow re-anchor <name>@local` once the old parent's public work has landed where the child can see it).
+- **`doctor` warns about a cycle or a chain past depth 8.** Hand-written or stale `shadow-parent` links are involved; break the named leg with `feature reparent` or `git config --unset`.
+- **`feature finish --keep-worktree` left `<name>@local` with a `shadow-parent`.** The kept local branch retains the config; clear it with `git config --unset branch.<name>@local.shadow-parent` or `feature reparent`.
+- **Publishable count on a child grew after the parent's `@local` was deleted.** When only the local half of the parent dies and the parent was already merged, non-`[MEMORY]` commits that lived on `<parent>@local` can fall into the child's publishable range through the missing-base fallback. Audit with `git shadow check public <name>` before publishing.

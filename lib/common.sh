@@ -230,6 +230,113 @@ paired_public_branches() {
   done < <(local_branch_refs)
 }
 
+# Print the recorded shadow-parent (the parent's public branch name) for
+# <local_branch>, empty when unset. Reads
+# branch.<local_branch>.shadow-parent — the only provenance store.
+stack_parent_for() {
+  git config --get "branch.$1.shadow-parent" 2>/dev/null || true
+}
+
+# _stack_resolve <local_branch> [<pending_parent_public>]
+# Core shadow-parent chain walk. Prints the effective local base: the
+# first live parent pair's @local, else the base pair's @local. A parent
+# pair is live only when both <parent> and <parent><LOCAL_SUFFIX> exist;
+# a dead or half-dead link terminates the walk (never walked past to a
+# grandparent), as does a base-valued or unset shadow-parent.
+# With <pending_parent_public>, <local_branch>'s stored link is replaced
+# by that value and <local_branch>'s own pair counts as live — validating
+# a link for a pair that may not exist yet.
+# Fails (return 1, error naming the chain) on a cycle or live-link
+# depth > 8.
+_stack_resolve() {
+  local local_branch="$1"
+  local pending="${2-}"
+  local pending_active=$(( $# >= 2 ))
+  local base_local="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+  local self_public="${local_branch%${LOCAL_SUFFIX}}"
+
+  local current="$local_branch" parent_public parent_local
+  local immediate_parent_local="" depth=0
+  local -A seen=()
+  local chain="$local_branch"
+  while :; do
+    seen[$current]=1
+    if (( pending_active )); then
+      parent_public="$pending"
+      pending_active=0
+    else
+      parent_public="$(stack_parent_for "$current")"
+    fi
+    # Unset or base-valued shadow-parent: terminal, counts no link.
+    [[ -z "$parent_public" || "$parent_public" == "$PUBLIC_BASE_BRANCH" ]] && break
+    parent_local="${parent_public}${LOCAL_SUFFIX}"
+    # Dead or half-dead link: dangling — stop, effective base is the base
+    # pair unless a live immediate parent was already recorded. In
+    # pending mode the validated node counts as live so a stored link
+    # pointing back at it surfaces as a cycle.
+    if [[ "$parent_public" != "$self_public" || $# -lt 2 ]]; then
+      if ! branch_exists "$parent_public" || ! branch_exists "$parent_local"; then
+        break
+      fi
+    fi
+    [[ -z "$immediate_parent_local" ]] && immediate_parent_local="$parent_local"
+    depth=$((depth + 1))
+    if (( depth > 8 )); then
+      ui_error "Stack depth exceeds 8 following shadow-parent chain: $chain -> $parent_local"
+      return 1
+    fi
+    current="$parent_local"
+    chain="$chain -> $current"
+    if [[ -n "${seen[$current]:-}" ]]; then
+      ui_error "shadow-parent cycle: $chain"
+      return 1
+    fi
+  done
+
+  _STACK_DEPTH=$depth
+  printf '%s\n' "${immediate_parent_local:-$base_local}"
+}
+
+# Print <local_branch>'s effective local base (the chain walk). The base
+# pair itself always resolves to itself. Fails naming the chain on a
+# cycle or depth > 8; mutating callers must abort before mutation,
+# read-only consumers resolve the failure to the base pair (V295).
+stack_local_base() {
+  local local_branch="$1"
+  if [[ "$local_branch" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+    printf '%s\n' "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+    return 0
+  fi
+  _stack_resolve "$local_branch"
+}
+
+# Validate a pending shadow-parent link: with <local_branch>'s parent set
+# to <parent_public>, return 0 when the resulting chain is acyclic and
+# within depth, 1 naming the leg otherwise. <local_branch>'s pair counts
+# as live — validates links for pairs not yet created (feature start)
+# and rewrites on live pairs (feature reparent).
+stack_validate_edge() {
+  _stack_resolve "$1" "$2" >/dev/null
+}
+
+# Print the number of live shadow-parent links from <local_branch> up to
+# <target_local> when the target lies on its chain, nothing otherwise.
+# Dead links and cycles terminate the walk; bounded by the depth cap.
+_stack_links_to() {
+  local current="$1" target="$2" n=0 guard=0
+  while (( guard++ <= 16 )); do
+    [[ "$current" == "$target" ]] && { printf '%s\n' "$n"; return 0; }
+    local parent_public parent_local
+    parent_public="$(stack_parent_for "$current")"
+    [[ -z "$parent_public" || "$parent_public" == "$PUBLIC_BASE_BRANCH" ]] && break
+    parent_local="${parent_public}${LOCAL_SUFFIX}"
+    branch_exists "$parent_public" && branch_exists "$parent_local" || break
+    current="$parent_local"
+    n=$((n + 1))
+  done
+  return 1
+}
+
 # Normalize the workspace path from config
 resolve_workspace_dir() {
   if [[ "$WORKSPACE_DIR" = /* ]]; then

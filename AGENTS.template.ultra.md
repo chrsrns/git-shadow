@@ -99,6 +99,17 @@ Any untracked file in the worktree other than toplevel `.git-shadow.env` aborts 
 `WORKTREE_ROOT` is the parent directory for `--worktree` worktrees and is empty by default.
 Configure it with `git shadow config set WORKTREE_ROOT <absolute-path> --project-config`.
 
+### Stacked pairs
+
+- Stack a child on a parent pair: `feature start <name>` from `<parent>@local`, or `--onto <parent>` (public or @local spelling) from anywhere. Child public ← parent public head; `<name>@local` ← `<parent>@local` head; parent recorded in `branch.<name>@local.shadow-parent`. Chains single-parent, depth ≤ 8; base pair ⊥ target.
+- `status`/`feature list` show `parent`; `doctor` warns on dangling/cycle/depth/orphan config.
+- Publish enforces parent-first only on content dependence: check pass replays onto parent's public head — fails when parent's unpublished work differs on expected paths; pure additions on untouched paths publish clean.
+- `feature finish` targets the parent pair: parent public pulled (`--no-pull` when it has no upstream), child `[MEMORY]`s + net diff land on `<parent>@local`, parent backlog stays publishable. Named `finish <name>` runs from resolved parent checkout incl. a worktree hosting `<parent>@local`.
+- Deleted parent → child's `shadow-parent` dangles; effective base auto-retargets to base pair. `finish` warns naming stranded children.
+- `feature reparent <name> --onto <parent>` rewrites pointer config-only (paused-op safe); `--onto <base>` unstacks. Sibling reparent moves no content — publish tree-diff fails until old parent finishes, then `re-anchor`.
+- `finish --keep-worktree` keeps `<name>@local` with `shadow-parent` still set — clear via `git config --unset` or reparent.
+- No auto-restack: `<child>@local` gains later parent work only via `finish` replay or manual rebase.
+
 ### Safety
 
 - Run `git shadow check public feature/x` before push to audit local-only leaks.

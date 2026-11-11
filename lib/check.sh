@@ -37,7 +37,14 @@ check_public_commits() {
     return 1
   fi
 
-  local local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+  # The exclusion oracle is the pair's effective local base — the live
+  # shadow-parent pair's @local, else the local base (V295). A failed
+  # stack walk (cycle/depth) resolves to the base pair for this read-only
+  # consumer; mutating callers probe stack_local_base themselves.
+  local local_base
+  if ! local_base="$(stack_local_base "$local_branch")"; then
+    local_base="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
+  fi
   local exclude_feature=1 base_local_exists=0
   if [[ "$local_branch" == "$local_base" ]]; then
     exclude_feature=0

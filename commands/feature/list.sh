@@ -74,6 +74,9 @@ for name in "${names[@]}"; do
     worktree_path="-"
   fi
 
+  parent="$(stack_parent_for "$local_ref")"
+  parent="${parent:--}"
+
   cp="$(checkpoint_latest "$local_ref")"
   if [[ -z "$cp" ]]; then
     checkpoint_str="-"
@@ -89,10 +92,11 @@ for name in "${names[@]}"; do
   if [[ "$JSON" -eq 0 ]]; then
     printf '%s\n' "$name"
     printf '  worktree   : %s\n' "$worktree_path"
+    printf '  parent     : %s\n' "$parent"
     printf '  checkpoint : %s\n' "$checkpoint_str"
     printf '  publishable: %s\n' "$publishable"
   else
-    json_items+=("{\"name\":\"$(json_escape "$name")\",\"worktree\":\"$(json_escape "$worktree_path")\",\"checkpoint\":\"$(json_escape "$checkpoint_str")\",\"publishable\":$publishable}")
+    json_items+=("{\"name\":\"$(json_escape "$name")\",\"worktree\":\"$(json_escape "$worktree_path")\",\"parent\":\"$(json_escape "$parent")\",\"checkpoint\":\"$(json_escape "$checkpoint_str")\",\"publishable\":$publishable}")
   fi
 done
 

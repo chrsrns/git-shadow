@@ -100,6 +100,7 @@ new_depth="${_STACK_DEPTH:-0}"
 
 # Descendant depth: any @local whose chain reaches this pair gains the
 # new link count — abort naming the pair pushed past the cap.
+_desc="" links=""
 while IFS= read -r _desc; do
   [[ -z "$_desc" || "$_desc" == "$FEATURE_LOCAL" ]] && continue
   links="$(_stack_links_to "$_desc" "$FEATURE_LOCAL")" || continue

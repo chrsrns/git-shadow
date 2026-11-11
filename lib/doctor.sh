@@ -520,10 +520,15 @@ doctor_worktree_check() {
 doctor_stack_check() {
   local issues=0
   local line key branch value resolve_msg
-  # The config enumeration is the oracle — a ref-deleted @local leaves
-  # its shadow-parent behind, unlike `git branch -D`.
+  # The config enumeration ∪ @local refs is the oracle — a ref-deleted
+  # @local leaves its shadow-parent behind, unlike `git branch -D`.
+  # Config values may point at any branch section, so refs contribute
+  # keys only through their own config; a ref without config cannot
+  # warn and adds nothing to the union.
+  local enumerated=0
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
+    enumerated=$((enumerated + 1))
     key="${line%%[[:space:]]*}"
     value="${line#*[[:space:]]}"
     branch="${key#branch.}"
@@ -561,7 +566,11 @@ doctor_stack_check() {
   done < <(git config --get-regexp '^branch\..*\.shadow-parent$' 2>/dev/null || true)
 
   if [[ $issues -eq 0 ]]; then
-    ui_ok "stack: no shadow-parent problems"
+    if [[ $enumerated -eq 0 ]]; then
+      ui_info "stack: no shadow-parent configs"
+    else
+      ui_ok "stack: no shadow-parent problems"
+    fi
   fi
   return $issues
 }

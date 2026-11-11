@@ -148,7 +148,7 @@ worktree_add() {
   # checkout's toplevel, then the main checkout's (V286).
   local main_wt inv_top env_src
   main_wt="$(worktree_paths | head -1)"
-  inv_top="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  inv_top="$(repo_root || true)"
   env_src=""
   if [[ -n "$inv_top" && -f "$inv_top/.git-shadow.env" ]]; then
     env_src="$inv_top"

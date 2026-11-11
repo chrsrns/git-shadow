@@ -115,3 +115,26 @@ teardown() {
   [ -f ".git/hooks/pre-commit" ]
   [ -f ".git/hooks/pre-push" ]
 }
+
+@test "feature start refuses while a sync is paused" {
+  echo 'mode=feature' > "$(git rev-parse --git-common-dir)/git-shadow-sync"
+  run git shadow feature start feat-x
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"sync"* || "$output" == *"progress"* ]]
+  rm -f "$(git rev-parse --git-common-dir)/git-shadow-sync"
+}
+
+@test "feature start refuses from a non-base branch" {
+  git checkout -q -b otherpub
+  run git shadow feature start feat-x
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"develop"* ]]
+  ! git show-ref --verify --quiet refs/heads/feat-x
+}
+
+@test "bare feature start refuses from a non-base public branch" {
+  git checkout -q -b otherpub
+  run git shadow feature start
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"develop"* ]]
+}

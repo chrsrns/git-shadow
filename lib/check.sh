@@ -155,7 +155,16 @@ check_replay_public() {
   local tmp_branch="$2"
   shift 2
 
-  git checkout -q -b "$tmp_branch" "$checkpoint_public" >/dev/null 2>&1
+  local co_err held
+  if ! co_err="$(git checkout -q -b "$tmp_branch" "$checkpoint_public" 2>&1)"; then
+    held="$(worktree_find_for_branch "$tmp_branch" 2>/dev/null || true)"
+    if [[ -n "$held" ]]; then
+      ui_error "Check pass: cannot create replay branch '$tmp_branch' — it is checked out in worktree '$held'."
+    else
+      ui_error "Check pass: cannot create replay branch '$tmp_branch': $co_err"
+    fi
+    return 1
+  fi
 
   local sha conflicted before_tree
   for sha in "$@"; do

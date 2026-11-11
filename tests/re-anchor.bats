@@ -285,3 +285,13 @@ EOF
   git worktree remove --force "$INVOKE_WT"
   git checkout -q feature-foo@local
 }
+
+@test "re-anchor aborts when the local branch is held by another worktree" {
+  git checkout -q main
+  git shadow feature start feat-a
+  git checkout -q main
+  git worktree add -q "$TEST_DIR/wt-a" "feat-a@local"
+  run git shadow re-anchor "feat-a@local"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"wt-a"* || "$output" == *"worktree"* ]]
+}

@@ -225,13 +225,13 @@ finish_cleanup_feature() {
     local deleted_public=0 deleted_local=0
     if git branch -D "$FEATURE_PUBLIC_BRANCH" >/dev/null 2>&1; then
       deleted_public=1
-    elif git show-ref --verify --quiet "refs/heads/$FEATURE_PUBLIC_BRANCH"; then
+    elif branch_exists "$FEATURE_PUBLIC_BRANCH"; then
       ui_warn "Could not delete public feature branch '$FEATURE_PUBLIC_BRANCH'."
     fi
     if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
       if git branch -D "$FEATURE_LOCAL_BRANCH" >/dev/null 2>&1; then
         deleted_local=1
-      elif git show-ref --verify --quiet "refs/heads/$FEATURE_LOCAL_BRANCH"; then
+      elif branch_exists "$FEATURE_LOCAL_BRANCH"; then
         ui_warn "Could not delete local feature branch '$FEATURE_LOCAL_BRANCH'."
       fi
       [[ "$deleted_public" -eq 1 && "$deleted_local" -eq 1 ]] && \
@@ -879,7 +879,9 @@ _finish_normal_body() {
   # ---------------------------------------------------------------------------
   if [[ "$NO_PULL" -eq 0 ]]; then
     ui_git "Pulling latest changes for '$PUBLIC_BASE'"
-    git checkout -q "$PUBLIC_BASE" >/dev/null 2>&1
+    if ! checkout_branch_verified "$PUBLIC_BASE"; then
+      return 1
+    fi
     if ! git pull >/dev/null 2>&1; then
       ui_warn "Pull failed for '$PUBLIC_BASE'; continuing with local state."
     fi
@@ -943,7 +945,9 @@ _finish_normal_body() {
   # Apply the public base net diff to the local base.
   # ---------------------------------------------------------------------------
   ui_shadow "Checkout '$LOCAL_BASE'"
-  git checkout -q "$LOCAL_BASE" >/dev/null 2>&1
+  if ! checkout_branch_verified "$LOCAL_BASE"; then
+    return 1
+  fi
 
   local latest_cp cp_public
   latest_cp="$(checkpoint_latest "$LOCAL_BASE")"

@@ -171,6 +171,31 @@ branch_exists() {
   git show-ref --verify --quiet "refs/heads/$1"
 }
 
+# Switch the invoking checkout to <branch> when it holds a different
+# branch, then verify the held branch. A same-branch switch is skipped —
+# it fails under an unmerged index. On checkout failure the error names
+# the holding worktree when one resolves, else git's refusal reason.
+# Returns 1 without mutating anything.
+checkout_branch_verified() {
+  local target="$1"
+  [[ "$(current_branch)" == "$target" ]] && return 0
+  local co_err held
+  if ! co_err="$(git checkout "$target" 2>&1)"; then
+    held="$(worktree_find_for_branch "$target" 2>/dev/null || true)"
+    if [[ -n "$held" ]]; then
+      ui_error "Cannot checkout '$target': it is checked out in worktree '$held'."
+      ui_info  "Run this command from that worktree, or detach '$target' there first."
+    else
+      ui_error "Cannot checkout '$target': $co_err"
+    fi
+    return 1
+  fi
+  if [[ "$(current_branch)" != "$target" ]]; then
+    ui_error "Checkout did not land on '$target'."
+    return 1
+  fi
+}
+
 # Return 0 iff object <rev>:<path> exists. An empty <rev> probes the
 # staged index (":<path>").
 rev_path_exists() {

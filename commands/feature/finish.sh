@@ -472,7 +472,16 @@ finish_base_diff_commit() {
   sync_stage_all
   if index_dirty; then
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
+    return 0
   fi
+  # An empty stage means the failed apply rolled back atomically — nothing
+  # landed and nothing was resolved. Closing the phase here would record a
+  # sync the tree never received.
+  ui_error "No resolved changes to commit — the public base net diff did not land."
+  ui_info "Resolve the blocking path manually (e.g. 'git rm <path>' for a file the public side deleted but the local side modified, or 'git checkout $PUBLIC_BASE -- <path>' to take the public copy),"
+  ui_info "then run: git shadow feature finish --continue"
+  ui_info "Or run: git shadow feature finish --abort"
+  return 1
 }
 
 # Fresh base-diff phase: record pause state, apply the public net diff, and
@@ -488,11 +497,25 @@ finish_base_diff_apply() {
   finish_save_phase base-diff "" "$remaining_shas"
 
   if ! sync_apply_and_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH" >/dev/null; then
-    local conflicted
+    local conflicted dirty
     conflicted="$(conflicted_paths || true)"
-    ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
-    [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
-    ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
+    dirty="$(git status --porcelain 2>/dev/null || true)"
+    if [[ -n "$conflicted" ]]; then
+      ui_error "Conflict applying public base net diff to '$LOCAL_BASE'."
+      ui_error "Conflicting paths: $(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+      ui_info "Resolve the conflicts, then run: git shadow feature finish --continue"
+    elif [[ -n "$dirty" ]]; then
+      # Changes present with no unmerged paths — the apply landed but the
+      # [SYNC] commit did not complete.
+      ui_error "Public base net diff applied to '$LOCAL_BASE' but the [SYNC] commit did not complete."
+      ui_info "Resolve the cause, then run: git shadow feature finish --continue"
+    else
+      # Clean tree after a failed apply = atomic rollback: nothing landed
+      # and nothing is resumable in the working tree.
+      ui_error "Public base net diff did not apply to '$LOCAL_BASE' — git apply rolled back atomically; nothing landed."
+      ui_info "Resolve the blocking path manually (e.g. 'git rm <path>' for a file the public side deleted but the local side modified, or 'git checkout $PUBLIC_BASE -- <path>' to take the public copy),"
+      ui_info "then run: git shadow feature finish --continue"
+    fi
     ui_info "Or run: git shadow feature finish --abort"
     return 1
   fi
@@ -538,6 +561,22 @@ finish_finalize() {
     local -a cp_args=()
     if [[ "$LOCAL_BASE" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" && -n "$tip_local" ]]; then
       cp_args=(--local "$tip_local")
+    fi
+    # V307: a checkpoint on the base pair claims a sync the tree must
+    # prove — refuse to write it over base drift.
+    if [[ "$LOCAL_BASE" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+      local drifted
+      if ! drifted="$(check_base_tree_contained "$PUBLIC_BASE_HEAD" "$LOCAL_BASE")"; then
+        ui_error "Local base '$LOCAL_BASE' does not contain '$PUBLIC_BASE' — refusing to record a sync checkpoint:"
+        local _drift_path
+        while IFS= read -r _drift_path; do
+          [[ -n "$_drift_path" ]] && ui_error "  $_drift_path"
+        done < <(printf '%s\n' "$drifted")
+        ui_info "Keep a local copy under a patch sidecar: git shadow local add <path>"
+        ui_info "Or drop the divergence: 'git rm <path>' / 'git checkout $PUBLIC_BASE -- <path>'"
+        ui_info "Then re-run: git shadow feature finish"
+        return 1
+      fi
     fi
     if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${cp_args[@]}" "${pids[@]}" >/dev/null; then
       return 1

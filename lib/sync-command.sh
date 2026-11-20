@@ -315,9 +315,22 @@ EOF
     sync_save_state "mode=$mode" "public_branch=$public_branch" "local_branch=$local_branch" \
       "checkpoint_public=$cp_public" "checkpoint_local=$cp_local" "diff_start=$diff_start" \
       "target_public=$public_head" "local_head=$local_head" "pids=$SYNC_PIDS"
-    ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
-    [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $conflicted"
-    ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+    if [[ -n "$conflicted" ]]; then
+      ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
+      ui_error "Conflicting paths: $conflicted"
+      ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+    elif [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
+      # Changes present with no unmerged paths — the apply landed but the
+      # [SYNC] commit did not complete.
+      ui_error "$label net diff applied to '$local_branch' but the [SYNC] commit did not complete."
+      ui_info "Resolve the cause, then run: git shadow $mode sync --continue"
+    else
+      # Clean tree after a failed apply = atomic rollback: nothing landed
+      # and nothing is resumable in the working tree.
+      ui_error "Net diff from '$public_branch' ($diff_start..$public_head) did not apply to '$local_branch' — git apply rolled back atomically; nothing landed."
+      ui_info "Resolve the blocking path manually (e.g. 'git rm <path>' for a file the public side deleted but the local side modified, or 'git checkout $public_branch -- <path>' to take the public copy),"
+      ui_info "then run: git shadow $mode sync --continue"
+    fi
     ui_info "Or run: git shadow $mode sync --abort"
     return 1
   fi

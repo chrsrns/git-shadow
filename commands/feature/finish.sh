@@ -474,9 +474,15 @@ finish_base_diff_commit() {
     sync_commit "$LOCAL_BASE" "$PUBLIC_BASE" "$RANGE_START" "$RANGE_END" "$FEATURE_PUBLIC_BRANCH"
     return 0
   fi
-  # An empty stage means the failed apply rolled back atomically — nothing
-  # landed and nothing was resolved. Closing the phase here would record a
-  # sync the tree never received.
+  # A conflict pause whose resolution converged to HEAD (keep-local) is a
+  # valid resolution — nothing to commit. The finalize gate validates the
+  # base pair.
+  if [[ -n "${FINISH_BASE_DIFF_CONFLICTED:-}" ]]; then
+    return 0
+  fi
+  # An empty stage after an atomic-rollback pause means nothing landed and
+  # nothing was resolved. Closing the phase here would record a sync the
+  # tree never received.
   ui_error "No resolved changes to commit — the public base net diff did not land."
   ui_info "Resolve the blocking path manually (e.g. 'git rm <path>' for a file the public side deleted but the local side modified, or 'git checkout $PUBLIC_BASE -- <path>' to take the public copy),"
   ui_info "then run: git shadow feature finish --continue"
@@ -517,6 +523,12 @@ finish_base_diff_apply() {
       ui_info "then run: git shadow feature finish --continue"
     fi
     ui_info "Or run: git shadow feature finish --abort"
+    # Record the pause class — the unmerged paths present now (empty on
+    # atomic rollback) discriminate a resolvable conflict pause from a
+    # rolled-back apply on --continue.
+    # shellcheck disable=SC2034  # serialized by finish_save_phase in lib/finish-state.sh
+    BASE_DIFF_CONFLICTED="$(printf '%s\n' "$conflicted" | paste -sd' ' -)"
+    finish_save_phase base-diff "" "$remaining_shas"
     return 1
   fi
   finish_clear_state
@@ -780,7 +792,8 @@ if [[ -n "$MARK_APPLIED" ]]; then
         "phase=$FINISH_PHASE" "conflicted_sha=$conflicted" \
         "remaining_shas=${remaining[*]}" "range_start=$FINISH_RANGE_START" \
         "range_end=$FINISH_RANGE_END" "pids=$FINISH_PIDS" \
-        "keep_worktree=$keep_wt" "keep_branches=$keep_br"
+        "keep_worktree=$keep_wt" "keep_branches=$keep_br" \
+        "base_diff_conflicted=${FINISH_BASE_DIFF_CONFLICTED:-}"
       ui_ok "Recorded provenance for $target_sha and updated paused finish state."
     else
       ui_ok "Recorded provenance for $target_sha on '$LOCAL_BASE'."

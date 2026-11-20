@@ -37,7 +37,8 @@ finish_save_phase() {
     "phase=$phase" "conflicted_sha=$conflicted_sha" \
     "remaining_shas=$remaining_shas" "range_start=$RANGE_START" \
     "range_end=$RANGE_END" "pids=$PIDS_BASE" \
-    "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES"
+    "keep_worktree=$KEEP_WORKTREE" "keep_branches=$KEEP_BRANCHES" \
+    "base_diff_conflicted=${BASE_DIFF_CONFLICTED:-}"
 }
 
 # Load the finish state file into FINISH_* variables.

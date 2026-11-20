@@ -253,3 +253,35 @@ EOF
   git shadow feature start inherits-base >/dev/null
   git log --oneline "inherits-base@local" | grep -q "\[MEMORY\] base local work"
 }
+
+@test "base sync names atomic rollback when the net diff fails without conflicts" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+
+  # Public file at the checkpoint; local edit diverges; public deletes it.
+  git checkout -q main
+  echo "v0" > legacy.sh
+  git add legacy.sh
+  GIT_SHADOW=1 git commit -qm "chore: add legacy.sh"
+  git checkout -q main@local
+  git shadow base sync >/dev/null
+  echo "local v1" > legacy.sh
+  git add legacy.sh
+  git commit -qm "chore: local legacy tweak"
+  git checkout -q main
+  git rm -q legacy.sh
+  echo "public file change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: delete legacy.sh"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rolled back"* ]]
+  [[ "$output" != *"Resolve the conflicts"* ]]
+  [[ "$output" == *"git shadow base sync --continue"* ]]
+  [[ "$output" == *"git shadow base sync --abort"* ]]
+
+  [ -z "$(git ls-files -u)" ]
+  [ "$(cat legacy.sh)" = "local v1" ]
+}

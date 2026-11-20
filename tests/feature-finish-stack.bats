@@ -263,3 +263,17 @@ pause_finish() {
   run git shadow feature finish --no-pull
   [ "$status" -eq 0 ]
 }
+
+@test "stacked finish onto parent @local is exempt from the base-drift gate" {
+  # The parent @local diverges on a public-tracked path — designed
+  # backlog, not drift; the base-pair containment gate must not fire.
+  git checkout -q "parent-feature@local"
+  echo "parent local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: parent local tweak"
+
+  git checkout -q "child-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+  [ "$(git branch --show-current)" = "parent-feature@local" ]
+}

@@ -165,3 +165,17 @@ start_pair() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"already exists"* ]]
 }
+
+@test "stacked feature start is exempt from the base-drift refusal" {
+  start_pair parent-feature
+  git checkout -q "parent-feature@local"
+  # The parent @local diverges on a public-tracked path — designed
+  # backlog, not drift.
+  echo "parent local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: parent local tweak"
+
+  run git shadow feature start child-feature
+  [ "$status" -eq 0 ]
+  [ "$(git branch --show-current)" = "child-feature@local" ]
+}

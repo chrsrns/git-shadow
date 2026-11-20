@@ -564,8 +564,10 @@ _setup_finished_worktree_feature() {
   grep -q "phase=memory-replay" "$state_file"
   grep -q "keep_worktree=1" "$state_file"
 
-  # Resolve the conflict in the base checkout (main@local).
-  echo "resolved" > file.txt
+  # Resolve the conflict in the base checkout (main@local), converging on
+  # the public content — the finalize checkpoint gate requires the local
+  # base to contain the public tree.
+  git checkout main -- file.txt
   git add file.txt
 
   run git shadow feature finish --continue

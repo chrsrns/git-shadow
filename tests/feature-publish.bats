@@ -161,3 +161,15 @@ EOF
   [ "$status" -eq 1 ]
   [ "$(git rev-parse test-feature@local)" = "$before" ]
 }
+
+@test "feature publish aborts naming the loop on a cyclical shadow-parent chain" {
+  # Second pair so the two can point at each other.
+  git checkout -q develop
+  git shadow feature start parent-feature >/dev/null
+  git config "branch.parent-feature@local.shadow-parent" "test-feature"
+  git config "branch.test-feature@local.shadow-parent" "parent-feature"
+
+  run git shadow feature publish
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"cycle"* ]]
+}

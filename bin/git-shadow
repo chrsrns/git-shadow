@@ -44,11 +44,12 @@ Commands:
   git shadow local apply [<ignored>...]
   git shadow local status [--porcelain|--json] [<ignored>...]
   git shadow completion install [<ignored>...]
-  git shadow feature start [<name> [--worktree|--worktree-dir <path>]]
+  git shadow feature start [<name> [--onto <parent>] [--worktree|--worktree-dir <path>]]
   git shadow feature list [--json]
   git shadow feature publish [<ignored>...]
   git shadow feature sync [--recover] [--continue|--abort]
   git shadow feature finish ([<name>]|--continue|--abort|--mark-applied <sha>) [--no-pull] [--keep-branches] [--keep-worktree]
+  git shadow feature reparent <name> --onto <parent>
   git shadow base sync [--recover] [--continue|--abort]
   git shadow re-anchor [<branch@local>] [<ignored>...]
   git shadow push <branch> [<ignored>...]

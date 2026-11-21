@@ -63,6 +63,13 @@ LOCAL_HEAD_BEFORE="$(git rev-parse "$CURRENT_BRANCH")"
 # patch sidecars are stripped before the working tree is touched and re-applied
 # on every exit/return path.
 _feature_publish_body() {
+  # Probe the stack chain before any mutation: a shadow-parent cycle or
+  # depth violation must abort here — the replay path's exclusion oracle
+  # is read-only and would degrade the failure to "nothing to publish".
+  if ! stack_local_base "$CURRENT_BRANCH" >/dev/null; then
+    exit 1
+  fi
+
   # The temp branch name must come back through the caller-named variable:
   # capturing stdout in $() would run the function in a subshell and lose it.
   local shas_file publish_tmp_branch="" public_commits new_public_head

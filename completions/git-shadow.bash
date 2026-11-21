@@ -48,14 +48,15 @@ _git_shadow() {
   case "$cmd" in
     feature)
       if [[ $pos -eq 1 ]]; then
-        mapfile -t COMPREPLY < <(compgen -W "start publish finish sync list help -h --help" -- "$cur")
+        mapfile -t COMPREPLY < <(compgen -W "start publish finish sync reparent list help -h --help" -- "$cur")
       else
         case "$subcmd" in
           sync)    mapfile -t COMPREPLY < <(compgen -W "--recover --continue --abort -h --help" -- "$cur") ;;
-          start)   mapfile -t COMPREPLY < <(compgen -W "--worktree --worktree-dir -h --help" -- "$cur") ;;
+          start)   mapfile -t COMPREPLY < <(compgen -W "--onto --worktree --worktree-dir -h --help" -- "$cur") ;;
           list)    mapfile -t COMPREPLY < <(compgen -W "--json -h --help" -- "$cur") ;;
           finish)  mapfile -t COMPREPLY < <(compgen -W "--no-pull --keep-branches --keep-worktree --continue --abort --mark-applied -h --help" -- "$cur") ;;
           publish) mapfile -t COMPREPLY < <(compgen -W "-h --help" -- "$cur") ;;
+          reparent) mapfile -t COMPREPLY < <(compgen -W "--onto -h --help" -- "$cur") ;;
         esac
       fi
       ;;

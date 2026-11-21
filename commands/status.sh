@@ -111,6 +111,14 @@ if [[ "$BRANCH_TYPE" == "unknown" ]]; then
   exit 1
 fi
 
+# Stacked pairs report their shadow-parent verbatim — a dangling value
+# prints as stored (the parent field is not the resolved effective base).
+SHADOW_PARENT="$(stack_parent_for "$SHADOW_BRANCH")"
+PARENT_JSON=""
+if [[ -n "$SHADOW_PARENT" ]]; then
+  PARENT_JSON=",\"parent\":\"$(json_escape "$SHADOW_PARENT")\""
+fi
+
 # Dirt fields render as null in --json when the enumeration failed.
 if [[ "$DIRTY_FAILED" -eq 1 ]]; then
   LP_JSON=null; UD_JSON=null
@@ -121,15 +129,16 @@ fi
 # If the public branch does not exist, report missing.
 if ! branch_exists "$PUBLIC_BRANCH"; then
   if [[ "$JSON" -eq 1 ]]; then
-    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","publishable":0,"public_ahead":0,"diverged":false,"local_patches":%s,"unpatched_dirty":%s,"status":"public branch missing"}\n' \
+    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"publishable":0,"public_ahead":0,"diverged":false,"local_patches":%s,"unpatched_dirty":%s,"status":"public branch missing"}\n' \
       "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
       "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
-      "$LP_JSON" "$UD_JSON"
+      "$PARENT_JSON" "$LP_JSON" "$UD_JSON"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
     ui_git    "Branch type   : $BRANCH_TYPE"
     ui_shadow "Public branch : $PUBLIC_BRANCH (missing)"
     ui_git    "Shadow branch : $SHADOW_BRANCH"
+    if [[ -n "$SHADOW_PARENT" ]]; then ui_shadow "parent : $SHADOW_PARENT"; fi
     echo
     ui_warn "Status    : public branch missing"
     echo "publishable : 0"
@@ -145,14 +154,16 @@ LATEST_CP="$(checkpoint_latest "$SHADOW_BRANCH")"
 
 if [[ -z "$LATEST_CP" ]]; then
   if [[ "$JSON" -eq 1 ]]; then
-    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","status":"uninitialized"}\n' \
+    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"status":"uninitialized"}\n' \
       "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
-      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")"
+      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
+      "$PARENT_JSON"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
     ui_git    "Branch type   : $BRANCH_TYPE"
     ui_shadow "Public branch : $PUBLIC_BRANCH"
     ui_git    "Shadow branch : $SHADOW_BRANCH"
+    if [[ -n "$SHADOW_PARENT" ]]; then ui_shadow "parent : $SHADOW_PARENT"; fi
     echo
     ui_warn "Status    : uninitialized (no checkpoint found)"
   fi
@@ -191,15 +202,16 @@ if [[ "$JSON" -eq 1 ]]; then
   else
     public_ahead_json="$PUBLIC_AHEAD"
   fi
-  printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s","publishable":%d,"public_ahead":%s,"diverged":%s,"local_patches":%s,"unpatched_dirty":%s,"checkpoint_public":"%s","checkpoint_local":"%s"}\n' \
+  printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"publishable":%d,"public_ahead":%s,"diverged":%s,"local_patches":%s,"unpatched_dirty":%s,"checkpoint_public":"%s","checkpoint_local":"%s"}\n' \
     "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
     "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
-    "$PUBLISHABLE" "$public_ahead_json" "$DIVERGED" "$LP_JSON" "$UD_JSON" "$CP_PUBLIC" "$CP_LOCAL"
+    "$PARENT_JSON" "$PUBLISHABLE" "$public_ahead_json" "$DIVERGED" "$LP_JSON" "$UD_JSON" "$CP_PUBLIC" "$CP_LOCAL"
 else
   ui_shadow "Current branch : $CURRENT_BRANCH"
   ui_git    "Branch type    : $BRANCH_TYPE"
   ui_shadow "Public branch  : $PUBLIC_BRANCH"
   ui_git    "Shadow branch  : $SHADOW_BRANCH"
+  if [[ -n "$SHADOW_PARENT" ]]; then ui_shadow "parent : $SHADOW_PARENT"; fi
   echo
   if [[ "$PUBLIC_AHEAD" == "?" ]]; then
     ui_warn "public-ahead : public branch has moved non-fast-forward"

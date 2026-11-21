@@ -49,7 +49,8 @@ finish_check_base_exclusivity() {
   while IFS=$'\t' read -r path held rec_locked; do
     [[ -z "$path" ]] && continue
     if [[ "$path" != "$current_top" \
-       && ( "$held" == "$public_base" || "$held" == "$local_base" ) ]]; then
+       && ( ( -n "$public_base" && "$held" == "$public_base" ) \
+         || ( -n "$local_base" && "$held" == "$local_base" ) ) ]]; then
       ui_error "Base branch '$held' is checked out in another worktree: $path"
       ui_info  "Run 'git shadow feature finish $feature_name' from that checkout, or free the branch first."
       return 1
@@ -258,7 +259,16 @@ finish_collect_applied() {
     fi
   done < <(while IFS= read -r mem_sha; do
     mem_subject="$(git log -1 --format='%s' "$mem_sha")"
-    commit_subject_is_memory "$mem_subject" && git log -1 --format='%b' "$mem_sha"
+    if commit_subject_is_memory "$mem_subject"; then
+      git log -1 --format='%b' "$mem_sha"
+      # Plain memory commits on the base dedup by patch-id too — a
+      # candidate cherry-picked off the base carries the same patch-id
+      # without a trailer (V306). Empty patch-ids are skipped so a blank
+      # entry can never false-match an empty-diff candidate.
+      local base_pid
+      base_pid="$(patch_id_for "$mem_sha")"
+      [[ -n "$base_pid" ]] && printf 'git-shadow-source-pid: %s\n' "$base_pid"
+    fi
   done <<< "$(git log --format='%H' "$LOCAL_BASE")")
 }
 
@@ -511,14 +521,25 @@ finish_finalize() {
   # checkpoint covering RANGE_END — e.g. a retry after a post-checkpoint
   # cleanup failure. Any commit above it ([SYNC], replayed or recorded
   # [MEMORY]) makes the tip non-checkpoint and the checkpoint is written.
-  local tip_cp tip_public _
+  local tip_cp tip_public tip_local
   tip_cp="$(checkpoint_latest "$LOCAL_BASE")"
-  tip_public=""
-  if [[ -n "$tip_cp" && "$tip_cp" == "$(git rev-parse "$LOCAL_BASE")" ]]; then
-    read -r tip_public _ <<< "$(checkpoint_parse "$tip_cp")"
+  tip_public="" tip_local=""
+  if [[ -n "$tip_cp" ]]; then
+    read -r tip_public tip_local <<< "$(checkpoint_parse "$tip_cp")"
   fi
-  if [[ "$tip_public" != "$RANGE_END" ]]; then
-    if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${pids[@]}" >/dev/null; then
+  local skip_cp=0
+  if [[ "$tip_cp" == "$(git rev-parse "$LOCAL_BASE")" && "$tip_public" == "$RANGE_END" ]]; then
+    skip_cp=1
+  fi
+  if [[ "$skip_cp" -eq 0 ]]; then
+    # On a feature-pair base the checkpoint records the base pair's
+    # pre-finish cp_local, not the post-replay tip — recording the tip
+    # would swallow the parent's unpublished backlog (V298).
+    local -a cp_args=()
+    if [[ "$LOCAL_BASE" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" && -n "$tip_local" ]]; then
+      cp_args=(--local "$tip_local")
+    fi
+    if ! sync_reanchor_and_checkpoint "$LOCAL_BASE" "$PUBLIC_BASE_HEAD" "${cp_args[@]}" "${pids[@]}" >/dev/null; then
       return 1
     fi
   fi
@@ -616,9 +637,16 @@ if [[ "$ABORT" -eq 1 ]]; then
 
   _finish_abort_body() {
     local conflicted="$1"
+    # A deleted stored base has nothing to restore — clear and report.
+    if ! branch_exists "$FINISH_LOCAL_BASE"; then
+      finish_clear_state
+      ui_ok "Feature finish aborted; stored base '$FINISH_LOCAL_BASE' no longer exists — nothing to restore."
+      ui_info "Restart with 'git shadow feature finish'; the paused state is cleared (--continue/--abort no longer apply)."
+      return 0
+    fi
     if [[ "$(current_branch)" != "$FINISH_LOCAL_BASE" ]]; then
       finish_check_base_exclusivity \
-        "$(public_branch_from_any "$FINISH_LOCAL_BASE")" "$FINISH_LOCAL_BASE" || return 1
+        "" "$FINISH_LOCAL_BASE" || return 1
       git checkout -q "$FINISH_LOCAL_BASE" >/dev/null 2>&1 || {
         ui_error "Cannot checkout '$FINISH_LOCAL_BASE'."
         return 1
@@ -658,25 +686,27 @@ if [[ -n "$MARK_APPLIED" ]]; then
       ui_error "feature finish --mark-applied must be run from a @local branch or while a finish is paused."
       exit 1
     fi
-    public_base="$(public_branch_from_any "$current")"
-    LOCAL_BASE="${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}"
-    if [[ "$public_base" == "$PUBLIC_BASE_BRANCH" ]]; then
-      ui_error "feature finish --mark-applied cannot be run on the local base."
+    # Provenance lands where finish_collect_applied will scan — the
+    # pair's effective local base, not the hardcoded base pair.
+    if ! LOCAL_BASE="$(stack_local_base "$current")"; then
+      exit 1
+    fi
+    if [[ "$LOCAL_BASE" == "$current" ]]; then
+      ui_error "feature finish --mark-applied cannot be run on the local base '$LOCAL_BASE'."
       exit 1
     fi
     ensure_clean_repo
   fi
 
   _finish_mark_applied_body() {
+    # The write is commit-tree + update-ref — a trailer-only commit
+    # tree-identical to the base tip, holder-safe — so no base checkout
+    # and no exclusivity probe (V298).
     local target_sha="$MARK_APPLIED"
     local subject pid tree parent
-    if [[ "$(current_branch)" != "$LOCAL_BASE" ]]; then
-      finish_check_base_exclusivity \
-        "$(public_branch_from_any "$LOCAL_BASE")" "$LOCAL_BASE" || return 1
-      git checkout -q "$LOCAL_BASE" >/dev/null 2>&1 || {
-        ui_error "Cannot checkout '$LOCAL_BASE'."
-        return 1
-      }
+    if ! branch_exists "$LOCAL_BASE"; then
+      ui_error "Local base branch does not exist: $LOCAL_BASE"
+      return 1
     fi
 
     subject="$(git log -1 --format='%s' "$target_sha")"
@@ -731,6 +761,10 @@ fi
 if [[ "$CONTINUE" -eq 1 ]]; then
   if ! finish_load_state; then
     ui_error "No finish in progress."
+    exit 1
+  fi
+  if ! branch_exists "$FINISH_LOCAL_BASE"; then
+    ui_error "finish --continue cannot run: stored base '$FINISH_LOCAL_BASE' no longer exists."
     exit 1
   fi
   if [[ "$(current_branch)" != "$FINISH_LOCAL_BASE" ]]; then
@@ -818,22 +852,10 @@ if [[ -z "$CURRENT_BRANCH" ]]; then
   exit 1
 fi
 
-PUBLIC_BASE="$PUBLIC_BASE_BRANCH"
-LOCAL_BASE="${PUBLIC_BASE}${LOCAL_SUFFIX}"
-
 if [[ -n "$FEATURE_NAME_ARG" ]]; then
-  # Named mode: run from a checkout of the public or local base branch.
-  if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE" && "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
-    ui_error "feature finish <name> must be run from '$PUBLIC_BASE' or '$LOCAL_BASE' (recommended: '$LOCAL_BASE')."
-    ui_info  "On a feature branch, run bare: git shadow feature finish"
-    exit 1
-  fi
-  if [[ "$CURRENT_BRANCH" == "$PUBLIC_BASE" ]]; then
-    ui_info "Running from the public base; '$LOCAL_BASE' is the recommended checkout."
-  fi
   FEATURE_PUBLIC_BRANCH="$FEATURE_NAME_ARG"
   FEATURE_LOCAL_BRANCH="${FEATURE_NAME_ARG}${LOCAL_SUFFIX}"
-  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" ]]; then
+  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE_BRANCH" ]]; then
     ui_error "Cannot finish the base branch."
     exit 1
   fi
@@ -843,16 +865,39 @@ else
     ui_error "Bare 'feature finish' cannot run inside a linked worktree."
     ui_info  "Commit or stash your work in '$(repo_root)', then run:"
     ui_info  "  git shadow feature finish $(public_branch_from_any "$CURRENT_BRANCH")"
-    ui_info  "from a checkout of '$PUBLIC_BASE' or '$LOCAL_BASE'."
+    ui_info  "from a checkout of '$PUBLIC_BASE_BRANCH' or '${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}'."
     ui_info  "Or remove the worktree manually: git worktree remove '$(repo_root)'"
     exit 1
   fi
   require_local_branch "feature finish"
   FEATURE_PUBLIC_BRANCH="$(public_branch_from_any "$CURRENT_BRANCH")"
   FEATURE_LOCAL_BRANCH="$CURRENT_BRANCH"
-  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE" || "$FEATURE_LOCAL_BRANCH" == "$LOCAL_BASE" ]]; then
+  if [[ "$FEATURE_PUBLIC_BRANCH" == "$PUBLIC_BASE_BRANCH" || \
+        "$FEATURE_LOCAL_BRANCH" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
     ui_error "This command must be run from a feature branch, not from the base."
     exit 1
+  fi
+fi
+
+# Resolve the effective base pair once (V295): the live shadow-parent
+# pair, else the base pair. The chain walk aborts before any mutation on
+# a cycle or depth violation.
+if ! LOCAL_BASE="$(stack_local_base "$FEATURE_LOCAL_BRANCH")"; then
+  exit 1
+fi
+PUBLIC_BASE="$(public_branch_from_any "$LOCAL_BASE")"
+
+if [[ -n "$FEATURE_NAME_ARG" ]]; then
+  # Named mode: run from a checkout of the effective base pair — the
+  # base pair for an unstacked feature, the resolved parent pair for a
+  # stacked one.
+  if [[ "$CURRENT_BRANCH" != "$PUBLIC_BASE" && "$CURRENT_BRANCH" != "$LOCAL_BASE" ]]; then
+    ui_error "feature finish <name> must be run from '$PUBLIC_BASE' or '$LOCAL_BASE' (recommended: '$LOCAL_BASE')."
+    ui_info  "On a feature branch, run bare: git shadow feature finish"
+    exit 1
+  fi
+  if [[ "$CURRENT_BRANCH" == "$PUBLIC_BASE" ]]; then
+    ui_info "Running from the public base; '$LOCAL_BASE' is the recommended checkout."
   fi
 fi
 
@@ -865,9 +910,26 @@ done
 
 # Worktree guards before any mutation: a needed base checkout must not be
 # blocked by another worktree, and a feature worktree slated for removal
-# must be clean and not contain the cwd.
-finish_check_base_exclusivity "$PUBLIC_BASE" "$LOCAL_BASE" "$FEATURE_PUBLIC_BRANCH" || exit 1
+# must be clean and not contain the cwd. --no-pull skips the public-base
+# checkout, so only the local half needs probing (V127).
+if [[ "$NO_PULL" -eq 1 ]]; then
+  finish_check_base_exclusivity "" "$LOCAL_BASE" "$FEATURE_PUBLIC_BRANCH" || exit 1
+else
+  finish_check_base_exclusivity "$PUBLIC_BASE" "$LOCAL_BASE" "$FEATURE_PUBLIC_BRANCH" || exit 1
+fi
 finish_check_feature_worktree || exit 1
+
+# Warn when finishing strands stacked children — their shadow-parent
+# becomes dangling and auto-retargets to the base pair (V295).
+if [[ "$KEEP_BRANCHES" -eq 0 ]]; then
+  _child_local=""
+  while IFS= read -r _child_local; do
+    [[ -z "$_child_local" ]] && continue
+    if [[ "$(stack_parent_for "$_child_local")" == "$FEATURE_PUBLIC_BRANCH" ]]; then
+      ui_warn "Stacked child '${_child_local%${LOCAL_SUFFIX}}' will have a dangling shadow-parent; its effective base becomes '$PUBLIC_BASE_BRANCH'."
+    fi
+  done < <(local_branch_refs)
+fi
 
 ui_shadow "Finalizing feature '$FEATURE_PUBLIC_BRANCH'"
 ui_git    "   Public base   : $PUBLIC_BASE"
@@ -897,6 +959,14 @@ _finish_normal_body() {
   if ! git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE" \
      && ! check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE"; then
     ui_error "Feature '$FEATURE_PUBLIC_BRANCH' is not merged into '$PUBLIC_BASE' (or '$PUBLIC_BASE' has since modified the same paths)."
+    # On a stack, a merge that landed in the real base instead of the
+    # resolved parent retargets via reparent, not the branch -f recipe.
+    if [[ "$LOCAL_BASE" != "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]] \
+       && ( git merge-base --is-ancestor "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE_BRANCH" 2>/dev/null \
+         || check_tree_matches "$FEATURE_PUBLIC_BRANCH" "$PUBLIC_BASE_BRANCH" ); then
+      ui_info "The feature merged into '$PUBLIC_BASE_BRANCH' instead of its stack parent — retarget with 'git shadow feature reparent $FEATURE_PUBLIC_BRANCH --onto $PUBLIC_BASE_BRANCH'."
+      return 1
+    fi
     finish_merge_recovery_hint || ui_error "Merge it first."
     return 1
   fi
@@ -952,7 +1022,11 @@ _finish_normal_body() {
   local latest_cp cp_public
   latest_cp="$(checkpoint_latest "$LOCAL_BASE")"
   if [[ -z "$latest_cp" ]]; then
-    ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow base sync' first."
+    if [[ "$LOCAL_BASE" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+      ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow base sync' first."
+    else
+      ui_error "No checkpoint found on '$LOCAL_BASE'. Run 'git shadow feature sync' on '${LOCAL_BASE%${LOCAL_SUFFIX}}' first."
+    fi
     return 1
   fi
 

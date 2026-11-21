@@ -445,7 +445,7 @@ EOF
   [[ "$body" == *"git-shadow-source-pid:"* ]]
 
   # The commit is empty: no tree changes relative to its parent.
-  diff="$(git diff-tree --no-commit-id -r HEAD main@local | wc -l)"
+  diff="$(git diff-tree --no-commit-id -r main@local | wc -l)"
   [ "$diff" -eq 0 ]
 }
 

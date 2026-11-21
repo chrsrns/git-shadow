@@ -511,6 +511,70 @@ doctor_worktree_check() {
   return $issues
 }
 
+# shadow-parent stack health: dangling named pairs, orphan config left by
+# `git update-ref -d`, cycles, depth > 8, invalid placement (key under a
+# branch lacking the @local suffix), invalid values (@local-suffixed or
+# unresolvable), and a base-pair @local carrying a parent. A hand-written
+# base-valued parent is legal and does not warn. Read-only; --fix does
+# not repair — the user runs `feature reparent` or `git config --unset`.
+doctor_stack_check() {
+  local issues=0
+  local line key branch value resolve_msg
+  # The config enumeration ∪ @local refs is the oracle — a ref-deleted
+  # @local leaves its shadow-parent behind, unlike `git branch -D`.
+  # Config values may point at any branch section, so refs contribute
+  # keys only through their own config; a ref without config cannot
+  # warn and adds nothing to the union.
+  local enumerated=0
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    enumerated=$((enumerated + 1))
+    key="${line%%[[:space:]]*}"
+    value="${line#*[[:space:]]}"
+    branch="${key#branch.}"
+    branch="${branch%.shadow-parent}"
+
+    if [[ "$branch" != *"${LOCAL_SUFFIX}" ]]; then
+      ui_warn "stack: shadow-parent on non-@local branch '$branch' (invalid placement)"
+      issues=1
+      continue
+    fi
+    if [[ "$branch" == "${PUBLIC_BASE_BRANCH}${LOCAL_SUFFIX}" ]]; then
+      ui_warn "stack: base pair '$branch' carries shadow-parent (the base pair carries none)"
+      issues=1
+    fi
+    if [[ "$value" == *"${LOCAL_SUFFIX}" || -z "$value" ]]; then
+      ui_warn "stack: shadow-parent value '$value' on '$branch' is invalid (parents are public branch names)"
+      issues=1
+      continue
+    fi
+    if [[ "$value" != "$PUBLIC_BASE_BRANCH" ]]; then
+      if ! branch_exists "$value" || ! branch_exists "${value}${LOCAL_SUFFIX}"; then
+        ui_warn "stack: '$branch' shadow-parent '$value' is dangling (pair absent — effective base auto-retargets to '$PUBLIC_BASE_BRANCH')"
+        issues=1
+      fi
+    fi
+    if ! branch_exists "$branch"; then
+      ui_warn "stack: orphan shadow-parent config on deleted branch '$branch' — clear with 'git config --unset $key'"
+      issues=1
+      continue
+    fi
+    if ! resolve_msg="$(stack_local_base "$branch" 2>&1)"; then
+      ui_warn "stack: $resolve_msg"
+      issues=1
+    fi
+  done < <(git config --get-regexp '^branch\..*\.shadow-parent$' 2>/dev/null || true)
+
+  if [[ $issues -eq 0 ]]; then
+    if [[ $enumerated -eq 0 ]]; then
+      ui_info "stack: no shadow-parent configs"
+    else
+      ui_ok "stack: no shadow-parent problems"
+    fi
+  fi
+  return $issues
+}
+
 # Execute all checks in order, emit one line per check, print the total
 # warning/error count, and return 0. The caller exits 1 when the printed
 # count is non-zero (V101).
@@ -548,6 +612,7 @@ doctor_run() {
   _doctor_tally doctor_patches_check
   _doctor_tally doctor_worktree_root_check
   _doctor_tally doctor_worktree_check
+  _doctor_tally doctor_stack_check
 
   printf 'doctor: %d warning(s)/error(s)\n' "$DOCTOR_WARNINGS"
   return 0

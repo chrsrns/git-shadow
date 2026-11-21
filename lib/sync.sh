@@ -157,7 +157,11 @@ sync_apply_and_commit() {
 # Re-anchor local annotation sidecars, commit any updates as a [MEMORY] commit,
 # and create a [CHECKPOINT].
 #
-# Usage: sync_reanchor_and_checkpoint <local_branch> <public_head> [pids...]
+# Usage: sync_reanchor_and_checkpoint <local_branch> <public_head> [--local <sha>] [pids...]
+#
+# --local overrides the SHA recorded in the checkpoint's local: field —
+# used by stacked finish to preserve the effective base pair's pre-finish
+# cp_local so its unpublished backlog is not swallowed.
 #
 # The current checkout must be <local_branch> (V81). Prints the new checkpoint
 # SHA on stdout.
@@ -165,6 +169,16 @@ sync_reanchor_and_checkpoint() {
   local local_branch="$1"
   local public_head="$2"
   shift 2
+
+  local local_override=""
+  if [[ "${1:-}" == "--local" ]]; then
+    if [[ $# -lt 2 || -z "$2" ]]; then
+      ui_error "sync_reanchor_and_checkpoint: --local requires a SHA."
+      return 1
+    fi
+    local_override="$2"
+    shift 2
+  fi
 
   local current_branch
   current_branch="$(current_branch)"
@@ -177,7 +191,11 @@ sync_reanchor_and_checkpoint() {
   annotations_reanchor_all_commit
 
   local new_local_head
-  new_local_head="$(git rev-parse "$local_branch")"
+  if [[ -n "$local_override" ]]; then
+    new_local_head="$local_override"
+  else
+    new_local_head="$(git rev-parse "$local_branch")"
+  fi
   checkpoint_create "$public_head" "$new_local_head" "$@"
 }
 

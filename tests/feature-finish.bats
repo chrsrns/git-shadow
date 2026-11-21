@@ -335,8 +335,9 @@ EOF
   [ -f "$state_file" ]
   grep -q "phase=base-diff" "$state_file"
 
-  # Resolve the conflict and continue.
-  echo "resolved" > file.txt
+  # Resolve the conflict to the public version — keeping diverged local
+  # content is drift the checkpoint gate refuses (V307).
+  echo "public base change" > file.txt
   git add file.txt
   run git shadow feature finish --continue
   [ "$status" -eq 0 ]
@@ -368,8 +369,9 @@ EOF
   grep -q "phase=memory-replay" "$state_file"
   grep -q "conflicted_sha=" "$state_file"
 
-  # Resolve and continue.
-  echo "resolved" > file.txt
+  # Resolve to the public version — diverged local content is drift the
+  # checkpoint gate refuses (V307).
+  echo "initial" > file.txt
   git add file.txt
   run git shadow feature finish --continue
   [ "$status" -eq 0 ]
@@ -503,9 +505,12 @@ EOF
   grep -q "phase=memory-replay" "$state_file"
   grep -q "conflicted_sha=$sha" "$state_file"
 
-  # Resolve the conflict by keeping the local base (HEAD) version.
-  git checkout --ours -- file.txt
+  # Resolve the conflict to the public version and record it — the
+  # mark-applied path never commits the resolution, so the committed
+  # divergence must be dropped explicitly or the checkpoint gate refuses.
+  echo "initial" > file.txt
   git add file.txt
+  git commit -qm "chore: resolve file.txt to public"
 
   run git shadow feature finish --mark-applied "$sha"
   [ "$status" -eq 0 ]
@@ -549,8 +554,9 @@ EOF
   state_file="$(git rev-parse --git-dir)/git-shadow-finish"
   [ -f "$state_file" ]
 
-  git checkout --ours -- file.txt
+  echo "initial" > file.txt
   git add file.txt
+  git commit -qm "chore: resolve file.txt to public"
 
   git shadow feature finish --mark-applied "$sha"
   git shadow feature finish --continue --keep-branches
@@ -706,7 +712,7 @@ EOF
   [ -f "$state_file" ]
   grep -q "phase=base-diff" "$state_file"
 
-  echo "resolved" > file.txt
+  echo "public base change" > file.txt
   git add file.txt
   run git shadow feature finish --continue
   [ "$status" -eq 0 ]
@@ -733,7 +739,7 @@ EOF
   [ -f "$state_file" ]
   grep -q "phase=memory-replay" "$state_file"
 
-  git checkout --ours -- file.txt
+  echo "initial" > file.txt
   git add file.txt
   run git shadow feature finish --continue
   [ "$status" -eq 0 ]
@@ -1033,4 +1039,145 @@ _ff_cleanup_origin() {
   [ "$status" -eq 1 ]
   [ "$(git rev-parse test-feature@local)" = "$before" ]
   [[ "$(git log -1 --format='%s' test-feature@local)" != "[SYNC]"* ]]
+}
+
+# --- B66: atomic apply rollback + checkpoint containment gate -----------
+
+@test "feature finish pauses with atomic-rollback message on delete-vs-modify net diff" {
+  # Public file exists at the base checkpoint; a local edit makes the
+  # delete's preimage mismatch → git apply --3way fails atomically.
+  git checkout -q main
+  echo "v0" > legacy.sh
+  git add legacy.sh
+  GIT_SHADOW=1 git commit -qm "chore: add legacy.sh"
+
+  git checkout -q "main@local"
+  git shadow base sync >/dev/null
+  echo "local v1" > legacy.sh
+  git add legacy.sh
+  git commit -qm "chore: local legacy tweak"
+
+  git checkout -q main
+  git rm -q legacy.sh
+  echo "public file change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: delete legacy.sh"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rolled back"* ]]
+  [[ "$output" != *"Resolve the conflicts"* ]]
+  [[ "$output" == *"git shadow feature finish --continue"* ]]
+  [[ "$output" == *"git shadow feature finish --abort"* ]]
+
+  # Atomic rollback: nothing applied, nothing unmerged.
+  [ -z "$(git status --porcelain)" ]
+  [ -z "$(git ls-files -u)" ]
+  [ "$(cat legacy.sh)" = "local v1" ]
+
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=base-diff" "$state_file"
+}
+
+@test "feature finish --continue refuses an empty stage after atomic rollback" {
+  git checkout -q main
+  echo "v0" > legacy.sh
+  git add legacy.sh
+  GIT_SHADOW=1 git commit -qm "chore: add legacy.sh"
+
+  git checkout -q "main@local"
+  git shadow base sync >/dev/null
+  echo "local v1" > legacy.sh
+  git add legacy.sh
+  git commit -qm "chore: local legacy tweak"
+
+  git checkout -q main
+  git rm -q legacy.sh
+  echo "public file change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: delete legacy.sh"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+
+  run git shadow feature finish --continue
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"No resolved changes"* ]]
+
+  # No checkpoint claimed a sync that never happened; state stays paused.
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+  state_file="$(git rev-parse --git-dir)/git-shadow-finish"
+  [ -f "$state_file" ]
+  grep -q "phase=base-diff" "$state_file"
+}
+
+@test "feature finish --continue completes after manual resolution of atomic rollback" {
+  git checkout -q main
+  echo "v0" > legacy.sh
+  git add legacy.sh
+  GIT_SHADOW=1 git commit -qm "chore: add legacy.sh"
+
+  git checkout -q "main@local"
+  git shadow base sync >/dev/null
+  echo "local v1" > legacy.sh
+  git add legacy.sh
+  git commit -qm "chore: local legacy tweak"
+
+  git checkout -q main
+  git rm -q legacy.sh
+  echo "public file change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: delete legacy.sh"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+
+  # The delete-vs-modify resolution: drop the diverged local copy, and
+  # land the range's other public change that rolled back with it.
+  git rm -q legacy.sh
+  git checkout -q main -- file.txt
+  run git shadow feature finish --continue
+  [ "$status" -eq 0 ]
+  ! git ls-tree -r --name-only "main@local" | grep -q '^legacy\.sh$'
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[CHECKPOINT]"* ]]
+}
+
+@test "feature finish refuses to checkpoint over drift on the base pair" {
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git add file.txt
+  git commit -qm "chore: local base change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" == *"local add"* ]]
+
+  # No false checkpoint; the feature pair survives for the retry.
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+  git show-ref --verify --quiet "refs/heads/test-feature"
+}
+
+@test "feature finish checkpoints past a sidecar-covered divergence" {
+  git checkout -q "main@local"
+  echo "local base change" > file.txt
+  git shadow local add file.txt >/dev/null
+  # Commit the divergence under the sidecar — covered committed drift is
+  # exempt (the sidecar records it as designed local state).
+  GIT_SHADOW=1 git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: pin local change"
+
+  git checkout -q "test-feature@local"
+  run git shadow feature finish --no-pull
+  [ "$status" -eq 0 ]
+  git log --format='%s' -3 "main@local" | grep -q '^\[CHECKPOINT\]'
+  [ "$(cat file.txt)" = "local base change" ]
 }

@@ -316,6 +316,53 @@ check_tree_matches() {
   return $result
 }
 
+# Report every public-tracked path in <public_ref>'s tree whose blob or mode
+# differs on <local_ref>. Prints each differing path to stdout and returns 1
+# when any unexempt difference exists, 0 otherwise.
+#
+# Paths present only on <local_ref> (status-A local-only additions) are
+# ignored. A path covered by a `.git-shadow/patches/<relpath>.patch` sidecar
+# in <local_ref>'s tree is exempt — the sidecar records the divergence as
+# designed local state. The single base-drift compare behind
+# doctor_base_drift_check, the V307 checkpoint gate, and the V311
+# `feature start` refusal.
+check_base_tree_contained() {
+  local public_ref="$1" local_ref="$2"
+
+  local -A covered=()
+  local sidecar rel
+  while IFS= read -r sidecar; do
+    [[ -z "$sidecar" ]] && continue
+    rel="${sidecar#.git-shadow/patches/}"
+    rel="${rel%.patch}"
+    covered["$rel"]=1
+  done < <(git ls-tree -r --name-only "$local_ref" -- .git-shadow/patches/)
+
+  local diff_output diff_status
+  diff_output="$(git diff-tree --no-renames -r "$public_ref" "$local_ref" 2>/dev/null)"
+  diff_status=$?
+  if [[ $diff_status -ne 0 ]]; then
+    ui_error "check_base_tree_contained: cannot compare trees $public_ref and $local_ref"
+    return 1
+  fi
+
+  local issues=0 line status path
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    # diff-tree --no-renames -r output format:
+    # :<old-mode> <new-mode> <old-sha> <new-sha> <status>\t<path>
+    status="$(printf '%s\n' "$line" | awk '{print $5}')"
+    [[ "$status" == "A" ]] && continue
+    path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
+    if [[ -z "${covered[$path]:-}" ]]; then
+      printf '%s\n' "$path"
+      issues=1
+    fi
+  done < <(printf '%s\n' "$diff_output")
+
+  return $issues
+}
+
 # Replay public commits from <local_branch> onto a temporary branch rooted at
 # <checkpoint_public>, verify the replayed tree matches <local_branch>, and on
 # success set the variable named by <out_branch_var> to the temp branch name

@@ -230,13 +230,18 @@ else
     git branch "$LOCAL_BASE" "$PUBLIC_BASE"
   fi
 
-  # Run base sync from the local base.
+  # Run base sync from the local base. Its refusal propagates — a drifted
+  # or conflict-paused base pair must not be silently inherited by a new
+  # pair (the sync's own messages name the paths/remedies or the paused
+  # state). Stacked mode is exempt: it never enters this branch.
   _feature_start_base_body() {
     checkout_branch_verified "$LOCAL_BASE" || return 1
     "$TOOLKIT_ROOT/commands/base/sync.sh"
   }
 
-  patches_transaction _feature_start_base_body
+  if ! patches_transaction _feature_start_base_body; then
+    exit 1
+  fi
 
   # The latest checkpoint on the local base is the branch point.
   LATEST_CP="$(checkpoint_latest "$LOCAL_BASE")"

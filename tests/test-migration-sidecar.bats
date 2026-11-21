@@ -55,9 +55,11 @@ EOF
   git commit -qm "initial public commit"
   git shadow config set PUBLIC_BASE_BRANCH master --project-config >/dev/null
 
-  # Simulate the existing master@local with [MEMORY] commits that baked
-  # local-only tweaks into public-tracked files.
+  # Simulate the existing master@local: a checkpoint created while the
+  # pair was still clean, then [MEMORY] commits that baked local-only
+  # tweaks into public-tracked files.
   git checkout -q -b master@local
+  git shadow base sync >/dev/null
 
   cat > docker-compose.yml <<'EOF'
 services:
@@ -86,10 +88,6 @@ EOF
 
   git add -A
   git commit -qm "[MEMORY] local docker and test tweaks"
-
-  # Create the first checkpoint, matching the user's "base sync already run" state.
-  run git shadow base sync
-  [ "$status" -eq 0 ]
 }
 
 teardown() {
@@ -103,21 +101,14 @@ teardown() {
   [ "$status" -eq 0 ]
   [[ "$output" =~ diverged[[:space:]]+:[[:space:]]*true ]]
 
-  # Before the fix, even a trivial feature cannot publish because the
-  # feature/x@local tree carries the baked-in source modifications.
+  # The drifted base pair refuses a new feature start — the nested base
+  # sync's checkpoint gate names the drifted paths. This is the same
+  # protection the broken-state publish failure used to provide, earlier.
   run git shadow feature start broken
-  [ "$status" -eq 0 ]
-
-  echo "new feature work" > new-file.txt
-  git add new-file.txt
-  git commit -qm "feat: add new file"
-
-  run git shadow feature publish
   [ "$status" -ne 0 ]
-
-  # Discard the broken feature.
-  git checkout -q master@local
-  git branch -D broken broken@local
+  [[ "$output" == *"docker-compose.yml"* ]]
+  [[ "$output" == *"package.json"* ]]
+  ! git rev-parse -q --verify refs/heads/broken@local
 
   # Migrate on master@local:
   # 1. revert the 3 files to exactly what master (public) has,

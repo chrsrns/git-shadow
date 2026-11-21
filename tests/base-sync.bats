@@ -253,3 +253,160 @@ EOF
   git shadow feature start inherits-base >/dev/null
   git log --oneline "inherits-base@local" | grep -q "\[MEMORY\] base local work"
 }
+
+@test "base sync names atomic rollback when the net diff fails without conflicts" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+
+  # Public file at the checkpoint; local edit diverges; public deletes it.
+  git checkout -q main
+  echo "v0" > legacy.sh
+  git add legacy.sh
+  GIT_SHADOW=1 git commit -qm "chore: add legacy.sh"
+  git checkout -q main@local
+  git shadow base sync >/dev/null
+  echo "local v1" > legacy.sh
+  git add legacy.sh
+  git commit -qm "chore: local legacy tweak"
+  git checkout -q main
+  git rm -q legacy.sh
+  echo "public file change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: delete legacy.sh"
+
+  git checkout -q main@local
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"rolled back"* ]]
+  [[ "$output" != *"Resolve the conflicts"* ]]
+  [[ "$output" == *"git shadow base sync --continue"* ]]
+  [[ "$output" == *"git shadow base sync --abort"* ]]
+
+  [ -z "$(git ls-files -u)" ]
+  [ "$(cat legacy.sh)" = "local v1" ]
+}
+
+@test "base sync refuses up-to-date report when the pair is drifted" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" != *"already up to date"* ]]
+  # No refresh checkpoint was written over the drift.
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+}
+
+@test "base sync refuses initial checkpoint on a drifted pair" {
+  git checkout -q -b main@local
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+}
+
+@test "base sync --recover refuses refresh when the pair is drifted" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+
+  # A public commit the sync applies, so the checkpoint carries a patch-id
+  # list the recover can match.
+  git checkout -q main
+  echo "pub" > file2.txt
+  git add file2.txt
+  GIT_SHADOW=1 git commit -qm "feat: pub"
+  git checkout -q main@local
+  git shadow base sync >/dev/null
+
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+
+  # Rewrite the public tip so the checkpointed SHA is not an ancestor; the
+  # amended commit keeps the same patch-id, so recovery finds it at the
+  # head and takes the refresh path.
+  git checkout -q main
+  GIT_SHADOW=1 git commit -q --amend --no-edit
+  git checkout -q main@local
+
+  run git shadow base sync --recover
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+}
+
+@test "base sync refuses checkpoint over drift outside the applied range" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+
+  # Public advances on an unrelated path — the apply succeeds, the
+  # checkpoint write must still refuse on the pre-existing drift.
+  git checkout -q main
+  echo "new" > newfile.txt
+  git add newfile.txt
+  GIT_SHADOW=1 git commit -qm "feat: newfile"
+  git checkout -q main@local
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  [[ "$output" != *"synced"* ]]
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" == "[SYNC]"* ]]
+}
+
+@test "base sync --continue refuses keep-local resolution on a drifted path" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+
+  git checkout -q main
+  echo "public change" > file.txt
+  git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: public change"
+
+  git checkout -q main@local
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+
+  run git shadow base sync
+  [ "$status" -ne 0 ]
+
+  # Keep-local resolution on a public-tracked path is drift — the
+  # checkpoint must refuse it.
+  git checkout --ours -- file.txt
+  git add file.txt
+  run git shadow base sync --continue
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  subject="$(git log -1 --format='%s' main@local)"
+  [[ "$subject" != "[CHECKPOINT]"* ]]
+}
+
+@test "base sync tolerates sidecar-covered divergence" {
+  git checkout -q -b main@local
+  git shadow base sync >/dev/null
+  echo "local tweak" > file.txt
+  git shadow local add file.txt >/dev/null
+  GIT_SHADOW=1 git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: pin local tweak"
+
+  run git shadow base sync
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"already up to date"* ]]
+  git log --format='%s' -3 main@local | grep -q '^\[CHECKPOINT\]'
+}

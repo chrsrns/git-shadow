@@ -403,3 +403,19 @@ EOF
   [ "$(git log -1 --format='%s' develop)" = "initial" ]
   [ -f "$(git rev-parse --git-common-dir)/git-shadow-sync" ]
 }
+
+@test "feature sync checkpoints despite backlog divergence on public paths" {
+  # feature-foo@local already diverges on app.ts (publishable backlog);
+  # advancing the public branch must still sync and checkpoint — the
+  # base-drift gate does not apply to feature pairs.
+  git checkout -q feature-foo
+  echo "public feature change" > feature.txt
+  git add feature.txt
+  GIT_SHADOW=1 git commit -qm "feat: public feature change"
+  git checkout -q "feature-foo@local"
+
+  run git shadow feature sync
+  [ "$status" -eq 0 ]
+  git log --format='%s' -3 "feature-foo@local" | grep -q '^\[CHECKPOINT\]'
+  [ "$(cat app.ts)" = "v2" ]
+}

@@ -374,37 +374,18 @@ doctor_base_drift_check() {
     return 0
   fi
 
-  local toplevel
-  toplevel="$(repo_root_or_pwd)"
-
-  local -A covered=()
-  local sidecar rel
-  while IFS= read -r sidecar; do
-    [[ -z "$sidecar" ]] && continue
-    rel="${sidecar#.git-shadow/patches/}"
-    rel="${rel%.patch}"
-    covered["$rel"]=1
-  done < <(git -C "$toplevel" ls-tree -r --name-only "$local_base" -- .git-shadow/patches/)
-
-  local diff_output diff_status
-  diff_output="$(git diff-tree --no-renames -r "$public_base" "$local_base" 2>/dev/null)"
-  diff_status=$?
-  if [[ $diff_status -ne 0 ]]; then
+  local drifted issues=0 path
+  drifted="$(cd "$(repo_root_or_pwd)" && check_base_tree_contained "$public_base" "$local_base")" \
+    || issues=$?
+  if [[ $issues -ne 0 && -z "$drifted" ]]; then
     ui_warn "base-drift: cannot compare trees '$public_base' and '$local_base'"
     return 1
   fi
 
-  local issues=0 line status path
-  while IFS= read -r line; do
-    [[ -z "$line" ]] && continue
-    status="$(printf '%s\n' "$line" | awk '{print $5}')"
-    [[ "$status" == "A" ]] && continue
-    path="$(printf '%s\n' "$line" | awk -F'\t' '{print $2}')"
-    if [[ -z "${covered[$path]:-}" ]]; then
-      ui_warn "base-drift: '$path' differs between '$public_base' and '$local_base' without a patch sidecar"
-      issues=1
-    fi
-  done < <(printf '%s\n' "$diff_output")
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    ui_warn "base-drift: '$path' differs between '$public_base' and '$local_base' without a patch sidecar"
+  done < <(printf '%s\n' "$drifted")
 
   if [[ $issues -eq 0 ]]; then
     ui_ok "base-drift: clean"

@@ -46,6 +46,25 @@ _sync_abort_body() {
   return 0
 }
 
+# Refuse with named paths when <local_ref> does not contain <public_ref>'s
+# tree — a [CHECKPOINT] pairing them would claim a sync the tree does not
+# hold. Base-pair checkpoints only; a feature @local diverges on public
+# paths by design (backlog, keep-local resolutions).
+# Arguments: <public_ref> <local_ref>
+_sync_base_checkpoint_guard() {
+  local public_ref="$1" local_ref="$2" drifted _p
+  if drifted="$(check_base_tree_contained "$public_ref" "$local_ref")"; then
+    return 0
+  fi
+  ui_error "Local base '$local_ref' does not contain '$public_ref' — refusing to record a sync checkpoint:"
+  while IFS= read -r _p; do
+    [[ -n "$_p" ]] && ui_error "  $_p"
+  done < <(printf '%s\n' "$drifted")
+  ui_info "Keep a local copy under a patch sidecar: git shadow local add <path>"
+  ui_info "Or drop the divergence: 'git rm <path>' / 'git checkout $public_ref -- <path>', then retry."
+  return 1
+}
+
 # Run the full `git shadow feature sync` or `git shadow base sync` command.
 #
 # Usage: sync_command_run <mode> [--recover] [--continue|--abort]
@@ -171,7 +190,11 @@ EOF
       ui_info "Or run: git shadow $mode sync --abort"
       return 1
     fi
-    if ! index_dirty; then
+    if ! index_dirty && [[ -z "${SYNC_CONFLICTED:-}" ]]; then
+      # Empty stage after an atomic-rollback pause: nothing landed and
+      # nothing was resolved. A conflict pause may legitimately resolve to
+      # HEAD (keep-local) and proceeds — the base checkpoint guard below
+      # validates base pairs.
       ui_error "No resolved changes to commit. Resolve the conflicts and add them."
       return 1
     fi
@@ -183,13 +206,16 @@ EOF
         "local_branch=$SYNC_LOCAL_BRANCH" "checkpoint_public=$SYNC_CHECKPOINT_PUBLIC" \
         "checkpoint_local=$SYNC_CHECKPOINT_LOCAL" "diff_start=$SYNC_DIFF_START" \
         "target_public=$SYNC_TARGET_PUBLIC" "local_head=$(git rev-parse "$SYNC_LOCAL_BRANCH")" \
-        "pids=$SYNC_PIDS"
+        "pids=$SYNC_PIDS" "conflicted=$SYNC_CONFLICTED"
       ui_error "Cannot re-apply local patch sidecars after resolving sync conflicts."
       ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
       ui_info "Or run: git shadow $mode sync --abort"
       return 1
     fi
 
+    if [[ "$SYNC_MODE" == "base" ]] && ! _sync_base_checkpoint_guard "$SYNC_TARGET_PUBLIC" "$SYNC_LOCAL_BRANCH"; then
+      return 1
+    fi
     if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$SYNC_LOCAL_BRANCH" "$SYNC_TARGET_PUBLIC" $SYNC_PIDS)"; then
       return 1
     fi
@@ -232,6 +258,9 @@ EOF
       public_head="$(git rev-parse "$public_branch")"
       local local_head
       local_head="$(git rev-parse "$local_branch")"
+      if ! _sync_base_checkpoint_guard "$public_head" "$local_head"; then
+        return 1
+      fi
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head")"
       ui_ok "Created initial checkpoint for '$local_branch' on '$public_branch'."
       return 0
@@ -253,6 +282,9 @@ EOF
       # Base sync refreshes the checkpoint to the current local base head so
       # `feature start` inherits the latest base@local state. There is no
       # base publish path, so no publishable backlog can be swallowed.
+      if ! _sync_base_checkpoint_guard "$public_head" "$local_head"; then
+        return 1
+      fi
       _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
     fi
     # Feature sync: writing a checkpoint here would pair the unchanged public
@@ -290,6 +322,9 @@ EOF
       # points at the current local head (feature inheritance); feature mode
       # keeps the prior local pointer so unpublished commits stay publishable.
       if [[ "$mode" == "base" ]]; then
+        if ! _sync_base_checkpoint_guard "$public_head" "$local_head"; then
+          return 1
+        fi
         _new_checkpoint="$(checkpoint_create "$public_head" "$local_head" $cp_pids)"
       else
         _new_checkpoint="$(checkpoint_create "$public_head" "$cp_local" $cp_pids)"
@@ -314,14 +349,31 @@ EOF
     conflicted="$(conflicted_paths | paste -sd' ' - || true)"
     sync_save_state "mode=$mode" "public_branch=$public_branch" "local_branch=$local_branch" \
       "checkpoint_public=$cp_public" "checkpoint_local=$cp_local" "diff_start=$diff_start" \
-      "target_public=$public_head" "local_head=$local_head" "pids=$SYNC_PIDS"
-    ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
-    [[ -n "$conflicted" ]] && ui_error "Conflicting paths: $conflicted"
-    ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+      "target_public=$public_head" "local_head=$local_head" "pids=$SYNC_PIDS" \
+      "conflicted=$conflicted"
+    if [[ -n "$conflicted" ]]; then
+      ui_error "Conflict applying $mode net diff from '$public_branch' ($diff_start..$public_head) to '$local_branch'."
+      ui_error "Conflicting paths: $conflicted"
+      ui_info "Resolve the conflicts, then run: git shadow $mode sync --continue"
+    elif [[ -n "$(git status --porcelain 2>/dev/null || true)" ]]; then
+      # Changes present with no unmerged paths — the apply landed but the
+      # [SYNC] commit did not complete.
+      ui_error "$label net diff applied to '$local_branch' but the [SYNC] commit did not complete."
+      ui_info "Resolve the cause, then run: git shadow $mode sync --continue"
+    else
+      # Clean tree after a failed apply = atomic rollback: nothing landed
+      # and nothing is resumable in the working tree.
+      ui_error "Net diff from '$public_branch' ($diff_start..$public_head) did not apply to '$local_branch' — git apply rolled back atomically; nothing landed."
+      ui_info "Resolve the blocking path manually (e.g. 'git rm <path>' for a file the public side deleted but the local side modified, or 'git checkout $public_branch -- <path>' to take the public copy),"
+      ui_info "then run: git shadow $mode sync --continue"
+    fi
     ui_info "Or run: git shadow $mode sync --abort"
     return 1
   fi
 
+  if [[ "$mode" == "base" ]] && ! _sync_base_checkpoint_guard "$public_head" "$local_branch"; then
+    return 1
+  fi
   if ! _new_checkpoint="$(sync_reanchor_and_checkpoint "$local_branch" "$public_head" $SYNC_PIDS)"; then
     return 1
   fi

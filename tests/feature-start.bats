@@ -138,3 +138,32 @@ teardown() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"develop"* ]]
 }
+
+@test "feature start refuses on a drifted base pair" {
+  git checkout -q "develop@local"
+  git shadow base sync >/dev/null
+  echo "local tweak" > file.txt
+  git add file.txt
+  git commit -qm "chore: local tweak"
+  git checkout -q develop
+
+  run git shadow feature start feature/y
+  [ "$status" -ne 0 ]
+  [[ "$output" == *"file.txt"* ]]
+  ! git show-ref --verify --quiet "refs/heads/feature/y"
+  ! git show-ref --verify --quiet "refs/heads/feature/y@local"
+}
+
+@test "feature start tolerates sidecar-covered divergence on the base pair" {
+  git checkout -q "develop@local"
+  git shadow base sync >/dev/null
+  echo "local tweak" > file.txt
+  git shadow local add file.txt >/dev/null
+  GIT_SHADOW=1 git add file.txt
+  GIT_SHADOW=1 git commit -qm "chore: pin local tweak"
+  git checkout -q develop
+
+  run git shadow feature start feature/y
+  [ "$status" -eq 0 ]
+  [ "$(git branch --show-current)" = "feature/y@local" ]
+}

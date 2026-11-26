@@ -160,8 +160,12 @@ worktree_add() {
   env_src=""
   if [[ -n "$inv_top" && -f "$inv_top/.git-shadow.env" ]]; then
     env_src="$inv_top"
-  elif [[ -n "$main_wt" && -f "$main_wt/.git-shadow.env" ]]; then
-    env_src="$main_wt"
+  elif [[ -n "$main_wt" ]]; then
+    # The record is a registry identity — under --separate-git-dir and
+    # submodule layouts it is the common git dir, not the checkout root.
+    local main_top
+    main_top="$(GIT_DIR="$main_wt" git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$main_wt")"
+    [[ -f "$main_top/.git-shadow.env" ]] && env_src="$main_top"
   fi
   if [[ -n "$env_src" && ! -e "$abs/.git-shadow.env" ]]; then
     cp "$env_src/.git-shadow.env" "$abs/.git-shadow.env"

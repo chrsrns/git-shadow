@@ -494,13 +494,6 @@ patches_dirty_records() {
   return 0
 }
 
-# Emit one NUL-delimited `??` relpath record per untracked path, sharing
-# the same `git status` enumeration as patches_dirty_records — callers
-# that must see classifier-exempt paths (.git-shadow.env, .gitignore,
-# registered-worktree dirs) cannot use patches_dirty_records, which drops
-# clean records. Buffers the enumeration so its exit status stays
-# observable — process substitution would hide the failure. Returns 1
-# when the enumeration fails.
 # Split a patches_dirty_records record into REC_XY, REC_CLASS, REC_PATH on
 # the first two TABs (REC_PATH absorbs embedded TABs). Returns 1 when the
 # record lacks two TAB separators. Invoke in the caller's shell — the REC_*
@@ -528,6 +521,13 @@ _patches_classify_ctx() {
   _PCTX_WTSET="$(worktree_paths)"
 }
 
+# Emit one NUL-delimited `??` relpath record per untracked path, sharing
+# the same `git status` enumeration as patches_dirty_records — callers
+# that must see classifier-exempt paths (.git-shadow.env, .gitignore,
+# registered-worktree dirs) cannot use patches_dirty_records, which drops
+# clean records. Buffers the enumeration so its exit status stays
+# observable — process substitution would hide the failure. Returns 1
+# when the enumeration fails.
 patches_untracked_records() {
   local _PCTX_ROOT _PCTX_WTSET=""
   _PCTX_ROOT="$(repo_root)" || return 1

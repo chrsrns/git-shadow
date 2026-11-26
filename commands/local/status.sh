@@ -102,8 +102,8 @@ case "$MODE" in
     if [[ -s "$RECS" ]]; then
       while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
         [[ -z "$rec" ]] && continue
-        xy="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
-        class="${rec%%$'\t'*}"; path="${rec#*$'\t'}"
+        patches_rec_decode "$rec" || exit 1
+        xy="$REC_XY"; class="$REC_CLASS"; path="$REC_PATH"
         printf '%s %s [%s]\n' "$xy" "$path" "$class"
       done < "$RECS"
     fi

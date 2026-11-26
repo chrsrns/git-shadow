@@ -486,6 +486,19 @@ patches_dirty_records() {
 # clean records. Buffers the enumeration so its exit status stays
 # observable — process substitution would hide the failure. Returns 1
 # when the enumeration fails.
+# Split a patches_dirty_records record into REC_XY, REC_CLASS, REC_PATH on
+# the first two TABs (REC_PATH absorbs embedded TABs). Returns 1 when the
+# record lacks two TAB separators. Invoke in the caller's shell — the REC_*
+# globals are lost inside command substitution.
+patches_rec_decode() {
+  local rec="$1"
+  [[ "$rec" == *$'	'*$'	'* ]] || return 1
+  local rest="${rec#*$'	'}"
+  REC_XY="${rec%%$'	'*}"
+  REC_CLASS="${rest%%$'	'*}"
+  REC_PATH="${rest#*$'	'}"
+}
+
 patches_untracked_records() {
   local root
   root="$(repo_root)" || return 1
@@ -531,10 +544,10 @@ patches_dirty_table() {
   local rec status class path
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
     [[ -z "$rec" ]] && continue
-    status="${rec%%$'\t'*}"
-    rec="${rec#*$'\t'}"
-    class="${rec%%$'\t'*}"
-    path="${rec#*$'\t'}"
+    patches_rec_decode "$rec" || return 1
+    status="$REC_XY"
+    class="$REC_CLASS"
+    path="$REC_PATH"
 
     if [[ "$mode" == "porcelain" ]]; then
       printf '%s %s %s\n' "$status" "$(patches_cquote "$path")" "$class"

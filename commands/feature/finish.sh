@@ -158,10 +158,11 @@ finish_revert_worktree_overlays() {
   local rec status class path
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
     [[ -z "$rec" ]] && continue
-    status="${rec%%$'\t'*}"
-    class="$(printf '%s' "$rec" | cut -f2)"
+    patches_rec_decode "$rec" || return 1
+    status="$REC_XY"
+    class="$REC_CLASS"
     [[ "$class" != "patch" ]] && continue
-    path="$(printf '%s' "$rec" | cut -f3)"
+    path="$REC_PATH"
     if ! git -C "$worktree" checkout -q HEAD -- "$path"; then
       ui_error "Failed to revert patch overlay on '$path' in '$worktree'."
       return 1

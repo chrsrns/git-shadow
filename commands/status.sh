@@ -49,7 +49,8 @@ if patches_dirty_records > "$DIRT_RECS"; then
   UNPATCHED_DIRTY=0
   while IFS= read -r -d '' _rec || [[ -n "$_rec" ]]; do
     [[ -z "$_rec" ]] && continue
-    _class="$(printf '%s' "$_rec" | cut -f2)"
+    if ! patches_rec_decode "$_rec"; then exit 1; fi
+    _class="$REC_CLASS"
     if [[ "$_class" == "patch" ]]; then
       LOCAL_PATCHES=$((LOCAL_PATCHES + 1))
     else

@@ -651,3 +651,15 @@ SH
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "patches_rec_decode keeps a TAB-bearing path intact" {
+  rec=$' M\tpatch\tdir/file\tname.txt'
+  patches_rec_decode "$rec"
+  [ "$REC_XY" = " M" ]
+  [ "$REC_CLASS" = "patch" ]
+  [ "$REC_PATH" = $'dir/file\tname.txt' ]
+}
+
+@test "patches_rec_decode returns 1 on a record without two TABs" {
+  ! patches_rec_decode 'xy-no-tabs-here'
+}

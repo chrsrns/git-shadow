@@ -45,6 +45,14 @@ worktree_paths() {
   worktree_records | cut -f1
 }
 
+# Print the main worktree's `worktree_records` first-record path — its
+# registry identity (under submodule and --separate-git-dir layouts the
+# first record is the common git dir, not the checkout root). Use only for
+# record-vs-record comparison, never as a filesystem toplevel.
+worktree_main_toplevel() {
+  worktree_paths | head -1
+}
+
 # Print the worktree dir name for a branch: every '/' replaced by '-'.
 # Returns 1 on an empty result, a result containing '..', or a leading '-'.
 worktree_sanitize_name() {
@@ -147,7 +155,7 @@ worktree_add() {
   # (the file is gitignored, never carried over). Source order: invoking
   # checkout's toplevel, then the main checkout's (V286).
   local main_wt inv_top env_src
-  main_wt="$(worktree_paths | head -1)"
+  main_wt="$(worktree_main_toplevel)"
   inv_top="$(repo_root || true)"
   env_src=""
   if [[ -n "$inv_top" && -f "$inv_top/.git-shadow.env" ]]; then

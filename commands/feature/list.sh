@@ -60,10 +60,10 @@ while IFS= read -r name; do
 done < <(paired_public_branches)
 
 # The field reports only a dedicated worktree; a pair checked out in the
-# main worktree shows -. Resolve the main checkout's toplevel through the
-# common git dir's parent — the invoking worktree's toplevel is wrong when
+# main worktree shows -. Resolve the main worktree's registry identity via
+# `worktree_main_toplevel` — the invoking worktree's toplevel is wrong when
 # `feature list` runs inside a dedicated feature worktree.
-main_worktree="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")"
+main_worktree="$(worktree_main_toplevel)"
 
 json_items=()
 for name in "${names[@]}"; do

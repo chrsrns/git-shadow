@@ -21,7 +21,7 @@ setup() {
 }
 
 teardown() {
-  rm -rf "$TEST_DIR"
+  rm -rf "$TEST_DIR" "$TEST_DIR-gitdir"
 }
 
 @test "feature list shows an open feature pair" {
@@ -161,4 +161,23 @@ teardown() {
   run git shadow feature list --json
   [ "$status" -eq 0 ]
   echo "$output" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert any(i["name"] == '"'"'feat"q'"'"' for i in d)'
+}
+
+@test "feature list reports - for a main-worktree pair under --separate-git-dir" {
+  mkdir -p "$TEST_DIR-gitdir"
+  rm -rf .git
+  git init -q --separate-git-dir "$TEST_DIR-gitdir" "$TEST_DIR"
+  git config user.name "Test User"
+  git config user.email "test@example.com"
+  git symbolic-ref HEAD refs/heads/develop
+  git add -A && git commit -qm "initial"
+  git shadow config set PUBLIC_BASE_BRANCH develop --project-config >/dev/null
+  git checkout -q -b "develop@local"
+  git checkout -q develop
+
+  run git shadow feature start feat-sgd
+  [ "$status" -eq 0 ]
+  run git shadow feature list --json
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"worktree":"-"'* ]]
 }

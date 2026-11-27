@@ -49,7 +49,8 @@ if patches_dirty_records > "$DIRT_RECS"; then
   UNPATCHED_DIRTY=0
   while IFS= read -r -d '' _rec || [[ -n "$_rec" ]]; do
     [[ -z "$_rec" ]] && continue
-    _class="$(printf '%s' "$_rec" | cut -f2)"
+    if ! patches_rec_decode "$_rec"; then exit 1; fi
+    _class="$REC_CLASS"
     if [[ "$_class" == "patch" ]]; then
       LOCAL_PATCHES=$((LOCAL_PATCHES + 1))
     else
@@ -119,6 +120,16 @@ if [[ -n "$SHADOW_PARENT" ]]; then
   PARENT_JSON=",\"parent\":\"$(json_escape "$SHADOW_PARENT")\""
 fi
 
+
+# Emit the shared --json pair-identity block; every --json exit path that
+# emits shadow_branch builds on it.
+status_json_identity() {
+  printf '"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s' \
+    "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
+    "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
+    "$PARENT_JSON"
+}
+
 # Dirt fields render as null in --json when the enumeration failed.
 if [[ "$DIRTY_FAILED" -eq 1 ]]; then
   LP_JSON=null; UD_JSON=null
@@ -129,10 +140,8 @@ fi
 # If the public branch does not exist, report missing.
 if ! branch_exists "$PUBLIC_BRANCH"; then
   if [[ "$JSON" -eq 1 ]]; then
-    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"publishable":0,"public_ahead":0,"diverged":false,"local_patches":%s,"unpatched_dirty":%s,"status":"public branch missing"}\n' \
-      "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
-      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
-      "$PARENT_JSON" "$LP_JSON" "$UD_JSON"
+    printf '{%s,"publishable":0,"public_ahead":0,"diverged":false,"local_patches":%s,"unpatched_dirty":%s,"status":"public branch missing"}\n' \
+      "$(status_json_identity)" "$LP_JSON" "$UD_JSON"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
     ui_git    "Branch type   : $BRANCH_TYPE"
@@ -154,10 +163,8 @@ LATEST_CP="$(checkpoint_latest "$SHADOW_BRANCH")"
 
 if [[ -z "$LATEST_CP" ]]; then
   if [[ "$JSON" -eq 1 ]]; then
-    printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"status":"uninitialized"}\n' \
-      "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
-      "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
-      "$PARENT_JSON"
+    printf '{%s,"status":"uninitialized"}\n' \
+      "$(status_json_identity)"
   else
     ui_shadow "Current branch: $CURRENT_BRANCH"
     ui_git    "Branch type   : $BRANCH_TYPE"
@@ -202,10 +209,8 @@ if [[ "$JSON" -eq 1 ]]; then
   else
     public_ahead_json="$PUBLIC_AHEAD"
   fi
-  printf '{"current_branch":"%s","branch_type":"%s","public_branch":"%s","shadow_branch":"%s"%s,"publishable":%d,"public_ahead":%s,"diverged":%s,"local_patches":%s,"unpatched_dirty":%s,"checkpoint_public":"%s","checkpoint_local":"%s"}\n' \
-    "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$BRANCH_TYPE")" \
-    "$(json_escape "$PUBLIC_BRANCH")" "$(json_escape "$SHADOW_BRANCH")" \
-    "$PARENT_JSON" "$PUBLISHABLE" "$public_ahead_json" "$DIVERGED" "$LP_JSON" "$UD_JSON" "$CP_PUBLIC" "$CP_LOCAL"
+  printf '{%s,"publishable":%d,"public_ahead":%s,"diverged":%s,"local_patches":%s,"unpatched_dirty":%s,"checkpoint_public":"%s","checkpoint_local":"%s"}\n' \
+    "$(status_json_identity)" "$PUBLISHABLE" "$public_ahead_json" "$DIVERGED" "$LP_JSON" "$UD_JSON" "$CP_PUBLIC" "$CP_LOCAL"
 else
   ui_shadow "Current branch : $CURRENT_BRANCH"
   ui_git    "Branch type    : $BRANCH_TYPE"

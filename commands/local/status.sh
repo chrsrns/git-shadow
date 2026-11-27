@@ -48,8 +48,8 @@ case "$MODE" in
   porcelain)
     while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
       [[ -z "$rec" ]] && continue
-      xy="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
-      class="${rec%%$'\t'*}"; path="${rec#*$'\t'}"
+      patches_rec_decode "$rec" || exit 1
+      xy="$REC_XY"; class="$REC_CLASS"; path="$REC_PATH"
       printf '%s %s %s\n' "$xy" "$(patches_cquote "$path")" "$class"
     done < "$RECS"
     if [[ -n "$UNAPPLIED" ]]; then
@@ -65,8 +65,8 @@ case "$MODE" in
     first=1
     while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
       [[ -z "$rec" ]] && continue
-      xy="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
-      class="${rec%%$'\t'*}"; path="${rec#*$'\t'}"
+      patches_rec_decode "$rec" || exit 1
+      xy="$REC_XY"; class="$REC_CLASS"; path="$REC_PATH"
       [[ "$first" -eq 0 ]] && printf ','
       first=0
       printf '{"path":"%s","xy":"%s","class":"%s"}' \
@@ -88,7 +88,8 @@ case "$MODE" in
     n_patch=0; n_dirty=0
     while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
       [[ -z "$rec" ]] && continue
-      class="$(printf '%s' "$rec" | cut -f2)"
+      patches_rec_decode "$rec" || exit 1
+      class="$REC_CLASS"
       if [[ "$class" == "patch" ]]; then
         n_patch=$((n_patch + 1))
       else
@@ -101,8 +102,8 @@ case "$MODE" in
     if [[ -s "$RECS" ]]; then
       while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
         [[ -z "$rec" ]] && continue
-        xy="${rec%%$'\t'*}"; rec="${rec#*$'\t'}"
-        class="${rec%%$'\t'*}"; path="${rec#*$'\t'}"
+        patches_rec_decode "$rec" || exit 1
+        xy="$REC_XY"; class="$REC_CLASS"; path="$REC_PATH"
         printf '%s %s [%s]\n' "$xy" "$path" "$class"
       done < "$RECS"
     fi

@@ -132,7 +132,8 @@ patches_sidecar_for() {
 # Print the absolute sidecar path for a repository-relative source path.
 patches_sidecar_abs() {
   local root sidecar
-  root="$(repo_root)" || return 1
+  root="${_PCTX_ROOT:-}"
+  if [[ -z "$root" ]]; then root="$(repo_root)" || return 1; fi
   sidecar="$(patches_sidecar_for "$1")"
   [[ -z "$sidecar" ]] && return 1
   printf '%s/%s\n' "$root" "$sidecar"
@@ -143,7 +144,7 @@ patches_sidecar_abs() {
 patches_relpath_from_sidecar() {
   local sidecar="$1"
   local root
-  root="$(repo_root)"
+  root="${_PCTX_ROOT:-$(repo_root)}"
   if [[ -n "$root" ]]; then
     sidecar="${sidecar#"$root"/$PATCHES_DIR/}"
   fi
@@ -313,7 +314,8 @@ _patches_apply_ladder_work() {
   local out_file="${5:-}"
 
   local root
-  root="$(repo_root)" || return 1
+  root="${_PCTX_ROOT:-}"
+  if [[ -z "$root" ]]; then root="$(repo_root)" || return 1; fi
 
   local sidecar
   sidecar="$(patches_sidecar_for "$relpath")"
@@ -375,7 +377,8 @@ _patches_path_is_applied_overlay() {
   local relpath="$1"
 
   local root
-  root="$(repo_root)" || return 1
+  root="${_PCTX_ROOT:-}"
+  if [[ -z "$root" ]]; then root="$(repo_root)" || return 1; fi
 
   local out_file
   out_file="$(mktemp)"
@@ -410,9 +413,16 @@ patches_classify_path() {
     # A registered worktree directory looks like an untracked path in the
     # main checkout; it is not dirt we care about here.
     local root abs_path
-    root="$(repo_root)" || return 1
+    root="${_PCTX_ROOT:-}"
+    if [[ -z "$root" ]]; then root="$(repo_root)" || return 1; fi
     abs_path="$(abs_path_m "$root/$path")"
-    if worktree_paths | grep -qxF "$abs_path" 2>/dev/null; then
+    local wtset_ok=0
+    if [[ -n "${_PCTX_WTSET:-}" ]]; then
+      printf '%s\n' "$_PCTX_WTSET" | grep -qxF "$abs_path" && wtset_ok=1
+    else
+      worktree_paths | grep -qxF "$abs_path" 2>/dev/null && wtset_ok=1
+    fi
+    if [[ "$wtset_ok" -eq 1 ]]; then
       printf 'clean\n'
       return 0
     fi
@@ -450,17 +460,22 @@ patches_classify_path() {
 # temp file so its exit status stays observable — process substitution
 # would hide the failure. Returns 1 when the enumeration fails.
 patches_dirty_records() {
-  local root
-  root="$(repo_root)" || return 1
+  local _PCTX_ROOT _PCTX_WTSET
+  _PCTX_ROOT="$(repo_root)" || return 1
+  _patches_classify_ctx
 
-  local enum_out
+  local enum_out rc
   enum_out="$(mktemp)" || return 1
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
-
-  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+  _patches_status_enum "$enum_out"
+  rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f "$enum_out"
     return 1
   fi
+  # Helper calls complete before the RETURN trap arms: under functrace a
+  # nested function's return would fire it mid-write (V253).
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
 
   # Porcelain records are NUL-delimited so paths with spaces, quotes, or
   # non-ASCII bytes arrive unquoted and cannot merge into one record.
@@ -479,6 +494,33 @@ patches_dirty_records() {
   return 0
 }
 
+# Split a patches_dirty_records record into REC_XY, REC_CLASS, REC_PATH on
+# the first two TABs (REC_PATH absorbs embedded TABs). Returns 1 when the
+# record lacks two TAB separators. Invoke in the caller's shell — the REC_*
+# globals are lost inside command substitution.
+patches_rec_decode() {
+  local rec="$1"
+  [[ "$rec" == *$'	'*$'	'* ]] || return 1
+  local rest="${rec#*$'	'}"
+  REC_XY="${rec%%$'	'*}"
+  REC_CLASS="${rest%%$'	'*}"
+  REC_PATH="${rest#*$'	'}"
+}
+
+# Run the single status enumeration; writes records to <out_file>, returns
+# 1 on failure. Uses _PCTX_ROOT when bound non-empty, else repo_root.
+_patches_status_enum() {
+  local out_file="$1" root="${_PCTX_ROOT:-}"
+  [[ -n "$root" ]] || { root="$(repo_root)" || return 1; }
+  git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$out_file"
+}
+
+# Bind _PCTX_WTSET (newline-joined registered-worktree paths) for a record
+# loop; the owner's `local` declaration restores it on return.
+_patches_classify_ctx() {
+  _PCTX_WTSET="$(worktree_paths)"
+}
+
 # Emit one NUL-delimited `??` relpath record per untracked path, sharing
 # the same `git status` enumeration as patches_dirty_records — callers
 # that must see classifier-exempt paths (.git-shadow.env, .gitignore,
@@ -487,17 +529,21 @@ patches_dirty_records() {
 # observable — process substitution would hide the failure. Returns 1
 # when the enumeration fails.
 patches_untracked_records() {
-  local root
-  root="$(repo_root)" || return 1
+  local _PCTX_ROOT _PCTX_WTSET=""
+  _PCTX_ROOT="$(repo_root)" || return 1
 
-  local enum_out
+  local enum_out rc
   enum_out="$(mktemp)" || return 1
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
-
-  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+  _patches_status_enum "$enum_out"
+  rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f "$enum_out"
     return 1
   fi
+  # Helper calls complete before the RETURN trap arms: under functrace a
+  # nested function's return would fire it mid-write (V253).
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
 
   local rec
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
@@ -521,20 +567,22 @@ patches_dirty_table() {
 
   local recs
   recs="$(mktemp)" || return 1
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -f "$recs"; trap - RETURN' RETURN
-
+  # The producer is an in-process call; it must complete before the trap
+  # arms or its return fires the trap under functrace (V253).
   if ! patches_dirty_records > "$recs"; then
+    rm -f "$recs"
     return 1
   fi
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$recs"; trap - RETURN' RETURN
 
   local rec status class path
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
     [[ -z "$rec" ]] && continue
-    status="${rec%%$'\t'*}"
-    rec="${rec#*$'\t'}"
-    class="${rec%%$'\t'*}"
-    path="${rec#*$'\t'}"
+    patches_rec_decode "$rec" || return 1
+    status="$REC_XY"
+    class="$REC_CLASS"
+    path="$REC_PATH"
 
     if [[ "$mode" == "porcelain" ]]; then
       printf '%s %s %s\n' "$status" "$(patches_cquote "$path")" "$class"
@@ -578,17 +626,21 @@ patches_cquote() {
 
 # Print the relpath of every stored sidecar whose source file is not dirty.
 patches_unapplied_sidecars() {
-  local root
-  root="$(repo_root)" || return 1
+  local _PCTX_ROOT _PCTX_WTSET=""
+  _PCTX_ROOT="$(repo_root)" || return 1
 
-  local enum_out
+  local enum_out rc
   enum_out="$(mktemp)" || return 1
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
-
-  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+  _patches_status_enum "$enum_out"
+  rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f "$enum_out"
     return 1
   fi
+  # Helper calls complete before the RETURN trap arms: under functrace a
+  # nested function's return would fire it mid-write (V253).
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
 
   local rec path
   local -a dirty_paths=()
@@ -614,17 +666,22 @@ patches_unapplied_sidecars() {
 # Fails closed: a failed `git status` enumeration returns 1 rather than
 # reporting the tree clean.
 patches_overlay_clean() {
-  local root
-  root="$(repo_root)" || return 1
+  local _PCTX_ROOT _PCTX_WTSET
+  _PCTX_ROOT="$(repo_root)" || return 1
+  _patches_classify_ctx
 
-  local enum_out
+  local enum_out rc
   enum_out="$(mktemp)" || return 1
-  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
-  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
-
-  if ! git -C "$root" status --porcelain -z --untracked-files=all --no-renames > "$enum_out"; then
+  _patches_status_enum "$enum_out"
+  rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f "$enum_out"
     return 1
   fi
+  # Helper calls complete before the RETURN trap arms: under functrace a
+  # nested function's return would fire it mid-write (V253).
+  # shellcheck disable=SC2064  # expand at trap-fire time; the variable stays in scope
+  trap 'rm -f "$enum_out"; trap - RETURN' RETURN
 
   local rec status path class
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do

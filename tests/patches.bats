@@ -651,3 +651,41 @@ SH
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+@test "patches_rec_decode keeps a TAB-bearing path intact" {
+  rec=$' M\tpatch\tdir/file\tname.txt'
+  patches_rec_decode "$rec"
+  [ "$REC_XY" = " M" ]
+  [ "$REC_CLASS" = "patch" ]
+  [ "$REC_PATH" = $'dir/file\tname.txt' ]
+}
+
+@test "patches_rec_decode returns 1 on a record without two TABs" {
+  ! patches_rec_decode 'xy-no-tabs-here'
+}
+
+@test "classifying enumeration resolves rev-parse and worktree list once" {
+  git checkout -q -b feature@local
+  echo dirt >> file.txt
+  mkdir -p fakebin
+  cat > fakebin/git <<'SH'
+#!/bin/sh
+while [ "$1" = "-C" ]; do shift 2; done
+if [ "$1" = "rev-parse" ] || { [ "$1" = "worktree" ] && [ "$2" = "list" ]; }; then
+  echo "$1 $2" >> "$TEST_DIR/counts"
+fi
+exec /usr/bin/git "$@"
+SH
+  chmod +x fakebin/git
+  : > counts
+  run env TEST_DIR="$TEST_DIR" PATH="$TEST_DIR/fakebin:$PATH" bash -c 'source "$1/lib/common.sh"; : >/dev/null' -- "$TOOLKIT_ROOT"
+  base_rp="$(grep -c 'rev-parse' counts || true)"
+  base_wl="$(grep -c 'worktree list' counts || true)"
+  : > counts
+  run env TEST_DIR="$TEST_DIR" PATH="$TEST_DIR/fakebin:$PATH" bash -c 'source "$1/lib/common.sh"; patches_dirty_records >/dev/null' -- "$TOOLKIT_ROOT"
+  [ "$status" -eq 0 ]
+  got_rp="$(grep -c 'rev-parse' counts || true)"
+  got_wl="$(grep -c 'worktree list' counts || true)"
+  [ "$(( got_rp - base_rp ))" -eq 1 ]
+  [ "$(( got_wl - base_wl ))" -eq 1 ]
+}

@@ -88,7 +88,7 @@ finish_check_feature_worktree() {
   # user's primary checkout. FINISH_WORKTREE already excludes the invoking
   # toplevel, so equality here means a named finish from another checkout.
   local main_top
-  main_top="$(worktree_paths | head -1)"
+  main_top="$(worktree_main_toplevel)"
   if [[ -n "$main_top" && "$FINISH_WORKTREE" == "$main_top" ]]; then
     ui_error "Cannot remove worktree '$FINISH_WORKTREE': it is the main worktree ('$FEATURE_LOCAL_BRANCH' is checked out there)."
     ui_info  "Free '$FEATURE_LOCAL_BRANCH' in the main checkout (git checkout --detach), then re-run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH'."
@@ -158,10 +158,11 @@ finish_revert_worktree_overlays() {
   local rec status class path
   while IFS= read -r -d '' rec || [[ -n "$rec" ]]; do
     [[ -z "$rec" ]] && continue
-    status="${rec%%$'\t'*}"
-    class="$(printf '%s' "$rec" | cut -f2)"
+    patches_rec_decode "$rec" || return 1
+    status="$REC_XY"
+    class="$REC_CLASS"
     [[ "$class" != "patch" ]] && continue
-    path="$(printf '%s' "$rec" | cut -f3)"
+    path="$REC_PATH"
     if ! git -C "$worktree" checkout -q HEAD -- "$path"; then
       ui_error "Failed to revert patch overlay on '$path' in '$worktree'."
       return 1
@@ -183,7 +184,7 @@ finish_cleanup_feature() {
     # bypasses finish_check_feature_worktree, must not run the revert,
     # env deletion, or removal against the user's primary checkout.
     local main_top
-    main_top="$(worktree_paths | head -1)"
+    main_top="$(worktree_main_toplevel)"
     if [[ -n "$main_top" && "$worktree" == "$main_top" ]]; then
       ui_error "Cannot remove worktree '$worktree': it is the main worktree ('$FEATURE_LOCAL_BRANCH' is checked out there)."
       ui_info  "Free '$FEATURE_LOCAL_BRANCH' in the main checkout (git checkout --detach), then re-run 'git shadow feature finish $FEATURE_PUBLIC_BRANCH'."

@@ -6,6 +6,8 @@ Copy below section into `AGENTS.md` of project that uses git shadow.
 
 **git shadow** separates thinking (`@local`) from public work.
 
+Notation: `⊥` = do not; `X ← Y` = X is set from Y.
+
 ### Branch model
 
 - `feature/x` — public review branch.
@@ -19,8 +21,8 @@ Copy below section into `AGENTS.md` of project that uses git shadow.
   Extracts markers to `.git-shadow/annotations/<relpath>`; clean public commit + `[MEMORY]` sidecar.
 - Public code without markers: `git commit`.
 - Local notes / scratch / debug: `git commit -m "[MEMORY] <subject>"`.
-  `[MEMORY]` commits must not modify public-tracked files already tracked by the public branch.
-- `///`/`// @local` mark local-only reasoning in source; extracted to `.git-shadow/annotations/<relpath>` (gitignored, local-only). `git shadow show --with-annotations <file>` views overlaid; `git shadow annotations reapply [path]` writes markers back.
+  `[MEMORY]` commits must not modify files already tracked by the public branch.
+- `///`/`// @local` = local-only reasoning in source. `git shadow show --with-annotations <file>` views extracted markers overlaid; `git shadow annotations reapply [path]` writes markers back.
 
 ### Typical workflow
 
@@ -53,7 +55,7 @@ git shadow push feature/x
 - `git shadow local rm [--revert] <path>` — remove sidecar; `--revert` restores source to `HEAD`.
 - `git shadow local diff [path]` — print one or all sidecars.
 - `git shadow local status` — classify dirt: `[patch]`/`[patch-stale]` = overlay, `[dirty]`/`[staged]`/`[untracked]` = real changes; abort dumps carry the same classes.
-- `git shadow status` reports `local-patches` (`[patch]` count) + `unpatched-dirty` (paths failing the clean-tree check) — JSON `local_patches`/`unpatched_dirty`.
+- `git shadow status` reports `local-patches` (paths classed `[patch]`) + `unpatched-dirty` (paths failing the clean-tree check) — JSON `local_patches`/`unpatched_dirty`.
 - `git shadow local apply` orphan warning → refresh with `local add` or remove sidecar.
 - `git shadow commit` subtracts the stored patch from staged public-tracked files before marker extraction.
 - An applied overlay is never dirt and never blocks mutating ops (`feature start`, `feature sync`, `base sync`, `feature publish`, `feature finish`, `re-anchor`, `git shadow commit`) — strip + reapply is automatic. ⊥ `local rm --revert` before these ops; only `[patch-stale]`/`[dirty]`/`[staged]`/`[untracked]` block.
@@ -64,17 +66,21 @@ git shadow push feature/x
 - Sync conflict: resolve, then `git shadow feature sync --continue`.
 - Abort: `git shadow feature sync --abort`.
 - Public base force-pushed/rewritten, patch-ids differ: `git shadow re-anchor feature/x@local`.
-- Finish aborts "not merged" but feature was rewritten+merged remotely: `re-anchor feature/x@local` if remote branch exists; if deleted post-merge, `git branch -f feature/x <base>` (`update-ref` if `feature/x` is worktree-checked-out), then re-run `finish`. Remote deleted → ⊥ `re-anchor` (silently re-anchors at stale head).
+- Finish aborts "not merged" but feature was rewritten+merged remotely: `re-anchor feature/x@local` if remote branch exists; if deleted post-merge, `git branch -f feature/x <base>` (`git update-ref refs/heads/feature/x <base>` if `feature/x` is worktree-checked-out), then re-run `finish`. Remote deleted → ⊥ `re-anchor` (silently re-anchors at stale head).
 - Release/hotfix directly on public branch: `GIT_SHADOW=1 git commit` on `main`, `git shadow push main`, then `git shadow base sync`.
 
 ### Long-lived feature catch-up
 
 - `git shadow base sync` updates `<base>@local` only; `git shadow feature sync` only applies the feature's own public changes.
-- Base advanced past a long feature? Rebase `<name>` onto `<base>`, rebase `<name>@local` onto `<base>@local`, then `git shadow re-anchor <name>@local`. Merge instead of rebase if the public branch is already pushed.
 - Active `git shadow local` overlays? Save sidecars (`git shadow local diff <path> > <backup>` or copy `.git-shadow/patches/<relpath>.patch`), then `git shadow local rm --revert <path>` before the rebase steps. After re-anchor, apply saved patch and re-capture with `git shadow local add <path>`.
+- Base advanced past a long feature? Steps:
+  1. Update local base: `git checkout <base>@local` && `git shadow base sync`.
+  2. `git checkout <name>` && `git rebase <base>` — public branch pushed already? use `GIT_SHADOW=1 git merge --no-edit <base>` instead.
+  3. `git checkout <name>@local` && `git rebase <base>@local`.
+  4. `git shadow re-anchor <name>@local`.
 - Verify with `git shadow status` and `git shadow check public <name>` before `git shadow feature publish` && `git shadow push <name>`.
 
-No base publish path; do not commit on `<base>@local` first.
+No base publish path — publishing exists only for feature branches; do not commit on `<base>@local` first.
 
 ### After merge
 
@@ -106,7 +112,7 @@ Configure it with `git shadow config set WORKTREE_ROOT <absolute-path> --project
 - Publish enforces parent-first only on content dependence: check pass replays onto parent's public head — fails when parent's unpublished work differs on expected paths; pure additions on untouched paths publish clean.
 - `feature finish` targets the parent pair: parent public pulled (`--no-pull` when it has no upstream), child `[MEMORY]`s + net diff land on `<parent>@local`, parent backlog stays publishable. Named `finish <name>` runs from resolved parent checkout incl. a worktree hosting `<parent>@local`.
 - Deleted parent → child's `shadow-parent` dangles; effective base auto-retargets to base pair. `finish` warns naming stranded children.
-- `feature reparent <name> --onto <parent>` rewrites pointer config-only (paused-op safe); `--onto <base>` unstacks. Sibling reparent moves no content — publish tree-diff fails until old parent finishes, then `re-anchor`.
+- `feature reparent <name> --onto <parent>` rewrites pointer config-only (paused-op safe); `--onto <base>` (public or `@local` spelling) unstacks. Sibling reparent moves no content — publish tree-diff fails until old parent finishes, then `re-anchor`.
 - `finish --keep-worktree` keeps `<name>@local` with `shadow-parent` still set — clear via `git config --unset` or reparent.
 - No auto-restack: `<child>@local` gains later parent work only via `finish` replay or manual rebase.
 
